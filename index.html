@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>أبو حذيفة للصرافة - الصفحة الرئيسية</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles/main.css">
+    
+    <!-- Chart.js for admin panel -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md shadow-md z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <div class="text-2xl font-bold text-gradient">
+                        <i class="fas fa-coins ml-2"></i>
+                        أبو حذيفة للصرافة
+                    </div>
+                </div>
+
+                <!-- Desktop Navigation -->
+                <div class="hidden md:flex items-center space-x-8 space-x-reverse">
+                    <a href="#home" class="nav-link active">الرئيسية</a>
+                    <a href="#news" class="nav-link">الأخبار</a>
+                    <a href="#rates" class="nav-link">أسعار الصرف</a>
+                    <a href="#app" class="nav-link">التطبيق</a>
+                    <a href="#contact" class="nav-link">اتصل بنا</a>
+                    <button onclick="showAdminLogin()" class="admin-btn">
+                        <i class="fas fa-user-shield ml-2"></i>
+                        لوحة الإدارة
+                    </button>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden">
+                    <button onclick="toggleMobileMenu()" class="text-gray-700 hover:text-blue-600">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Menu -->
+        <div id="mobileMenu" class="hidden md:hidden bg-white border-t">
+            <div class="px-2 pt-2 pb-3 space-y-1">
+                <a href="#home" class="nav-link-mobile">الرئيسية</a>
+                <a href="#news" class="nav-link-mobile">الأخبار</a>
+                <a href="#rates" class="nav-link-mobile">أسعار الصرف</a>
+                <a href="#app" class="nav-link-mobile">التطبيق</a>
+                <a href="#contact" class="nav-link-mobile">اتصل بنا</a>
+                <button onclick="showAdminLogin()" class="admin-btn-mobile mt-4">
+                    <i class="fas fa-user-shield ml-2"></i>
+                    لوحة الإدارة
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero-slider">
+        <!-- Slide 1 -->
+        <div class="slide active" style="background-image: url('https://images.unsplash.com/photo-1560472354-b33ff0c44a43?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80')">
+            <div class="slide-content">
+                <h1 class="hero-title">أبو حذيفة للصرافة</h1>
+                <p class="hero-subtitle">
+                    خدمات صرافة موثوقة وآمنة مع أفضل أسعار الصرف في السوق اليمني
+                    <br>
+                    نقدم لكم خدمات التحويل والصرافة بأعلى معايير الجودة والأمان
+                </p>
+                <a href="#rates" class="hero-btn">
+                    <i class="fas fa-chart-line ml-2"></i>
+                    اطلع على الأسعار
+                </a>
+            </div>
+        </div>
+
+        <!-- Slide 2 -->
+        <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80')">
+            <div class="slide-content">
+                <h1 class="hero-title">تطبيق واصل كاش</h1>
+                <p class="hero-subtitle">
+                    حمل تطبيقنا الجديد واستمتع بخدمات الصرافة والتحويل من هاتفك
+                    <br>
+                    متوفر الآن على جميع المنصات
+                </p>
+                <a href="#app" class="hero-btn">
+                    <i class="fas fa-mobile-alt ml-2"></i>
+                    حمل التطبيق
+                </a>
+            </div>
+        </div>
+
+        <!-- Slide 3 -->
+        <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80')">
+            <div class="slide-content">
+                <h1 class="hero-title">خدمة عملاء متميزة</h1>
+                <p class="hero-subtitle">
+                    فريق خدمة العملاء متاح على مدار الساعة لمساعدتكم
+                    <br>
+                    نحن هنا لخدمتكم في أي وقت
+                </p>
+                <a href="#contact" class="hero-btn">
+                    <i class="fas fa-headset ml-2"></i>
+                    تواصل معنا
+                </a>
+            </div>
+        </div>
+
+        <!-- Floating Elements -->
+        <div class="floating-elements">
+            <div class="floating-element" style="top: 20%; right: 10%;">💰</div>
+            <div class="floating-element" style="top: 60%; right: 15%;">📱</div>
+            <div class="floating-element" style="top: 30%; left: 10%;">💳</div>
+        </div>
+
+        <!-- Slider Controls -->
+        <div class="slider-controls">
+            <button class="slider-dot active" onclick="goToSlide(0)"></button>
+            <button class="slider-dot" onclick="goToSlide(1)"></button>
+            <button class="slider-dot" onclick="goToSlide(2)"></button>
+        </div>
+    </section>
+
+    <!-- Statistics Section -->
+    <section class="py-20 bg-gradient-to-r from-blue-900 to-blue-700 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div class="stat-card">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-number" data-target="15000">0</div>
+                    <div class="stat-label">عميل راضٍ</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💱</div>
+                    <div class="stat-number" data-target="50000">0</div>
+                    <div class="stat-label">عملية صرف</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🏪</div>
+                    <div class="stat-number" data-target="25">0</div>
+                    <div class="stat-label">فرع في اليمن</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⭐</div>
+                    <div class="stat-number" data-target="98">0</div>
+                    <div class="stat-label">% رضا العملاء</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- News Section -->
+    <section id="news" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="section-title">آخر الأخبار</h2>
+                <p class="section-subtitle">
+                    تابع آخر التحديثات والأخبار المتعلقة بأسعار الصرف والخدمات الجديدة
+                </p>
+            </div>
+
+            <div id="newsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- News cards will be loaded here by JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Exchange Rates Section -->
+    <section id="rates" class="py-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="section-title">أسعار الصرف الحالية</h2>
+                <p class="section-subtitle">
+                    أسعار الصرف محدثة لحظياً من السوق اليمني
+                </p>
+            </div>
+
+            <div class="rates-container">
+                <div class="rates-header">
+                    <div>
+                        <h3>أسعار الصرف</h3>
+                        <div class="last-update">
+                            آخر تحديث: <span id="lastUpdateTime">--:--</span>
+                        </div>
+                    </div>
+                    <button id="refreshBtn" onclick="refreshRates()" class="refresh-btn">
+                        <i class="fas fa-sync-alt"></i>
+                        تحديث
+                    </button>
+                </div>
+
+                <div class="rates-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>العملة</th>
+                                <th>شراء صنعاء</th>
+                                <th>بيع صنعاء</th>
+                                <th>شراء عدن</th>
+                                <th>بيع عدن</th>
+                                <th>التغيير</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ratesTableBody">
+                            <!-- Rates will be loaded here by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- App Section -->
+    <section id="app" class="py-20 bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                <div class="app-content">
+                    <h2 class="text-4xl font-bold mb-6">
+                        حمل تطبيق واصل كاش
+                    </h2>
+                    <p class="text-xl mb-8 opacity-90">
+                        استمتع بخدمات الصرافة والتحويل من هاتفك الذكي مع تطبيقنا الجديد
+                    </p>
+
+                    <div class="features-list mb-8">
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle text-2xl"></i>
+                            <span>تحويل الأموال بسهولة وأمان</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle text-2xl"></i>
+                            <span>متابعة أسعار الصرف لحظياً</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle text-2xl"></i>
+                            <span>خدمة عملاء متاحة 24/7</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle text-2xl"></i>
+                            <span>واجهة سهلة الاستخدام</span>
+                        </div>
+                    </div>
+
+                    <div class="download-buttons">
+                        <a href="#" class="download-btn">
+                            <i class="fab fa-apple"></i>
+                            <div>
+                                <div class="text-sm opacity-75">حمل من</div>
+                                <div class="font-semibold">App Store</div>
+                            </div>
+                        </a>
+                        <a href="#" class="download-btn">
+                            <i class="fab fa-google-play"></i>
+                            <div>
+                                <div class="text-sm opacity-75">حمل من</div>
+                                <div class="font-semibold">Google Play</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="app-mockup">
+                    <div class="phone-frame">
+                        <div class="phone-screen">
+                            <div class="h-full bg-gradient-to-b from-blue-500 to-purple-600 flex items-center justify-center">
+                                <div class="text-center text-white">
+                                    <i class="fas fa-mobile-alt text-6xl mb-4"></i>
+                                    <h3 class="text-xl font-bold">واصل كاش</h3>
+                                    <p class="text-sm opacity-75">قريباً</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="section-title">تواصل معنا</h2>
+                <p class="section-subtitle">
+                    نحن هنا لخدمتكم، تواصلوا معنا في أي وقت
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <!-- Contact Info -->
+                <div class="contact-info">
+                    <div class="contact-item">
+                        <div class="contact-icon">
+                            <i class="fas fa-map-marker-alt"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-semibold mb-2">العنوان</h3>
+                            <p class="text-gray-600">
+                                شارع الزبيري، صنعاء، اليمن<br>
+                                مقابل البنك المركزي اليمني
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="contact-item">
+                        <div class="contact-icon">
+                            <i class="fas fa-phone"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-semibold mb-2">الهاتف</h3>
+                            <a href="tel:+967123456789" class="whatsapp-link">+967 1 234 567</a>
+                            <p class="text-gray-600">متاح من 8 صباحاً حتى 8 مساءً</p>
+                        </div>
+                    </div>
+
+                    <div class="contact-item">
+                        <div class="contact-icon">
+                            <i class="fab fa-whatsapp"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-semibold mb-2">واتساب</h3>
+                            <a href="https://wa.me/967123456789" class="whatsapp-link">+967 123 456 789</a>
+                            <p class="text-gray-600">خدمة عملاء على مدار الساعة</p>
+                        </div>
+                    </div>
+
+                    <div class="contact-item">
+                        <div class="contact-icon">
+                            <i class="fas fa-envelope"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-semibold mb-2">البريد الإلكتروني</h3>
+                            <a href="mailto:info@abuhudhayfaexchange.com" class="email-link">info@abuhudhayfaexchange.com</a>
+                            <p class="text-gray-600">سنرد عليك خلال 24 ساعة</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contact Form -->
+                <div class="contact-form-container">
+                    <h3 class="text-2xl font-semibold mb-6">أرسل لنا رسالة</h3>
+                    <form class="contact-form" onsubmit="submitContactForm(event)">
+                        <div class="form-group">
+                            <input type="text" name="name" placeholder="الاسم الكامل" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="email" name="email" placeholder="البريد الإلكتروني" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="tel" name="phone" placeholder="رقم الهاتف">
+                        </div>
+                        <div class="form-group">
+                            <textarea name="message" rows="5" placeholder="رسالتك" required></textarea>
+                        </div>
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-paper-plane"></i>
+                            إرسال الرسالة
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <div class="text-2xl font-bold mb-4">
+                        <i class="fas fa-coins ml-2"></i>
+                        أبو حذيفة للصرافة
+                    </div>
+                    <p class="text-gray-400 mb-4">
+                        خدمات صرافة موثوقة وآمنة مع أفضل أسعار الصرف في السوق اليمني
+                    </p>
+                    <div class="flex space-x-4 space-x-reverse">
+                        <a href="#" class="social-link">
+                            <i class="fab fa-facebook-f"></i>
+                        </a>
+                        <a href="#" class="social-link">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="social-link">
+                            <i class="fab fa-instagram"></i>
+                        </a>
+                        <a href="#" class="social-link">
+                            <i class="fab fa-whatsapp"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">خدماتنا</h3>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="footer-link">صرف العملات</a></li>
+                        <li><a href="#" class="footer-link">التحويلات</a></li>
+                        <li><a href="#" class="footer-link">الودائع</a></li>
+                        <li><a href="#" class="footer-link">الاستشارات المالية</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">روابط مهمة</h3>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="footer-link">عن الشركة</a></li>
+                        <li><a href="#" class="footer-link">الأخبار</a></li>
+                        <li><a href="#" class="footer-link">الوظائف</a></li>
+                        <li><a href="#" class="footer-link">سياسة الخصوصية</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">معلومات التواصل</h3>
+                    <ul class="space-y-2 text-gray-400">
+                        <li>
+                            <i class="fas fa-map-marker-alt ml-2"></i>
+                            شارع الزبيري، صنعاء
+                        </li>
+                        <li>
+                            <i class="fas fa-phone ml-2"></i>
+                            +967 1 234 567
+                        </li>
+                        <li>
+                            <i class="fas fa-envelope ml-2"></i>
+                            info@abuhudhayfaexchange.com
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+                <p>&copy; 2024 أبو حذيفة للصرافة. جميع الحقوق محفوظة.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Admin Login Modal -->
+    <div id="adminLoginModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>تسجيل دخول الإدارة</h3>
+                <button onclick="closeAdminLogin()" class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form class="admin-login-form" onsubmit="handleAdminLogin(event)">
+                <div class="form-group">
+                    <label for="username">اسم المستخدم</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">كلمة المرور</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-sign-in-alt"></i>
+                    تسجيل الدخول
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Message Container -->
+    <div id="messageContainer"></div>
+
+    <!-- JavaScript -->
+    <script src="js/main.js"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'97357c97d1dc3a66',t:'MTc1NTg5ODM4Ny4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+      </html>
+                                                                           
