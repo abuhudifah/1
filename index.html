@@ -3,504 +3,446 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>أبو حذيفة للصرافة - خدمات صرف العملات الموثوقة</title>
-    <meta name="description" content="أبو حذيفة للصرافة - أفضل أسعار صرف العملات في اليمن. خدمات موثوقة وسريعة للتحويلات المالية وصرف العملات الأجنبية.">
-    
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Tailwind CSS -->
+    <title>خدمات الرد الآلي - أبوحذيفة للصرافة والتحويلات</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="main.css">
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💱</text></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #0b3463 0%, #1e5a8a 25%, #007a99 75%, #00a3cc 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .gradient-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 80%, rgba(255,255,255,0.08) 0%, transparent 50%);
+        }
+        .gradient-bg > * {
+            position: relative;
+            z-index: 1;
+        }
+        .service-card {
+            transition: all 0.4s ease;
+            border-right: 5px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+        .service-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(11, 52, 99, 0.02), rgba(0, 122, 153, 0.02));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .service-card:hover::before {
+            opacity: 1;
+        }
+        .service-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(11, 52, 99, 0.15);
+            border-right-color: #007a99;
+        }
+        .icon-circle {
+            background: linear-gradient(135deg, #0b3463, #007a99);
+        }
+        .whatsapp-icon {
+            background: #25D366;
+        }
+        .category-blue { background: linear-gradient(135deg, #0b3463, #1e5a8a); }
+        .category-green { background: linear-gradient(135deg, #007a99, #00a3cc); }
+        .category-purple { background: linear-gradient(135deg, #6b46c1, #8b5cf6); }
+        .category-orange { background: linear-gradient(135deg, #ea580c, #f97316); }
+        .number-badge {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            font-weight: 700;
+        }
+    </style>
 </head>
-<body>
-    <!-- Navigation -->
-    <nav class="navbar" id="navbar">
-        <div class="nav-container">
-            <a href="#" class="logo">
-                <i class="fas fa-exchange-alt"></i>
-                أبو حذيفة للصرافة
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header Section -->
+    <div class="gradient-bg text-white py-12">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <!-- Company Logo -->
+            <div class="mb-8">
+                <div class="relative inline-flex items-center justify-center w-36 h-36 bg-white/25 rounded-full backdrop-blur-sm p-3 shadow-2xl border-4 border-white/30">
+                    <!-- Decorative rings -->
+                    <div class="absolute inset-0 rounded-full border-2 border-white/20 animate-pulse"></div>
+                    <div class="absolute inset-2 rounded-full border border-white/15"></div>
+                    
+                    <img src="https://lh3.googleusercontent.com/d/1VGM4hLEOy6xqwvvAOrLholLcSTfxIuSn" alt="شعار أبوحذيفة للصرافة والتحويلات" class="w-full h-full object-contain rounded-full shadow-lg" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="w-full h-full bg-white/40 rounded-full flex items-center justify-center text-4xl font-bold text-white shadow-lg" style="display: none;">
+                        أح
+                    </div>
+                    
+                    <!-- Glow effect -->
+                    <div class="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
+                </div>
+            </div>
+            
+            <!-- Main Title -->
+            <div class="relative">
+                <h1 class="text-5xl md:text-6xl font-bold mb-6 text-white drop-shadow-lg">خدمات الرد الآلي</h1>
+                <div class="absolute -top-2 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-white/30 rounded-full"></div>
+            </div>
+            <h2 class="text-3xl md:text-4xl font-semibold mb-4 text-white/95">أبوحذيفة للصرافة والتحويلات</h2>
+            <p class="text-xl opacity-90 max-w-2xl mx-auto leading-relaxed">اختر الرقم المناسب للحصول على الخدمة المطلوبة بسرعة وسهولة</p>
+            
+            <!-- WhatsApp Icon -->
+            <a href="https://wa.me/967772391570" target="_blank" class="mt-8 inline-flex items-center bg-white/25 rounded-full px-8 py-4 backdrop-blur-sm hover:bg-white/35 transition-all duration-300 hover:no-underline shadow-xl border-2 border-white/20 hover:border-white/40 hover:scale-105 transform">
+                <div class="whatsapp-icon w-12 h-12 rounded-full flex items-center justify-center ml-4 shadow-lg">
+                    <svg class="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.465 3.085"/>
+                    </svg>
+                </div>
+                <span class="text-white font-bold text-xl">تواصل عبر واتساب</span>
             </a>
-            
-            <ul class="nav-links">
-                <li><a href="#home">الرئيسية</a></li>
-                <li><a href="#rates">الأسعار</a></li>
-                <li><a href="#posts">المنشورات</a></li>
-                <li><a href="#news">الأخبار</a></li>
-                <li><a href="#contact">اتصل بنا</a></li>
-            </ul>
-            
-            <div class="nav-actions">
-                <a href="admin.html" class="admin-btn">
-                    <i class="fas fa-user-shield"></i>
-                    لوحة الإدارة
-                </a>
-                <button class="mobile-menu-btn" id="mobileMenuBtn">
-                    <i class="fas fa-bars"></i>
-                </button>
-            </div>
-        </div>
-    </nav>
-
-    <!-- Hero Section -->
-    <section class="hero" id="home">
-        <div class="hero-content" style="grid-template-columns: 1fr; text-align: center; max-width: 800px;">
-            <div class="hero-text">
-                <h1 class="hero-title">
-                    أفضل أسعار صرف العملات
-                    <span style="color: #fbbf24;">في اليمن</span>
-                </h1>
-                <p class="hero-subtitle">
-                    نقدم لك خدمات صرف العملات الأجنبية بأفضل الأسعار وأعلى مستويات الأمان والموثوقية. 
-                    خبرة تزيد عن 15 عاماً في السوق اليمني.
-                </p>
-                <div class="hero-buttons">
-                    <a href="#rates" class="btn-primary">
-                        عرض الأسعار الحالية
-                        <i class="fas fa-chart-line"></i>
-                    </a>
-                    <a href="#contact" class="btn-secondary">
-                        تواصل معنا
-                        <i class="fas fa-phone"></i>
-                    </a>
-                </div>
-            </div>
-            
-
-        </div>
-    </section>
-
-    <!-- Exchange Rates Section -->
-    <section class="rates-section" id="rates">
-        <div class="rates-container">
-            <div class="section-header">
-                <h2 class="section-title">أسعار الصرف الحالية</h2>
-                <p class="section-subtitle">
-                    أسعار محدثة لحظياً لجميع العملات الأجنبية مقابل الريال اليمني
-                </p>
-            </div>
-            
-            <div class="rates-tabs">
-                <button class="tab-btn active" data-city="sanaa">صنعاء</button>
-                <button class="tab-btn" data-city="aden">عدن</button>
-            </div>
-            
-            <div class="rates-grid" id="ratesGrid">
-                <!-- Rates will be loaded dynamically -->
-            </div>
-            
-            <div class="text-center mt-8">
-                <p class="text-gray-600 text-sm">
-                    <i class="fas fa-clock mr-2"></i>
-                    آخر تحديث: <span id="currentTime">--:--:--</span> | 
-                    <span id="currentDate">-- --- ----</span>
-                </p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Posts Section -->
-    <section class="posts-section" id="posts">
-        <div class="posts-container">
-            <div class="section-header">
-                <h2 class="section-title">المنشورات والمستجدات</h2>
-                <p class="section-subtitle">
-                    تابع آخر المنشورات والتحديثات المهمة حول أسعار الصرف والأخبار الاقتصادية
-                </p>
-            </div>
-            
-            <div class="posts-grid" id="postsGrid">
-                <div class="post-card">
-                    <div class="post-header">
-                        <div class="post-date">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>15 ديسمبر 2024</span>
-                        </div>
-                        <div class="post-category">إعلان مهم</div>
-                    </div>
-                    <h3 class="post-title">تحديث أسعار الصرف لهذا الأسبوع</h3>
-                    <p class="post-excerpt">
-                        نعلن لعملائنا الكرام عن تحديث أسعار صرف العملات الأجنبية مقابل الريال اليمني بناءً على آخر التطورات في السوق المحلي والعالمي...
-                    </p>
-                    <div class="post-footer">
-                        <a href="#" class="read-more-btn">
-                            اقرأ المزيد
-                            <i class="fas fa-arrow-left"></i>
-                        </a>
-                        <div class="post-stats">
-                            <span><i class="fas fa-eye"></i> 1,245</span>
-                            <span><i class="fas fa-heart"></i> 89</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="post-card">
-                    <div class="post-header">
-                        <div class="post-date">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>12 ديسمبر 2024</span>
-                        </div>
-                        <div class="post-category">أخبار اقتصادية</div>
-                    </div>
-                    <h3 class="post-title">تطورات السوق المالي اليمني</h3>
-                    <p class="post-excerpt">
-                        شهد السوق المالي اليمني تطورات إيجابية خلال الأسبوع الماضي، حيث استقرت أسعار صرف الدولار الأمريكي والريال السعودي...
-                    </p>
-                    <div class="post-footer">
-                        <a href="#" class="read-more-btn">
-                            اقرأ المزيد
-                            <i class="fas fa-arrow-left"></i>
-                        </a>
-                        <div class="post-stats">
-                            <span><i class="fas fa-eye"></i> 892</span>
-                            <span><i class="fas fa-heart"></i> 67</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="post-card">
-                    <div class="post-header">
-                        <div class="post-date">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>10 ديسمبر 2024</span>
-                        </div>
-                        <div class="post-category">خدمات جديدة</div>
-                    </div>
-                    <h3 class="post-title">إطلاق خدمة التحويلات الفورية</h3>
-                    <p class="post-excerpt">
-                        يسعدنا أن نعلن عن إطلاق خدمة التحويلات الفورية الجديدة التي تتيح لعملائنا إرسال واستقبال الأموال خلال دقائق معدودة...
-                    </p>
-                    <div class="post-footer">
-                        <a href="#" class="read-more-btn">
-                            اقرأ المزيد
-                            <i class="fas fa-arrow-left"></i>
-                        </a>
-                        <div class="post-stats">
-                            <span><i class="fas fa-eye"></i> 1,567</span>
-                            <span><i class="fas fa-heart"></i> 134</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="post-card">
-                    <div class="post-header">
-                        <div class="post-date">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>8 ديسمبر 2024</span>
-                        </div>
-                        <div class="post-category">نصائح مالية</div>
-                    </div>
-                    <h3 class="post-title">نصائح للاستثمار الآمن في العملات</h3>
-                    <p class="post-excerpt">
-                        في ظل التقلبات الاقتصادية الحالية، نقدم لكم مجموعة من النصائح المهمة للاستثمار الآمن في العملات الأجنبية وتجنب المخاطر...
-                    </p>
-                    <div class="post-footer">
-                        <a href="#" class="read-more-btn">
-                            اقرأ المزيد
-                            <i class="fas fa-arrow-left"></i>
-                        </a>
-                        <div class="post-stats">
-                            <span><i class="fas fa-eye"></i> 743</span>
-                            <span><i class="fas fa-heart"></i> 52</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="post-card">
-                    <div class="post-header">
-                        <div class="post-date">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>5 ديسمبر 2024</span>
-                        </div>
-                        <div class="post-category">إعلان</div>
-                    </div>
-                    <h3 class="post-title">افتتاح فرع جديد في تعز</h3>
-                    <p class="post-excerpt">
-                        نتشرف بإعلان افتتاح فرعنا الجديد في مدينة تعز، والذي يقدم جميع خدماتنا المصرفية وصرف العملات بأحدث التقنيات...
-                    </p>
-                    <div class="post-footer">
-                        <a href="#" class="read-more-btn">
-                            اقرأ المزيد
-                            <i class="fas fa-arrow-left"></i>
-                        </a>
-                        <div class="post-stats">
-                            <span><i class="fas fa-eye"></i> 1,123</span>
-                            <span><i class="fas fa-heart"></i> 98</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="post-card">
-                    <div class="post-header">
-                        <div class="post-date">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>3 ديسمبر 2024</span>
-                        </div>
-                        <div class="post-category">تحديث تقني</div>
-                    </div>
-                    <h3 class="post-title">تحديثات جديدة على التطبيق المحمول</h3>
-                    <p class="post-excerpt">
-                        أطلقنا تحديثاً جديداً لتطبيقنا المحمول يتضمن ميزات محسنة لتتبع أسعار الصرف وإجراء المعاملات بشكل أسرع وأكثر أماناً...
-                    </p>
-                    <div class="post-footer">
-                        <a href="#" class="read-more-btn">
-                            اقرأ المزيد
-                            <i class="fas fa-arrow-left"></i>
-                        </a>
-                        <div class="post-stats">
-                            <span><i class="fas fa-eye"></i> 654</span>
-                            <span><i class="fas fa-heart"></i> 43</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="posts-pagination">
-                <button class="pagination-btn" id="prevPage">
-                    <i class="fas fa-chevron-right"></i>
-                    السابق
-                </button>
-                <div class="pagination-numbers">
-                    <span class="page-number active">1</span>
-                    <span class="page-number">2</span>
-                    <span class="page-number">3</span>
-                    <span class="pagination-dots">...</span>
-                    <span class="page-number">8</span>
-                </div>
-                <button class="pagination-btn" id="nextPage">
-                    التالي
-                    <i class="fas fa-chevron-left"></i>
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- News Section -->
-    <section class="news-section" id="news">
-        <div class="news-container">
-            <div class="section-header">
-                <h2 class="section-title">آخر الأخبار والتحديثات</h2>
-                <p class="section-subtitle">
-                    تابع آخر أخبار أسعار الصرف والتطورات الاقتصادية
-                </p>
-            </div>
-            
-            <div class="news-grid" id="newsGrid">
-                <!-- News will be loaded dynamically -->
-            </div>
-        </div>
-    </section>
-
-    <!-- App Section -->
-    <section class="app-section" id="app">
-        <div class="app-container">
-            <div class="app-content">
-                <h2 class="section-title">حمّل تطبيقنا المجاني</h2>
-                <p class="section-subtitle">
-                    احصل على أسعار الصرف المحدثة لحظياً وقم بإجراء معاملاتك من هاتفك
-                </p>
-                
-                <ul class="app-features">
-                    <li><i class="fas fa-mobile-alt"></i> أسعار محدثة لحظياً</li>
-                    <li><i class="fas fa-bell"></i> تنبيهات تغيير الأسعار</li>
-                    <li><i class="fas fa-calculator"></i> حاسبة تحويل العملات</li>
-                    <li><i class="fas fa-history"></i> تاريخ المعاملات</li>
-                    <li><i class="fas fa-map-marker-alt"></i> مواقع الفروع</li>
-                </ul>
-                
-                <div class="download-buttons">
-                    <a href="#" class="download-btn" onclick="downloadApp('android')">
-                        <i class="fab fa-google-play"></i>
-                        <div class="download-info">
-                            <div class="platform">متوفر على</div>
-                            <div class="store">Google Play</div>
-                        </div>
-                    </a>
-                    <a href="#" class="download-btn" onclick="downloadApp('ios')">
-                        <i class="fab fa-apple"></i>
-                        <div class="download-info">
-                            <div class="platform">حمّل من</div>
-                            <div class="store">App Store</div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-            
-            <div class="app-mockup">
-                <div class="phone-mockup">
-                    <i class="fas fa-mobile-alt"></i>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Contact Section -->
-    <section class="contact-section" id="contact">
-        <div class="contact-container">
-            <div class="contact-info">
-                <h2 class="section-title" style="color: #1e293b; text-align: right; margin-bottom: 2rem;">تواصل معنا</h2>
-                
-                <div class="contact-item">
-                    <div class="contact-icon">
-                        <i class="fas fa-map-marker-alt"></i>
-                    </div>
-                    <div class="contact-details">
-                        <h4>العنوان الرئيسي</h4>
-                        <p>شارع الزبيري، صنعاء، الجمهورية اليمنية</p>
-                    </div>
-                </div>
-                
-                <div class="contact-item">
-                    <div class="contact-icon">
-                        <i class="fas fa-phone"></i>
-                    </div>
-                    <div class="contact-details">
-                        <h4>هاتف</h4>
-                        <p>+967 1 234567<br>+967 777 123456</p>
-                    </div>
-                </div>
-                
-                <div class="contact-item">
-                    <div class="contact-icon">
-                        <i class="fas fa-envelope"></i>
-                    </div>
-                    <div class="contact-details">
-                        <h4>البريد الإلكتروني</h4>
-                        <p>info@abuhudhayfa.com<br>support@abuhudhayfa.com</p>
-                    </div>
-                </div>
-                
-                <div class="contact-item">
-                    <div class="contact-icon">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="contact-details">
-                        <h4>ساعات العمل</h4>
-                        <p>السبت - الخميس: 8:00 ص - 8:00 م<br>الجمعة: 2:00 م - 8:00 م</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="contact-form">
-                <h3 style="color: #1e293b; margin-bottom: 1.5rem; font-size: 1.25rem; font-weight: 700;">أرسل لنا رسالة</h3>
-                <form id="contactForm">
-                    <div class="form-group">
-                        <label class="form-label">الاسم الكامل</label>
-                        <input type="text" name="name" class="form-input" placeholder="أدخل اسمك الكامل" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">البريد الإلكتروني</label>
-                        <input type="email" name="email" class="form-input" placeholder="أدخل بريدك الإلكتروني" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">الرسالة</label>
-                        <textarea name="message" class="form-textarea" placeholder="اكتب رسالتك هنا..." required></textarea>
-                    </div>
-                    
-                    <button type="submit" class="submit-btn">
-                        إرسال الرسالة
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
-                </form>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-container">
-            <div class="footer-content">
-                <div class="footer-section">
-                    <h3>أبو حذيفة للصرافة</h3>
-                    <p>
-                        شركة رائدة في مجال صرف العملات والخدمات المالية في اليمن. 
-                        نقدم خدمات موثوقة وآمنة منذ أكثر من 15 عاماً.
-                    </p>
-                    <div class="social-links">
-                        <a href="#" class="social-link"><i class="fab fa-facebook-f"></i></a>
-                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
-                        <a href="#" class="social-link"><i class="fab fa-instagram"></i></a>
-                        <a href="#" class="social-link"><i class="fab fa-linkedin-in"></i></a>
-                        <a href="#" class="social-link"><i class="fab fa-whatsapp"></i></a>
-                    </div>
-                </div>
-                
-                <div class="footer-section">
-                    <h3>خدماتنا</h3>
-                    <ul>
-                        <li><a href="#rates">صرف العملات</a></li>
-                        <li><a href="#services">التحويلات السريعة</a></li>
-                        <li><a href="#services">الخدمات المصرفية</a></li>
-                        <li><a href="#app">التطبيق المحمول</a></li>
-                    </ul>
-                </div>
-                
-                <div class="footer-section">
-                    <h3>روابط مهمة</h3>
-                    <ul>
-                        <li><a href="#about">من نحن</a></li>
-                        <li><a href="#news">الأخبار</a></li>
-                        <li><a href="#contact">اتصل بنا</a></li>
-                        <li><a href="#">سياسة الخصوصية</a></li>
-                        <li><a href="#">الشروط والأحكام</a></li>
-                    </ul>
-                </div>
-                
-                <div class="footer-section">
-                    <h3>معلومات الاتصال</h3>
-                    <ul>
-                        <li><i class="fas fa-map-marker-alt"></i> شارع الزبيري، صنعاء</li>
-                        <li><i class="fas fa-phone"></i> +967 1 234567</li>
-                        <li><i class="fas fa-envelope"></i> info@abuhudhayfa.com</li>
-                        <li><i class="fas fa-globe"></i> www.abuhudhayfa.com</li>
-                    </ul>
-                </div>
-            </div>
-            
-            <div class="footer-bottom">
-                <p>&copy; 2024 أبو حذيفة للصرافة. جميع الحقوق محفوظة.</p>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Login Modal -->
-    <div class="modal" id="loginModal">
-        <div class="modal-content">
-            <button class="modal-close" id="modalClose">
-                <i class="fas fa-times"></i>
-            </button>
-            <h2 class="modal-title">تسجيل دخول الإدارة</h2>
-            <form id="loginForm" class="login-form">
-                <div class="form-group">
-                    <label class="form-label">اسم المستخدم</label>
-                    <input type="text" name="username" id="username" class="form-input" placeholder="أدخل اسم المستخدم" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">كلمة المرور</label>
-                    <input type="password" name="password" id="password" class="form-input" placeholder="أدخل كلمة المرور" required>
-                </div>
-                <button type="submit" class="login-btn">
-                    تسجيل الدخول
-                </button>
-            </form>
         </div>
     </div>
 
-    <!-- Message Container -->
-    <div id="messageContainer"></div>
+    <!-- Services Grid -->
+    <div class="max-w-6xl mx-auto px-6 py-12">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            
+            <!-- Service 1 -->
+            <a href="https://wa.me/967772391570?text=1" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">1</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">كشف حساب إجمالي</h3>
+                <p class="text-gray-600 text-sm">للحصول على كشف حساب شامل لجميع العمليات</p>
+            </a>
 
-    <!-- Scripts -->
-    <script src="main.js"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9735d87c566b4d58',t:'MTc1NTkwMjE1MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
-                        </html>
-                        
+            <!-- Service 2 -->
+            <a href="https://wa.me/967772391570?text=2" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M9 11H7v6h2v-6zm4 0h-2v6h2v-6zm4 0h-2v6h2v-6zm2.5-9H19V1h-2v1H7V1H5v1H4.5C3.67 2 3 2.67 3 3.5v15C3 19.33 3.67 20 4.5 20h15c.83 0 1.5-.67 1.5-1.5v-15C21 2.67 20.33 2 19.5 2z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">2</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">كشف حساب خلال اليوم</h3>
+                <p class="text-gray-600 text-sm">عرض جميع العمليات المنجزة خلال اليوم الحالي</p>
+            </a>
+
+            <!-- Service 3 -->
+            <a href="https://wa.me/967772391570?text=3" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">3</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">آخر عملية في الحساب</h3>
+                <p class="text-gray-600 text-sm">الاطلاع على تفاصيل آخر عملية تمت في الحساب</p>
+            </a>
+
+            <!-- Service 4 -->
+            <a href="https://wa.me/967772391570?text=4" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">4</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">آخر حوالة إرسال</h3>
+                <p class="text-gray-600 text-sm">معلومات آخر حوالة مالية تم إرسالها</p>
+            </a>
+
+            <!-- Service 5 -->
+            <a href="https://wa.me/967772391570?text=5" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">5</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">آخر حوالة استلام</h3>
+                <p class="text-gray-600 text-sm">تفاصيل آخر حوالة مالية تم استلامها</p>
+            </a>
+
+            <!-- Service 6 -->
+            <a href="https://wa.me/967772391570?text=6" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">6</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">كشف حساب خلال أسبوع</h3>
+                <p class="text-gray-600 text-sm">عرض العمليات المنجزة خلال الأسبوع الماضي</p>
+            </a>
+
+            <!-- Service 7 -->
+            <a href="https://wa.me/967772391570?text=7" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">7</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">كشف حساب خلال الشهر</h3>
+                <p class="text-gray-600 text-sm">جميع العمليات المنجزة خلال الشهر الحالي</p>
+            </a>
+
+            <!-- Service 8 -->
+            <a href="https://wa.me/967772391570?text=8" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">8</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">كشف حساب خلال الشهر المحدد</h3>
+                <p class="text-gray-600 text-sm">عرض العمليات لشهر معين تحدده أنت</p>
+            </a>
+
+            <!-- Service 9 -->
+            <a href="https://wa.me/967772391570?text=9" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                        </svg>
+                    </div>
+                    <div class="category-blue text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">9</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">كشف حساب حتى اليوم</h3>
+                <p class="text-gray-600 text-sm">جميع العمليات من بداية الشهر حتى اليوم</p>
+            </a>
+
+            <!-- Service 10 -->
+            <a href="https://wa.me/967772391570?text=10" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h8c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                    </div>
+                    <div class="category-green text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">10</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">سندات حوالات الإرسال خلال اليوم</h3>
+                <p class="text-gray-600 text-sm">جميع سندات الحوالات المرسلة خلال اليوم</p>
+            </a>
+
+            <!-- Service 11 -->
+            <a href="https://wa.me/967772391570?text=11" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h8c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                    </div>
+                    <div class="category-green text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">11</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">سندات حوالات الإرسال خلال أسبوع</h3>
+                <p class="text-gray-600 text-sm">جميع سندات الحوالات المرسلة خلال الأسبوع</p>
+            </a>
+
+            <!-- Service 12 -->
+            <a href="https://wa.me/967772391570?text=12" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h8c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                    </div>
+                    <div class="category-green text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">12</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">سندات حوالات الإرسال خلال شهر</h3>
+                <p class="text-gray-600 text-sm">جميع سندات الحوالات المرسلة خلال الشهر</p>
+            </a>
+
+            <!-- Service 13 -->
+            <a href="https://wa.me/967772391570?text=13" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h8c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                    </div>
+                    <div class="category-green text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">13</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">سندات حوالات الإرسال خلال الشهر المحدد</h3>
+                <p class="text-gray-600 text-sm">سندات الحوالات المرسلة لشهر معين تحدده</p>
+            </a>
+
+            <!-- Service 14 -->
+            <a href="https://wa.me/967772391570?text=14" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/>
+                        </svg>
+                    </div>
+                    <div class="category-purple text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">14</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">كشف حساب خلال يوم محدد</h3>
+                <p class="text-gray-600 text-sm">عرض العمليات ليوم معين تحدده أنت</p>
+            </a>
+
+            <!-- Service 15 -->
+            <a href="https://wa.me/967772391570?text=15" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M9 11H7v6h2v-6zm4 0h-2v6h2v-6zm4 0h-2v6h2v-6zm2.5-9H19V1h-2v1H7V1H5v1H4.5C3.67 2 3 2.67 3 3.5v15C3 19.33 3.67 20 4.5 20h15c.83 0 1.5-.67 1.5-1.5v-15C21 2.67 20.33 2 19.5 2z"/>
+                        </svg>
+                    </div>
+                    <div class="category-purple text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">15</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">كشف حساب خلال الفترة</h3>
+                <p class="text-gray-600 text-sm">عرض العمليات خلال فترة زمنية محددة</p>
+            </a>
+
+            <!-- Service 16 -->
+            <a href="https://wa.me/967772391570?text=16" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h8c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                    </div>
+                    <div class="category-orange text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">16</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">سندات حوالات الاستلام خلال اليوم</h3>
+                <p class="text-gray-600 text-sm">جميع سندات الحوالات المستلمة خلال اليوم</p>
+            </a>
+
+            <!-- Service 17 -->
+            <a href="https://wa.me/967772391570?text=17" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h8c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                    </div>
+                    <div class="category-orange text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">17</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">سندات حوالات الاستلام خلال أسبوع</h3>
+                <p class="text-gray-600 text-sm">جميع سندات الحوالات المستلمة خلال الأسبوع</p>
+            </a>
+
+            <!-- Service 18 -->
+            <a href="https://wa.me/967772391570?text=18" target="_blank" class="service-card bg-white rounded-xl p-6 shadow-lg block hover:no-underline">
+                <div class="flex items-center mb-4">
+                    <div class="icon-circle w-12 h-12 rounded-full flex items-center justify-center ml-4">
+                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h8c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                    </div>
+                    <div class="category-orange text-white rounded-full w-10 h-10 flex items-center justify-center number-badge">18</div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">سندات حوالات الاستلام خلال شهر</h3>
+                <p class="text-gray-600 text-sm">جميع سندات الحوالات المستلمة خلال الشهر</p>
+            </a>
+        </div>
+
+        <!-- Instructions -->
+        <div class="mt-12 bg-white rounded-xl p-8 shadow-lg border-t-4 border-blue-600" style="border-top-color: #007a99;">
+            <div class="text-center">
+                <div class="whatsapp-icon w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.465 3.085"/>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-6">كيفية الاستخدام</h3>
+                
+                <!-- Step by step instructions -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6 text-right">
+                        <div class="flex items-center mb-3">
+                            <div class="bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center ml-3 font-bold">1</div>
+                            <h4 class="text-lg font-semibold text-gray-800">اختر الخدمة</h4>
+                        </div>
+                        <p class="text-gray-700">اضغط على الخدمة المطلوبة من القائمة أعلاه</p>
+                    </div>
+                    
+                    <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 text-right">
+                        <div class="flex items-center mb-3">
+                            <div class="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center ml-3 font-bold">2</div>
+                            <h4 class="text-lg font-semibold text-gray-800">انتقال تلقائي</h4>
+                        </div>
+                        <p class="text-gray-700">سيتم تحويلك إلى واتساب الرد الآلي مباشرة</p>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 rounded-lg p-6 mb-4">
+                    <div class="flex items-center justify-center mb-3">
+                        <div class="bg-orange-500 text-white rounded-full w-10 h-10 flex items-center justify-center ml-3">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                            </svg>
+                        </div>
+                        <h4 class="text-xl font-bold text-gray-800">مثال توضيحي</h4>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-gray-700 mb-2">عند الضغط على "كشف حساب إجمالي"</p>
+                        <p class="text-gray-600">↓</p>
+                        <p class="text-gray-700 mb-2">سيتم فتح واتساب تلقائياً مع رسالة تحتوي على الرقم "1"</p>
+                        <p class="text-gray-600">↓</p>
+                        <p class="text-green-600 font-semibold">اضغط إرسال وستحصل على النتيجة فوراً!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="gradient-bg text-white py-8 mt-12">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <h3 class="text-xl font-semibold mb-2">أبوحذيفة للصرافة والتحويلات</h3>
+            <p class="opacity-90">خدمة عملاء متميزة • أمان وثقة • سرعة في التنفيذ</p>
+        </div>
+    </div>
+
+    <!-- Developer Rights -->
+    <div class="bg-gray-900 text-white py-4">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <div class="flex items-center justify-center space-x-2 space-x-reverse">
+                <svg class="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                <p class="text-sm text-gray-300">
+                    تم التطوير بواسطة 
+                    <span class="text-blue-400 font-semibold">Malek Art</span>
+                    © 2024 جميع الحقوق محفوظة
+                </p>
+                <svg class="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0L19.2 12l-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9dae842557d02cfb',t:'MTc3MzI3MzYwMS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
