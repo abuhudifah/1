@@ -427,17 +427,6 @@ export {
     setCurrentUserLabel
 };
 
-// ربط تلقائي عند تحميل DOM
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        bindLoginForm();
-        restoreSession();
-    });
-} else {
-    bindLoginForm();
-    restoreSession();
-}
-
 // تصدير إلى النطاق العام للتوافق مع الكود القديم غير المعياري
 if (typeof window !== 'undefined') {
     window.loginUser = loginUser;
@@ -446,4 +435,23 @@ if (typeof window !== 'undefined') {
     window.traditionalLogin = traditionalLogin;
     window.quickLogin = quickLogin;
     window.bindLoginForm = bindLoginForm;
+}
+
+// ==========================================
+// ES MODULE BRIDGE
+// ==========================================
+
+export async function initializeAuth() {
+
+    // توافق مع النظام القديم
+    if (typeof window.initializeAuth === 'function') {
+        return await window.initializeAuth();
+    }
+
+    // توافق مع initAuth القديمة
+    if (typeof window.initAuth === 'function') {
+        return await window.initAuth();
+    }
+
+    console.warn('initializeAuth fallback bridge used');
 }
