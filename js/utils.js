@@ -149,9 +149,35 @@ export function isAdmin() {
     return window.App?.currentUser?.role === 'admin';
 }
 
-/**
- * تجاوز الدوال العالمية للتوافق مع الكود القديم (اختياري)
- */
+
+function normalizeTableRow(row = {}) {
+
+    if (!row || typeof row !== 'object') {
+        return {};
+    }
+
+    const normalized = {};
+
+    Object.keys(row).forEach((key) => {
+
+        const value = row[key];
+
+        if (value === undefined || value === null) {
+            normalized[key] = '';
+            return;
+        }
+
+        if (typeof value === 'string') {
+            normalized[key] = value.trim();
+            return;
+        }
+
+        normalized[key] = value;
+    });
+
+    return normalized;
+}
+
 if (typeof window !== 'undefined') {
     window.safeNumber = safeNumber;
     window.dateInputAden = dateInputAden;
@@ -164,4 +190,5 @@ if (typeof window !== 'undefined') {
     window.defaultAgentName = defaultAgentName;
     window.isAdmin = isAdmin;
     window.money = money;
+window.normalizeTableRow = normalizeTableRow;
 }
