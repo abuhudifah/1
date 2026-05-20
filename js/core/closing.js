@@ -2,8 +2,9 @@
 // closing.js - الإقفال اليومي وحساب الأرصدة
 // ==========================================
 
-import { safeNumber, showToast, dateInputAden, currentUserName, defaultAgentName } from '../utils.js';
-import { persistTable, cacheTable } from './repository.js';
+import { safeNumber, showToast, dateInputAden, defaultAgentName } from '../utils.js';
+import { queryRecords } from './repository.js';
+import { cacheTable } from './repository.js';
 import { appendAuditEntry } from './audit.js';
 import { getDailyCloseSettings, saveDailyCloseSettings } from './settings.js';
 
@@ -22,6 +23,7 @@ export async function getOpeningBalanceFromCloud(agentName, dateStr) {
     if (!agentName || !dateStr) return 0;
     const user = (window.App?.users || []).find(u => u.display_name === agentName || u.username === agentName);
     if (!user?.id) return 0;
+
     try {
         const { data, error } = await supabaseClient
             .from('daily_balances')
@@ -29,6 +31,7 @@ export async function getOpeningBalanceFromCloud(agentName, dateStr) {
             .eq('balance_date', dateStr)
             .eq('user_id', user.id)
             .maybeSingle();
+
         if (error) throw error;
         return data?.total_balance ?? 0;
     } catch (err) {
@@ -47,7 +50,9 @@ export async function saveClosingBalanceToCloud(agentName, dateStr, balance) {
     if (!agentName || !dateStr) return;
     const user = (window.App?.users || []).find(u => u.display_name === agentName || u.username === agentName);
     if (!user?.id) return;
+
     const rounded = Math.round(balance);
+
     try {
         const { error } = await supabaseClient
             .from('daily_balances')
@@ -57,14 +62,15 @@ export async function saveClosingBalanceToCloud(agentName, dateStr, balance) {
                 total_balance: rounded,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'balance_date, user_id' });
+
         if (error) {
-            // fallback في حال عدم وجود قيد فريد
             const { data: existing } = await supabaseClient
                 .from('daily_balances')
                 .select('id')
                 .eq('balance_date', dateStr)
                 .eq('user_id', user.id)
                 .maybeSingle();
+
             if (existing?.id) {
                 await supabaseClient.from('daily_balances')
                     .update({ total_balance: rounded, updated_at: new Date().toISOString() })
@@ -81,7 +87,7 @@ export async function saveClosingBalanceToCloud(agentName, dateStr, balance) {
                     });
             }
         }
-        // تحديث الكاش المحلي
+
         const idx = (window.App.dailyBalances || []).findIndex(d => d.balance_date === dateStr && d.user_id === user.id);
         if (idx >= 0) window.App.dailyBalances[idx].total_balance = rounded;
         else window.App.dailyBalances.push({ balance_date: dateStr, user_id: user.id, total_balance: rounded });
@@ -100,32 +106,48 @@ export async function calculatePreviousBalance(targetDate = null) {
     const date = targetDate || dateInputAden();
     const agentName = defaultAgentName();
     if (!agentName) return 0;
-    
+
     const stored = await getOpeningBalanceFromCloud(agentName, date);
     if (stored !== 0) return stored;
-    
+
+    const prev = new Date(`${date}T00:00:00`);
+    prev.setDate(prev.getDate() - 1);
+    const prevDateStr = prev.toISOString().split('T')[0];
+
     const user = (window.App?.users || []).find(u => u.display_name === agentName || u.username === agentName);
-    const userId = user?.id;
+    const userId = user?.id || null;
+
+    const previousRecords = await queryRecords(
+        {
+            dateTo: prevDateStr,
+            includeDeleted: false,
+            userId: userId || undefined,
+            agentName: agentName || undefined
+        },
+        { setActive: false }
+    );
+
     let calculated = 0;
-    const previousRecords = (window.App.records || []).filter(r => {
-        if (r.is_bank_account || r.is_debtor_customer || r.is_failed_deposit) return false;
-        if (r.deleted_at) return false;
-        const belongs = (userId && r.user_id === userId) || (r.agent_name === agentName);
-        return belongs && r.date < date;
-    });
+
     previousRecords.forEach(r => {
-        if (r.is_reversed) return; // تجاهل العمليات المعكوسة
+        if (r.is_bank_account || r.is_debtor_customer) return;
+        if (r.is_reversed) return;
+        if (r.is_failed_deposit) {
+            calculated -= safeNumber(r.amount, 0);
+            return;
+        }
+
         const amt = safeNumber(r.amount, 0);
+
         if (r.is_reversal) {
-            calculated += amt; // amt سالبة
+            calculated += amt;
         } else if (r.type === 'collection' || r.type === 'receipt') {
             calculated += amt;
         } else if (r.type === 'deposit' || r.type === 'expense' || r.type === 'delivery') {
             calculated -= amt;
-        } else if (r.is_failed_deposit) {
-            calculated -= amt;
         }
     });
+
     return Math.round(calculated);
 }
 
@@ -138,31 +160,35 @@ export async function closeSpecificDay(dateToClose) {
         console.warn('⚠️ عملية إقفال قيد التنفيذ بالفعل');
         return;
     }
+
     isClosingInProgress = true;
+
     try {
-        const dayRecords = (window.App.records || []).filter(r => 
-            r.date === dateToClose && 
-            !r.is_bank_account && 
-            !r.is_debtor_customer && 
-            !r.deleted_at
+        const dayRecords = await queryRecords(
+            {
+                date: dateToClose,
+                includeDeleted: false
+            },
+            { setActive: false }
         );
-        
+
         const uniqueIds = new Set();
         for (const rec of dayRecords) {
             const id = rec.user_id || rec.agent_name;
             if (id) uniqueIds.add(id);
         }
-        
+
         for (const identifier of uniqueIds) {
             let agentName = identifier;
             const user = (window.App.users || []).find(u => u.id === identifier);
             if (user) agentName = user.display_name || user.username;
-            
+
             let openingBalance = await getOpeningBalanceFromCloud(agentName, dateToClose);
             if (isNaN(openingBalance)) openingBalance = 0;
-            
+
             const agentRecords = dayRecords.filter(r => (r.user_id || r.agent_name) === identifier);
-            let totals = { collections:0, deposits:0, expenses:0, receipts:0, deliveries:0, failed:0 };
+
+            let totals = { collections: 0, deposits: 0, expenses: 0, receipts: 0, deliveries: 0, failed: 0 };
             agentRecords.forEach(r => {
                 const amt = safeNumber(r.amount, 0);
                 if (r.type === 'collection') totals.collections += amt;
@@ -172,17 +198,17 @@ export async function closeSpecificDay(dateToClose) {
                 else if (r.type === 'delivery') totals.deliveries += amt;
                 else if (r.is_failed_deposit) totals.failed += amt;
             });
-            
+
             const closingBalance = openingBalance
                 + totals.collections + totals.receipts
                 - totals.deposits - totals.expenses - totals.deliveries - totals.failed;
-            
+
             const nextDate = new Date(dateToClose);
             nextDate.setDate(nextDate.getDate() + 1);
             const nextDateStr = nextDate.toISOString().split('T')[0];
             await saveClosingBalanceToCloud(agentName, nextDateStr, closingBalance);
         }
-        
+
         await appendAuditEntry({
             action: 'daily_close',
             table_name: 'daily_balances',
@@ -191,6 +217,7 @@ export async function closeSpecificDay(dateToClose) {
             after_value: { closed_date: dateToClose, closed_by: window.App?.currentUser?.id },
             source: 'system'
         });
+
         console.log(`✅ تم إقفال يوم ${dateToClose}`);
     } finally {
         isClosingInProgress = false;
@@ -206,13 +233,15 @@ export async function manualCloseToday() {
         showToast('غير مصرح – يجب أن تكون مديراً', 'error');
         return;
     }
+
     const now = new Date();
     const saudiTime = new Date(now.getTime() + (3 * 60 * 60 * 1000));
     const yesterday = new Date(saudiTime);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
+
     showToast(`جاري إقفال يوم ${yesterdayStr} ...`, 'info');
+
     try {
         await closeSpecificDay(yesterdayStr);
         await saveDailyCloseSettings({
@@ -238,21 +267,23 @@ export async function runDailyClose(force = false) {
         showToast('هذه الميزة للمدير فقط', 'warning');
         return false;
     }
+
     const cfg = getDailyCloseSettings();
     if (!cfg.enabled && !force) {
         showToast('الإقفال اليومي غير مفعّل', 'warning');
         return false;
     }
-    
+
     const now = new Date();
     const saudiTime = new Date(now.getTime() + (3 * 60 * 60 * 1000));
     const yesterday = new Date(saudiTime);
     yesterday.setDate(yesterday.getDate() - 1);
     const closeDay = yesterday.toISOString().split('T')[0];
-    
+
     if (!force && cfg.lastClosedDate === closeDay) return false;
-    
+
     showToast(`جاري إقفال يوم ${closeDay} ...`, 'info');
+
     try {
         await closeSpecificDay(closeDay);
         await saveDailyCloseSettings({
@@ -277,12 +308,13 @@ export async function runDailyClose(force = false) {
  */
 export function startDailyCloseWatcher() {
     if (window.__dailyCloseWatcher) clearInterval(window.__dailyCloseWatcher);
+
     window.__dailyCloseWatcher = setInterval(async () => {
         try {
             const cfg = getDailyCloseSettings();
             const isAdmin = window.App?.currentUser?.role === 'admin';
             if (!cfg.enabled || !isAdmin) return;
-            
+
             const now = new Date();
             const saudiTime = new Date(now.getTime() + (3 * 60 * 60 * 1000));
             const currentHour = saudiTime.getUTCHours();
@@ -290,6 +322,7 @@ export function startDailyCloseWatcher() {
             const targetHour = cfg.hour;
             const targetMinute = cfg.minute;
             const reached = currentHour > targetHour || (currentHour === targetHour && currentMinute >= targetMinute);
+
             if (reached) await runDailyClose(false);
         } catch (error) {
             console.warn('تعذر تنفيذ الإقفال اليومي:', error);
@@ -306,4 +339,4 @@ if (typeof window !== 'undefined') {
     window.manualCloseToday = manualCloseToday;
     window.runDailyClose = runDailyClose;
     window.startDailyCloseWatcher = startDailyCloseWatcher;
-    }
+} 
