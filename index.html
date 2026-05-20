@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام أبو حذيفة للصرافة والتحويلات</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  
+<link rel="stylesheet" href="css/style.css">
+
+</head>
+<body>
+ <div id="print-container" class="hidden"></div>
+
+<div id="app-wrapper" class="min-h-screen">
+    
+    
+    <div id="login-section" class="flex items-center justify-center min-h-screen px-4 w-full">
+        <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <section id="smart-calculator" class="calculator-wrapper relative w-full">
+                <button type="button" class="secret-menu-btn" id="secret-menu-toggle" title="خيارات" aria-label="خيارات">
+                    <i class="fas fa-bars"></i>
+                </button>
+
+                <div class="secret-menu-dropdown" id="secret-dropdown" aria-hidden="true">
+                    <button type="button" class="secret-menu-item w-full text-right" id="dark-mode-toggle">
+                        <i class="fas fa-moon ml-2 text-gray-400" id="dark-mode-icon"></i> الوضع المظلم
+                    </button>
+                    <button type="button" class="secret-menu-item w-full text-right" id="show-traditional-login">
+                        <i class="fas fa-cogs ml-2"></i> تسجيل الدخول التقليدي
+                    </button>
+                    <div class="secret-menu-item w-full text-right" role="button" tabindex="0" onclick="showToast('الصوت غير مفعل حالياً', 'info')">
+                        <i class="fas fa-volume-up ml-2 text-gray-400"></i> الصوت
+                    </div>
+                    <div class="secret-menu-item w-full text-right" role="button" tabindex="0" onclick="showToast('نظام أبو حذيفة للصرافة والتحويلات', 'info')">
+                        <i class="fas fa-info-circle ml-2 text-gray-400"></i> حول التطبيق
+                    </div>
+                </div>
+
+                <div class="calc-display mt-8" id="calc-display">0</div>
+
+                <div class="calc-grid" id="calc-grid">
+                    <button type="button" class="calc-btn operator text-red-300" data-action="clear" onclick="window.authShell && window.authShell.press('C')">C</button>
+                    <button type="button" class="calc-btn operator" data-action="sqrt" onclick="window.authShell && window.authShell.press('sqrt')">√</button>
+                    <button type="button" class="calc-btn operator" data-action="percent" onclick="window.authShell && window.authShell.press('%')">%</button>
+                    <button type="button" class="calc-btn operator" data-action="divide" onclick="window.authShell && window.authShell.press('/')">÷</button>
+
+                    <button type="button" class="calc-btn" data-val="7" onclick="window.authShell && window.authShell.press('7')">7</button>
+                    <button type="button" class="calc-btn" data-val="8" onclick="window.authShell && window.authShell.press('8')">8</button>
+                    <button type="button" class="calc-btn" data-val="9" onclick="window.authShell && window.authShell.press('9')">9</button>
+                    <button type="button" class="calc-btn operator" data-action="multiply" onclick="window.authShell && window.authShell.press('*')">×</button>
+
+                    <button type="button" class="calc-btn" data-val="4" onclick="window.authShell && window.authShell.press('4')">4</button>
+                    <button type="button" class="calc-btn" data-val="5" onclick="window.authShell && window.authShell.press('5')">5</button>
+                    <button type="button" class="calc-btn" data-val="6" onclick="window.authShell && window.authShell.press('6')">6</button>
+                    <button type="button" class="calc-btn operator" data-action="minus" onclick="window.authShell && window.authShell.press('-')">-</button>
+
+                    <button type="button" class="calc-btn" data-val="1" onclick="window.authShell && window.authShell.press('1')">1</button>
+                    <button type="button" class="calc-btn" data-val="2" onclick="window.authShell && window.authShell.press('2')">2</button>
+                    <button type="button" class="calc-btn" data-val="3" onclick="window.authShell && window.authShell.press('3')">3</button>
+                    <button type="button" class="calc-btn operator" data-action="plus" onclick="window.authShell && window.authShell.press('+')">+</button>
+
+                    <button type="button" class="calc-btn zero" data-val="0" onclick="window.authShell && window.authShell.press('0')">0</button>
+                    <button type="button" class="calc-btn" data-val="." onclick="window.authShell && window.authShell.press('.')">.</button>
+                    <button type="button" class="calc-btn equal" data-action="equals" onclick="window.authShell && window.authShell.press('=')">=</button>
+                </div>
+            </section>
+
+            <section id="traditional-login" class="glass-card w-full max-w-md p-8 hidden mx-auto">
+                <div class="text-center mb-8">
+                    <div class="icon-circle mx-auto mb-4 bg-gray-100 text-gray-500" style="width: 80px; height: 80px;">
+                        <i class="fas fa-lock text-3xl"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-gray-800">تسجيل الدخول للنظام</h2>
+                    <p class="text-sm text-gray-500 mt-2">الرجاء إدخال بيانات الاعتماد الخاصة بك</p>
+                </div>
+
+                <form id="traditional-login-form" class="space-y-5" onsubmit="return window.authShell && window.authShell.submitLogin(event)">
+                    <div class="form-group">
+                        <label class="form-label text-gray-700">اسم المستخدم</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-400">
+                                <i class="fas fa-user"></i>
+                            </span>
+                            <input type="text" id="login-username" class="input-field w-full pr-12 pl-4 py-3 border-2 border-gray-200 focus:outline-none bg-white/60" placeholder="أدخل اسم المستخدم" required autocomplete="username">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label text-gray-700">كلمة المرور</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-400">
+                                <i class="fas fa-key"></i>
+                            </span>
+                            <input type="password" id="login-password" class="input-field w-full pr-12 pl-12 py-3 border-2 border-gray-200 focus:outline-none bg-white/60" placeholder="أدخل كلمة المرور" required autocomplete="off">
+                            <button type="button" id="toggle-login-password" class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-400 hover:text-var(--accent) focus:outline-none transition-colors" onclick="window.authShell && window.authShell.togglePassword(event)">
+                                <i class="fas fa-eye" id="toggle-password-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary w-full text-white py-4 rounded-xl flex items-center justify-center gap-2 mt-6">
+                        <span id="login-btn-text">تسجيل الدخول</span>
+                        <span id="login-spinner" class="loading-spinner hidden"></span>
+                    </button>
+
+                    <button type="button" id="back-to-calc" class="w-full text-gray-500 hover:text-gray-800 font-bold py-3 mt-2 transition flex items-center justify-center gap-2">
+                        <i class="fas fa-arrow-right"></i> العودة للآلة الحاسبة
+                    </button>
+                </form>
+            </section>
+        </div>
+    </div>
+<div id="main-content" class="hidden">
+    
+    <div id="offline-status-banner" class="offline-banner">
+        <i class="fas fa-wifi-slash ml-2"></i> أنت الآن في وضع عدم الاتصال. يتم حفظ العمليات محلياً وستتم مزامنتها فور عودة الإنترنت.
+    </div>
+
+    <header class="modern-header">
+        <div class="container mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="logo-container">
+                    <div class="logo-wrapper">
+                        <img src="https://i.ibb.co/7d66h0Lc/20250730-012920.png" alt="أبو حذيفة" class="logo" crossorigin="anonymous">
+                    </div>
+                    <div>
+                        <h1 class="header-title">نظام إدارة التحصيلات والإيداعات</h1>
+                        <p class="header-subtitle">أبو حذيفة للصرافة والتحويلات</p>
+                    </div>
+                </div>
+                
+                <div class="user-info bg-white/20 p-3 rounded-xl backdrop-blur-md border border-white/30 flex flex-col w-full md:w-auto">
+                    <div class="flex justify-between items-center gap-6 mb-3">
+                        <div>
+                            <p class="text-sm font-bold opacity-90" id="current-date"></p>
+                            <p class="text-lg font-bold" id="current-username">المستخدم: جاري التحميل...</p>
+                        </div>
+                        <div class="flex gap-4">
+                            <button id="notification-bell-btn" class="relative text-white hover:text-blue-200 transition transform hover:scale-110" title="الإشعارات">
+                                <i class="fas fa-bell text-2xl"></i>
+                                <span id="notification-badge" class="badge hidden">0</span>
+                            </button>
+                            <button id="report-issue-btn" class="text-white hover:text-blue-200 transition transform hover:scale-110 agent-only hidden" title="إرسال رسالة للإدارة">
+                                <i class="fas fa-envelope text-2xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2">
+                        <button id="manual-sync-btn" class="bg-white/90 text-blue-700 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-white transition flex-1 flex items-center justify-center gap-2 shadow-sm">
+                            <i class="fas fa-sync-alt" id="sync-icon"></i> <span id="sync-btn-text">مزامنة</span>
+                        </button>
+                        <button id="logout-btn" class="bg-red-500/90 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-red-500 transition flex-1 flex items-center justify-center gap-2 shadow-sm">
+                            <i class="fas fa-sign-out-alt"></i> خروج
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    <div class="glass-card mx-4 my-4 p-3 top-nav-tabs">
+    <div class="nav-tabs" id="main-nav-tabs">
+        <button class="nav-tab active common-tab" data-tab="data-entry"><i class="fas fa-edit ml-2"></i> إدخال البيانات</button>
+        <button class="nav-tab common-tab" data-tab="daily-summary"><i class="fas fa-chart-bar ml-2"></i> ملخص اليوم</button>
+        <button class="nav-tab common-tab" data-tab="bank-accounts"><i class="fas fa-university ml-2"></i> الحسابات البنكية</button>
+        <button class="nav-tab common-tab" data-tab="debtor-customers"><i class="fas fa-users ml-2"></i> العملاء المديونين</button>
+        <button class="nav-tab common-tab" data-tab="failed-deposits"><i class="fas fa-times-circle ml-2"></i> الإيداعات الفاشلة</button>
+        <button class="nav-tab common-tab" data-tab="notifications-view"><i class="fas fa-bell ml-2"></i> الإشعارات</button>
+        
+        <button class="nav-tab admin-only-tab hidden" data-tab="all-operations"><i class="fas fa-list-alt ml-2"></i> جميع العمليات</button>
+        <button class="nav-tab admin-only-tab hidden" data-tab="dashboard"><i class="fas fa-tachometer-alt ml-2"></i> لوحة المعلومات</button>
+        <button class="nav-tab admin-only-tab hidden" data-tab="users-management"><i class="fas fa-user-cog ml-2"></i> إدارة المستخدمين</button>
+        <button class="nav-tab admin-only-tab hidden" data-tab="audit-log"><i class="fas fa-history ml-2"></i> سجل العمليات</button>
+ <button class="nav-tab admin-only-tab hidden" data-tab="settings"><i class="fas fa-sliders-h ml-2"></i> الإعدادات</button>
+    </div>
+</div>
+
+<nav class="bottom-nav agent-only hidden" id="bottom-nav">
+    <button class="bottom-nav-item active" data-tab="data-entry">
+        <i class="fas fa-edit"></i>
+        <span>إدخال</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="daily-summary">
+        <i class="fas fa-chart-bar"></i>
+        <span>ملخص</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="bank-accounts">
+        <i class="fas fa-university"></i>
+        <span>الحسابات</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="debtor-customers">
+        <i class="fas fa-users"></i>
+        <span>الديون</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="notifications-view">
+        <div class="relative">
+            <i class="fas fa-bell"></i>
+            <span id="mobile-notification-badge" class="absolute -top-1 -right-2 bg-red-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center hidden border border-white">0</span>
+        </div>
+        <span>إشعارات</span>
+    </button>
+</nav>
+
+<div id="tabs-container">
+    <!-- ========================================== -->
+<!-- تبويب إدخال البيانات (يحتوي على التحصيلات والإيداعات والمصروفات والاستلامات والتسليم) -->
+<!-- ========================================== -->
+<div id="data-entry-tab" class="tab-content">
+    <div class="data-entry-bg mx-4 my-4">
+        <div class="filter-section mb-6">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label class="form-label">تاريخ الإدخال</label>
+                    <input type="date" id="data-entry-date" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+                </div>
+                <button id="apply-data-entry-filter" class="btn-primary text-white px-6 py-3 rounded-xl flex items-center h-fit">
+                    <i class="fas fa-filter ml-2"></i> تطبيق الفلتر
+                </button>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- بطاقة التحصيلات -->
+            <div class="card-modern collection-card">
+                <div class="card-header"><i class="fas fa-money-bill-wave ml-2"></i> التحصيلات</div>
+                <div class="card-body">
+                    <form id="collection-form" class="space-y-4">
+                        <input type="hidden" id="collection-edit-id" value="">
+                        <div class="form-group">
+                            <label class="form-label">نوع التحصيل</label>
+                            <select id="collection-type" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                                <option value="">اختر النوع</option>
+                                <option value="نقدي">نقدي</option>
+                                <option value="سحب من بطاقة">سحب من بطاقة</option>
+                            </select>
+                        </div>
+                        <div id="bank-card-select-div" class="hidden form-group">
+                            <label class="form-label">اختر البطاقة البنكية</label>
+                            <select id="collection-bank-card" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+                                <option value="">اختر البطاقة</option>
+                            </select>
+                        </div>
+                        <div id="debtor-select-div" class="form-group">
+                            <label class="form-label">اختر العميل من المديونين (اختياري)</label>
+                            <div class="searchable-select">
+                                <input type="text" id="debtor-search-input" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" placeholder="اكتب اسم العميل للبحث...">
+                                <div id="debtor-search-results" class="options hidden"></div>
+                            </div>
+                            <select id="debtor-select" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none hidden">
+                                <option value="">اختر العميل</option>
+                            </select>
+                        </div>
+                        <div id="customer-name-field" class="form-group">
+                            <label class="form-label">اسم العميل</label>
+                            <input type="text" id="customer-name" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                        </div>
+                        <div id="remaining-debt-div" class="hidden mb-3">
+                            <div class="bg-yellow-100 text-yellow-800 p-2 rounded-lg text-center font-bold text-sm border border-yellow-200">
+                                المبلغ المتبقي للعميل: <span id="remaining-debt-amount">0</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">المبلغ</label>
+                            <input type="number" id="collection-amount" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="submit" class="btn-primary flex-1 text-white py-3 rounded-xl flex items-center justify-center gap-2">
+                                <span id="collection-btn-text"><i class="fas fa-plus-circle ml-2"></i> إضافة تحصيل</span>
+                                <span id="collection-spinner" class="loading-spinner hidden"></span>
+                            </button>
+                            <button type="button" id="collection-cancel-edit" class="hidden bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition flex-1">إلغاء التعديل</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- بطاقة الإيداعات -->
+            <div class="card-modern deposit-card">
+                <div class="card-header"><i class="fas fa-university ml-2"></i> الإيداعات</div>
+                <div class="card-body">
+                    <form id="deposit-form" class="space-y-4">
+                        <input type="hidden" id="deposit-edit-id" value="">
+                        <div class="form-group">
+                            <label class="form-label">الحساب البنكي</label>
+                            <select id="deposit-bank" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                                <option value="">اختر الحساب</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">المبلغ</label>
+                            <input type="number" id="deposit-amount" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="submit" class="btn-primary flex-1 text-white py-3 rounded-xl flex items-center justify-center gap-2">
+                                <span id="deposit-btn-text"><i class="fas fa-plus-circle ml-2"></i> إضافة إيداع</span>
+                                <span id="deposit-spinner" class="loading-spinner hidden"></span>
+                            </button>
+                            <button type="button" id="deposit-cancel-edit" class="hidden bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition flex-1">إلغاء التعديل</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- بطاقة المصروفات -->
+            <div class="card-modern expense-card">
+                <div class="card-header"><i class="fas fa-receipt ml-2"></i> المصروفات</div>
+                <div class="card-body">
+                    <form id="expense-form" class="space-y-4">
+                        <input type="hidden" id="expense-edit-id" value="">
+                        <div class="form-group">
+                            <label class="form-label">نوع المصروف</label>
+                            <select id="expense-type" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                                <option value="">اختر النوع</option>
+                                <option value="وقود">وقود</option>
+                                <option value="صيانة">صيانة</option>
+                                <option value="رسوم">رسوم</option>
+                                <option value="أخرى">أخرى</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">المبلغ</label>
+                            <input type="number" id="expense-amount" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تفاصيل المصروف</label>
+                            <textarea id="expense-details" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" rows="2"></textarea>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="submit" class="btn-primary flex-1 text-white py-3 rounded-xl flex items-center justify-center gap-2">
+                                <span id="expense-btn-text"><i class="fas fa-plus-circle ml-2"></i> إضافة مصروف</span>
+                                <span id="expense-spinner" class="loading-spinner hidden"></span>
+                            </button>
+                            <button type="button" id="expense-cancel-edit" class="hidden bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition flex-1">إلغاء التعديل</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- بطاقة الاستلامات والتسليم -->
+            <div class="card-modern transfer-card">
+                <div class="card-header"><i class="fas fa-exchange-alt ml-2"></i> الاستلامات والتسليم</div>
+                <div class="card-body">
+                    <div class="mb-6 pb-4 border-b border-gray-200">
+                        <h4 class="text-lg font-bold text-blue-900 mb-3">الاستلام</h4>
+                        <div id="receipt-balance-message" class="bg-blue-50 border border-blue-200 text-blue-700 p-2 rounded-lg text-center font-bold text-sm mb-3 hidden">
+                            الرصيد المتبقي بعد الاستلام: <span id="receipt-remaining-balance">0</span>
+                        </div>
+                        <form id="receipt-form" class="space-y-4">
+                            <input type="hidden" id="receipt-edit-id" value="">
+                            <div class="form-group">
+                                <label class="form-label">نوع الاستلام</label>
+                                <select id="receipt-type" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                                    <option value="">اختر النوع</option>
+                                    <option value="مندوب">مندوب</option>
+                                    <option value="استلام نقدي لصالح شركة">استلام نقدي لصالح شركة</option>
+                                </select>
+                            </div>
+                            <div id="receipt-agent-field" class="form-group">
+                                <label class="form-label">اسم المندوب</label>
+                                <input type="text" id="receipt-agent-name" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" placeholder="اسم المندوب">
+                            </div>
+                            <div id="receipt-company-field" class="hidden form-group">
+                                <label class="form-label">اسم الشركة</label>
+                                <input type="text" id="receipt-company-name" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" placeholder="اسم الشركة">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">المبلغ</label>
+                                <input type="number" id="receipt-amount" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                            </div>
+                            <div class="flex gap-2">
+                                <button type="submit" class="btn-primary flex-1 text-white py-3 rounded-xl flex items-center justify-center gap-2">
+                                    <span id="receipt-btn-text"><i class="fas fa-download ml-2"></i> استلام نقدي</span>
+                                    <span id="receipt-spinner" class="loading-spinner hidden"></span>
+                                </button>
+                                <button type="button" id="receipt-cancel-edit" class="hidden bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition flex-1">إلغاء</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div>
+                        <h4 class="text-lg font-bold text-blue-900 mb-3">التسليم</h4>
+                        <div id="delivery-balance-message" class="bg-blue-50 border border-blue-200 text-blue-700 p-2 rounded-lg text-center font-bold text-sm mb-3 hidden">
+                            الرصيد المتبقي بعد التسليم: <span id="delivery-remaining-balance">0</span>
+                        </div>
+                        <form id="delivery-form" class="space-y-4">
+                            <input type="hidden" id="delivery-edit-id" value="">
+                            <div class="form-group">
+                                <label class="form-label">نوع التسليم</label>
+                                <select id="delivery-type" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                                    <option value="">اختر النوع</option>
+                                    <option value="مندوب">مندوب</option>
+                                    <option value="تسليم نقدي">تسليم نقدي</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">اسم المستلم</label>
+                                <input type="text" id="delivery-recipient" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">المبلغ</label>
+                                <input type="number" id="delivery-amount" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                            </div>
+                            <div class="flex gap-2">
+                                <button type="submit" class="btn-primary flex-1 text-white py-3 rounded-xl flex items-center justify-center gap-2">
+                                    <span id="delivery-btn-text"><i class="fas fa-upload ml-2"></i> تسليم نقدي</span>
+                                    <span id="delivery-spinner" class="loading-spinner hidden"></span>
+                                </button>
+                                <button type="button" id="delivery-cancel-edit" class="hidden bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition flex-1">إلغاء</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- تبويب ملخص اليوم -->
+<!-- ========================================== -->
+<div id="daily-summary-tab" class="tab-content hidden">
+    <div class="glass-card mx-4 p-4 md:p-6 my-4">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+            <h3 class="text-2xl font-bold text-blue-900"><i class="fas fa-chart-bar ml-2"></i> ملخص اليوم</h3>
+            <div class="action-buttons-group">
+                <button id="share-summary-btn" class="action-btn glass-btn share-summary">
+                    <i class="fas fa-chart-line"></i>
+                    <span>ملخص سريع</span>
+                </button>
+                <button id="share-detailed-btn" class="action-btn glass-btn share-detailed">
+                    <i class="fas fa-list-ul"></i>
+                    <span>تقرير مفصل</span>
+                </button>
+                <button id="print-daily-summary-btn" class="action-btn glass-btn print-btn">
+                    <i class="fas fa-print"></i>
+                    <span>طباعة الكشف</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="filter-section mb-4">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label class="form-label">التاريخ</label>
+                    <input type="date" id="daily-summary-date" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+                </div>
+                <button id="apply-daily-filter" class="btn-primary text-white px-4 md:px-6 py-3 rounded-xl flex items-center h-fit">
+                    <i class="fas fa-filter ml-2"></i> <span class="hidden md:inline">تطبيق</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="mb-6">
+            <div class="stat-card p-4">
+                <div class="flex justify-between items-center">
+                    <p class="text-base md:text-lg font-bold text-gray-700">الرصيد السابق (أمس)</p>
+                    <p class="text-xl md:text-2xl font-bold text-purple-600" id="previous-balance">0</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-6">
+            <div class="stat-card p-4"><p class="text-sm font-bold text-gray-600 mb-2">التحصيلات</p><p class="text-xl md:text-2xl font-bold text-green-600" id="total-collections">0</p></div>
+            <div class="stat-card p-4"><p class="text-sm font-bold text-gray-600 mb-2">الإيداعات</p><p class="text-xl md:text-2xl font-bold text-blue-600" id="total-deposits">0</p></div>
+            <div class="stat-card p-4"><p class="text-sm font-bold text-gray-600 mb-2">المصروفات</p><p class="text-xl md:text-2xl font-bold text-red-600" id="total-expenses">0</p></div>
+            <div class="stat-card p-4"><p class="text-sm font-bold text-gray-600 mb-2">الاستلامات</p><p class="text-xl md:text-2xl font-bold text-purple-600" id="total-receipts">0</p></div>
+            <div class="stat-card p-4"><p class="text-sm font-bold text-gray-600 mb-2">التسليمات</p><p class="text-xl md:text-2xl font-bold text-orange-600" id="total-deliveries">0</p></div>
+            <div class="stat-card p-4 border-r-4 border-indigo-500 bg-indigo-50"><p class="text-sm font-bold text-indigo-800 mb-2">المبلغ المتبقي</p><p class="text-xl md:text-2xl font-bold text-indigo-700" id="remaining-balance">0</p></div>
+        </div>
+        
+        <div id="operations-list"><p class="text-center text-gray-500 py-12 text-lg">لا توجد عمليات اليوم</p></div>
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- تبويب الحسابات البنكية -->
+<!-- ========================================== -->
+<div id="bank-accounts-tab" class="tab-content hidden">
+    <div class="glass-card mx-4 p-6 my-4">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-bold text-blue-900"><i class="fas fa-university ml-2"></i> الحسابات البنكية</h3>
+            <div class="flex gap-2">
+                <button id="add-bank-btn" class="btn-primary text-white px-4 py-2 rounded-xl admin-only flex items-center">
+                    <i class="fas fa-plus ml-2"></i> إضافة حساب
+                </button>
+            </div>
+           <div class="mb-4 flex items-center gap-3">
+    <label for="bank-company-filter" class="font-bold text-gray-700">فرز حسب الشركة:</label>
+    <select id="bank-company-filter" class="p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" onchange="if(typeof window.updateBankAccountsList === 'function') window.updateBankAccountsList()">
+        <option value="all">عرض جميع الشركات</option>
+        </select>
+</div>
+
+ 
+        </div>
+        
+        <div class="filter-section">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label class="form-label">التاريخ</label>
+                    <input type="date" id="bank-accounts-date" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+                </div>
+                <button id="apply-bank-filter" class="btn-primary text-white px-6 py-3 rounded-xl flex items-center h-fit">
+                    <i class="fas fa-filter ml-2"></i> تطبيق الفلتر
+                </button>
+            </div>
+        </div>
+        
+        <div id="bank-accounts-list" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <p class="text-center text-gray-500 py-12 text-lg col-span-full">لا توجد حسابات بنكية</p>
+        </div>
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- تبويب العملاء المديونين -->
+<!-- ========================================== -->
+<div id="debtor-customers-tab" class="tab-content hidden">
+    <div class="glass-card mx-4 p-6 my-4">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-bold text-blue-900"><i class="fas fa-users ml-2"></i> العملاء المديونين</h3>
+            <button id="add-debtor-btn" class="btn-primary text-white px-6 py-3 rounded-xl admin-only flex items-center">
+                <i class="fas fa-plus ml-2"></i> إضافة عميل
+            </button>
+        </div>
+        
+        <div class="filter-section mb-4">
+            <div class="filter-group">
+                <label class="form-label">بحث عن العميل</label>
+                <input type="text" id="debtor-search" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" placeholder="اكتب اسم العميل للبحث...">
+            </div>
+        </div>
+        
+               <!-- حاوية ديناميكية لأزرار المناطق -->
+        <div id="dynamic-region-tabs" class="region-tabs"></div>
+        
+        <!-- حاوية ديناميكية لقوائم العملاء داخل كل منطقة -->
+        <div id="dynamic-region-content"></div>
+
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- تبويب الإيداعات الفاشلة -->
+<!-- ========================================== -->
+<div id="failed-deposits-tab" class="tab-content hidden">
+    <div class="glass-card mx-4 p-6 my-4">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-bold text-blue-900"><i class="fas fa-times-circle ml-2"></i> الإيداعات الفاشلة</h3>
+            <button id="add-failed-btn" class="btn-primary text-white px-6 py-3 rounded-xl flex items-center">
+                <i class="fas fa-plus ml-2"></i> إضافة عملية فاشلة
+            </button>
+        </div>
+        <div id="failed-deposits-list" class="space-y-4"></div>
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- تبويب الإشعارات -->
+<!-- ========================================== -->
+<div id="notifications-view-tab" class="tab-content hidden">
+    <div class="glass-card mx-4 p-6 my-4">
+        <div class="flex justify-between items-center mb-6 border-b pb-4">
+            <h3 class="text-2xl font-bold text-blue-900"><i class="fas fa-bell ml-2 text-yellow-500"></i> مركز الإشعارات</h3>
+            <div class="flex gap-2">
+                <button id="mark-all-read-btn" class="btn-secondary text-white px-4 py-2 rounded-xl text-sm flex items-center">
+                    <i class="fas fa-check-double ml-1"></i> تحديد الكل كمقروء
+                </button>
+                <button id="admin-send-notification-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm flex items-center transition admin-only">
+                    <i class="fas fa-paper-plane ml-1"></i> إرسال إشعار
+                </button>
+            </div>
+        </div>
+        
+        <div class="flex gap-2 mb-4">
+            <button class="px-4 py-2 bg-blue-100 text-blue-800 font-bold rounded-lg text-sm" id="filter-notif-all">الكل</button>
+            <button class="px-4 py-2 bg-white border border-gray-200 text-gray-600 font-bold rounded-lg text-sm" id="filter-notif-unread">غير المقروءة فقط</button>
+        </div>
+
+        <div id="notifications-list" class="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+            <div class="text-center text-gray-500 py-10"><i class="fas fa-inbox text-4xl mb-3 opacity-50"></i><p>لا توجد إشعارات حالياً</p></div>
+        </div>
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- تبويب جميع العمليات (للمدير فقط) -->
+<!-- ========================================== -->
+<div id="all-operations-tab" class="tab-content hidden admin-only-tab">
+    <div class="glass-card mx-4 p-6 my-4">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-bold text-blue-900"><i class="fas fa-list-alt ml-2"></i> جميع العمليات</h3>
+            <button id="print-operations-btn" class="bg-gray-800 hover:bg-black text-white px-4 py-2 rounded-xl flex items-center transition">
+                <i class="fas fa-print ml-2"></i> طباعة السجل
+            </button>
+        </div>
+        
+        <div class="filter-section">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label class="form-label">المستخدم / المندوب</label>
+                    <select id="filter-agent" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+                        <option value="">الكل</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="form-label">نوع العملية</label>
+                    <select id="filter-type" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+                        <option value="">الكل</option>
+                        <option value="collection">تحصيل</option>
+                        <option value="deposit">إيداع</option>
+                        <option value="expense">مصروف</option>
+                        <option value="receipt">استلام</option>
+                        <option value="delivery">تسليم</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="form-label">التاريخ</label>
+                    <!-- 📅 نظام الفلترة الزمني المتقدم -->
+<div class="flex flex-col md:flex-row gap-2 w-full md:w-auto bg-gray-50 p-2 rounded-lg border border-gray-200">
+    <select id="operations-date-type" onchange="window.toggleOperationsDateType()" class="p-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm font-bold text-gray-700">
+        <option value="day">يوم محدد</option>
+        <option value="month">شهر محدد</option>
+        <option value="period">فترة محددة</option>
+        <option value="all">الكل (بدون فلتر)</option>
+    </select>
+
+    <!-- حقل اليوم -->
+    <input type="date" id="operations-filter-day" class="p-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm operations-date-input">
+    
+    <!-- حقل الشهر -->
+    <input type="month" id="operations-filter-month" class="p-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm operations-date-input hidden">
+    
+    <!-- حقول الفترة -->
+    <div id="operations-filter-period" class="flex gap-2 operations-date-input hidden w-full">
+        <input type="date" id="operations-filter-start" class="w-1/2 p-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm" title="من تاريخ">
+        <input type="date" id="operations-filter-end" class="w-1/2 p-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm" title="إلى تاريخ">
+    </div>
+</div>
+                </div>
+                <button id="apply-all-operations-filter" class="btn-primary text-white px-6 py-3 rounded-xl flex items-center h-fit">
+                    <i class="fas fa-filter ml-2"></i> تطبيق
+                </button>
+            </div>
+        </div>
+        
+        <div class="space-y-4" id="all-operations-list">
+            <p class="text-center text-gray-500 py-12">لا توجد عمليات</p>
+        </div>
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- تبويب لوحة المعلومات المتطورة (للمدير فقط) -->
+<!-- ========================================== -->
+<div id="dashboard-tab" class="tab-content hidden admin-only-tab">
+    <div class="glass-card mx-4 p-6 my-4">
+        <!-- فلتر الفترة -->
+        <div class="filter-section mb-8">
+            <div class="filter-row bg-white/50 dark:bg-gray-800/50 rounded-2xl p-4">
+                <div class="filter-group">
+                    <label class="form-label">نوع الفترة</label>
+                    <select id="dashboard-filter-type" class="input-field">
+                        <option value="day">يوم محدد</option>
+                        <option value="month">شهر محدد</option>
+                        <option value="range">فترة محددة</option>
+                    </select>
+                </div>
+                <div id="dashboard-day-filter" class="filter-group">
+                    <label class="form-label">اليوم</label>
+                    <input type="date" id="dashboard-date" class="input-field">
+                </div>
+                <div id="dashboard-month-filter" class="filter-group hidden">
+                    <label class="form-label">الشهر</label>
+                    <input type="month" id="dashboard-month" class="input-field">
+                </div>
+                <div id="dashboard-range-start-filter" class="filter-group hidden">
+                    <label class="form-label">من تاريخ</label>
+                    <input type="date" id="dashboard-range-start" class="input-field">
+                </div>
+                <div id="dashboard-range-end-filter" class="filter-group hidden">
+                    <label class="form-label">إلى تاريخ</label>
+                    <input type="date" id="dashboard-range-end" class="input-field">
+                </div>
+                <button id="apply-dashboard-filter" class="btn-primary h-fit px-6 py-3">
+                    <i class="fas fa-chart-line ml-2"></i> تحديث
+                </button>
+                <button id="manual-close-dashboard-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition">
+    <i class="fas fa-forward"></i> إقفال اليوم السابق يدوياً
+</button>
+            </div>
+        </div>
+
+        <!-- بطاقات KPIs الرئيسية -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="stat-card bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/20 border-r-4 border-emerald-500">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-sm font-bold text-emerald-700 dark:text-emerald-300">إجمالي التحصيلات</p>
+                        <p class="text-3xl font-bold text-emerald-800 dark:text-emerald-200" id="dash-total-collections">0</p>
+                    </div>
+                    <i class="fas fa-money-bill-wave text-4xl text-emerald-400 opacity-70"></i>
+                </div>
+                <div class="mt-2 text-xs text-emerald-600"><span id="collections-trend">+0%</span> عن الفترة السابقة</div>
+            </div>
+            <div class="stat-card bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 border-r-4 border-blue-500">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-sm font-bold text-blue-700 dark:text-blue-300">إجمالي الإيداعات</p>
+                        <p class="text-3xl font-bold text-blue-800 dark:text-blue-200" id="dash-total-deposits">0</p>
+                    </div>
+                    <i class="fas fa-university text-4xl text-blue-400 opacity-70"></i>
+                </div>
+                <div class="mt-2 text-xs text-blue-600"><span id="deposits-trend">+0%</span> عن الفترة السابقة</div>
+            </div>
+            <div class="stat-card bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/20 border-r-4 border-red-500">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-sm font-bold text-red-700 dark:text-red-300">إجمالي المصروفات</p>
+                        <p class="text-3xl font-bold text-red-800 dark:text-red-200" id="dash-total-expenses">0</p>
+                    </div>
+                    <i class="fas fa-receipt text-4xl text-red-400 opacity-70"></i>
+                </div>
+                <div class="mt-2 text-xs text-red-600"><span id="expenses-trend">+0%</span> عن الفترة السابقة</div>
+            </div>
+            <div class="stat-card bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 border-r-4 border-purple-500">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-sm font-bold text-purple-700 dark:text-purple-300">صافي الصناديق</p>
+                        <p class="text-3xl font-bold text-purple-800 dark:text-purple-200" id="dash-net-profit">0</p>
+                    </div>
+                    <i class="fas fa-chart-line text-4xl text-purple-400 opacity-70"></i>
+                </div>
+                <div class="mt-2 text-xs text-purple-600"><span id="profit-trend">+0%</span> عن الفترة السابقة</div>
+            </div>
+        </div>
+
+        <!-- المخططات البيانية -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="glass-card p-4">
+                <h4 class="text-lg font-bold text-gray-800 dark:text-white mb-3"><i class="fas fa-chart-line ml-2 text-blue-500"></i> الاتجاه اليومي (الإيرادات vs المصروفات)</h4>
+                <canvas id="trendChart" width="400" height="200" style="max-height: 250px;"></canvas>
+            </div>
+            <div class="glass-card p-4">
+                <h4 class="text-lg font-bold text-gray-800 dark:text-white mb-3"><i class="fas fa-chart-pie ml-2 text-green-500"></i> توزيع العمليات حسب النوع</h4>
+                <canvas id="typePieChart" width="400" height="200" style="max-height: 250px;"></canvas>
+            </div>
+        </div>
+
+        <!-- أحدث العمليات وأداء المندوبين -->
+        <        <div class="glass-card p-5 mb-8 border-t-4 border-t-indigo-500">
+            <div class="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-3">
+                <h4 class="text-xl font-bold text-gray-800 dark:text-white">
+                    <i class="fas fa-boxes ml-2 text-indigo-500"></i> صناديق العُهد للمناديب (الرصيد اللحظي)
+                </h4>
+                <span class="bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full" id="active-agents-count">0 مندوب نشط</span>
+            </div>
+            
+            <div id="agents-cash-boxes-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                <p class="text-center text-gray-500 py-6 col-span-full">جاري حساب الصناديق...</p>
+            </div>
+        </div>
+
+        <div class="glass-card p-4">
+            <h4 class="text-lg font-bold text-gray-800 dark:text-white mb-4"><i class="fas fa-history ml-2 text-blue-500"></i> أحدث العمليات في النظام</h4>
+            <div id="recent-operations-list" class="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                <p class="text-center text-gray-500 py-6">جاري التحميل...</p>
+            </div>
+            <button onclick="switchTab('all-operations')" class="mt-4 w-full bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-blue-600 font-bold py-2 rounded-lg text-sm transition">
+                عرض سجل العمليات الشامل <i class="fas fa-arrow-left mr-1"></i>
+            </button>
+        </div>
+
+        <!-- اختصارات الخدمات -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <button onclick="switchTab('users-management')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-white/50 dark:bg-gray-800/50 hover:bg-blue-50 transition">
+                <i class="fas fa-user-plus text-2xl text-blue-600"></i>
+                <span class="text-sm font-bold">إضافة مندوب</span>
+            </button>
+            <button onclick="window.printBankStatement('')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-white/50 dark:bg-gray-800/50 hover:bg-blue-50 transition">
+                <i class="fas fa-print text-2xl text-gray-600"></i>
+                <span class="text-sm font-bold">طباعة كشف بنكي</span>
+            </button>
+            <button onclick="switchTab('daily-summary')" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-white/50 dark:bg-gray-800/50 hover:bg-blue-50 transition">
+                <i class="fas fa-chart-bar text-2xl text-green-600"></i>
+                <span class="text-sm font-bold">ملخص اليوم</span>
+            </button>
+            <button onclick="document.getElementById('admin-send-notification-btn')?.click()" class="flex flex-col items-center gap-2 p-3 rounded-xl bg-white/50 dark:bg-gray-800/50 hover:bg-blue-50 transition">
+                <i class="fas fa-bullhorn text-2xl text-purple-600"></i>
+                <span class="text-sm font-bold">إشعار عام</span>
+            </button>
+        </div>
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- تبويب إدارة المستخدمين (للمدير فقط) -->
+<!-- ========================================== -->
+<div id="users-management-tab" class="tab-content hidden admin-only-tab">
+    <div class="glass-card mx-4 p-6 my-4">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-bold text-blue-900"><i class="fas fa-user-cog ml-2"></i> إدارة مستخدمي النظام</h3>
+            <button id="add-user-btn" class="btn-primary text-white px-6 py-3 rounded-xl flex items-center">
+                <i class="fas fa-user-plus ml-2"></i> إضافة مستخدم
+            </button>
+        </div>
+        
+        <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+            <p class="text-sm text-blue-800 font-bold"><i class="fas fa-info-circle ml-1"></i> ملاحظة: عند تعيين "معادلة سريعة" للمستخدم، يمكنه تسجيل الدخول فوراً بكتابتها في الآلة الحاسبة والضغط على (=).</p>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-right border-collapse">
+                <thead>
+                    <tr class="bg-gray-100 border-b-2 border-gray-200">
+                        <th class="p-3 font-bold text-gray-700">الاسم المختصر (الظاهر)</th>
+                        <th class="p-3 font-bold text-gray-700">اسم الدخول</th>
+                        <th class="p-3 font-bold text-gray-700">الدور</th>
+                        <th class="p-3 font-bold text-gray-700">المعادلة السريعة</th>
+                        <th class="p-3 font-bold text-gray-700 text-center">الإجراءات</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body">
+                    <!-- سيتم ملؤها بواسطة JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+            <!-- ========================================== -->
+            <!-- تبويب سجل العمليات (مراقبة الحذف والتعديل) - للمدير فقط -->
+            <!-- ========================================== -->
+            <div id="audit-log-tab" class="tab-content hidden admin-only-tab">
+                <div class="glass-card mx-4 p-6 my-4">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-2xl font-bold text-blue-900"><i class="fas fa-history ml-2"></i> سجل العمليات (مراقبة الحذف والتعديل)</h3>
+                        <button id="clear-audit-btn" class="bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-xl text-sm font-bold transition">
+                            <i class="fas fa-trash-alt ml-1"></i> مسح السجل
+                        </button>
+                    </div>
+                    
+                    <div class="bg-white border rounded-xl overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-right text-sm">
+                                <thead class="bg-gray-50 border-b">
+                                    <tr>
+                                        <th class="p-3">الوقت والتاريخ</th>
+                                        <th class="p-3">المستخدم (الفاعل)</th>
+                                        <th class="p-3">نوع الإجراء</th>
+                                        <th class="p-3">نوع السجل</th>
+                                        <th class="p-3">التفاصيل (القيمة السابقة)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="audit-table-body" class="divide-y divide-gray-100">
+                                    <!-- سيتم ملؤها بواسطة JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="audit-empty-msg" class="text-center text-gray-500 py-8 hidden">لا توجد سجلات مراقبة حالياً</div>
+                    </div>
+                </div>
+            </div>
+
+        </div> <!-- إغلاق tabs-container -->
+
+    </div> <!-- إغلاق main-content -->
+
+</div> <!-- إغلاق app-wrapper -->
+<!-- ========================================== -->
+<!-- تبويب الإعدادات المتقدمة (للمدير فقط) -->
+<!-- ========================================== -->
+<div id="settings-tab" class="tab-content hidden admin-only-tab">
+    <div class="glass-card mx-auto max-w-5xl p-4 md:p-6 my-4">
+        <h3 class="text-2xl font-bold text-blue-900 mb-6 border-b pb-2"><i class="fas fa-sliders-h ml-2"></i> إعدادات النظام</h3>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <!-- بطاقة الإقفال اليومي -->
+            <div class="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+                <div class="flex items-center gap-3 mb-4 border-b pb-3">
+                    <i class="fas fa-lock text-2xl text-amber-600"></i>
+                    <h4 class="text-xl font-bold text-gray-800 dark:text-white">الإقفال اليومي التلقائي</h4>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <label class="font-bold text-gray-700 dark:text-gray-300">تفعيل الإقفال التلقائي</label>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="auto-close-toggle" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                        </label>
+                    </div>
+                    
+                    <div>
+                        <label class="block font-bold text-gray-700 dark:text-gray-300 mb-2">وقت الإقفال (بتوقيت المملكة)</label>
+                        <div class="flex gap-3 items-center">
+                            <select id="close-hour" class="input-field w-28 text-center">
+                                <!-- سيتم ملؤها بواسطة JS -->
+                            </select>
+                            <span class="text-xl font-bold">:</span>
+                            <select id="close-minute" class="input-field w-28 text-center">
+                                <!-- سيتم ملؤها بواسطة JS -->
+                            </select>
+                            <span class="text-gray-500 text-sm">(24 ساعة)</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">افتراضي: 00:00 (منتصف الليل)</p>
+                    </div>
+                    
+                    <div class="pt-3">
+                        <button id="manual-close-settings-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
+                            <i class="fas fa-forward"></i> إقفال اليوم السابق يدوياً
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl text-sm">
+                        <p class="font-bold text-gray-600 dark:text-gray-400">📋 آخر إقفال:</p>
+                        <p id="last-close-info" class="text-gray-500 dark:text-gray-400 mt-1">لم يتم تنفيذ أي إقفال بعد</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- بطاقة معلومات النظام -->
+            <div class="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+                <div class="flex items-center gap-3 mb-4 border-b pb-3">
+                    <i class="fas fa-info-circle text-2xl text-blue-600"></i>
+                    <h4 class="text-xl font-bold text-gray-800 dark:text-white">معلومات النظام</h4>
+                </div>
+                <div class="space-y-3 text-gray-700 dark:text-gray-300">
+                    <p><i class="fas fa-cloud-upload-alt ml-2 text-green-600"></i> <strong>حالة المزامنة:</strong> <span id="sync-status-text">متصل</span></p>
+                    <p><i class="fas fa-database ml-2 text-blue-600"></i> <strong>عدد السجلات المحلية:</strong> <span id="local-records-count">0</span></p>
+                    <p><i class="fas fa-clock ml-2 text-amber-600"></i> <strong>توقيت السعودية الحالي:</strong> <span id="saudi-time-display" class="font-mono">--:--:--</span></p>
+                    <p><i class="fas fa-shield-alt ml-2 text-purple-600"></i> <strong>آلية العمل:</strong> Offline-First مع مزامنة خلفية</p>
+                </div>
+                <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button id="reset-settings-btn" class="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-bold py-2 rounded-xl transition text-sm">
+                        <i class="fas fa-undo-alt ml-1"></i> استعادة الإعدادات الافتراضية
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ========== النسخ الاحتياطي والاستعادة ========== -->
+        <div class="mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-2xl p-6 border border-indigo-200 dark:border-indigo-800 shadow-sm">
+            <div class="flex items-center gap-3 mb-6 border-b border-indigo-200 dark:border-indigo-800 pb-3">
+                <i class="fas fa-database text-2xl text-indigo-600"></i>
+                <h4 class="text-xl font-bold text-gray-800 dark:text-white">النسخ الاحتياطي واستعادة البيانات</h4>
+                <span class="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs px-2 py-1 rounded-full mr-auto">ميزة متقدمة</span>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- قسم التصدير -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-download text-green-600 text-xl"></i>
+                        <h5 class="font-bold text-gray-800 dark:text-white text-lg">تصدير نسخة احتياطية</h5>
+                    </div>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">قم بتصدير جميع بيانات النظام (السجلات، المستخدمين، الإشعارات، سجل التدقيق) إلى ملف JSON. يُنصح بعمل نسخة احتياطية دورية.</p>
+                    <div class="flex flex-wrap gap-3">
+                        <button id="export-backup-btn" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl font-bold transition flex items-center gap-2">
+                            <i class="fas fa-file-export"></i> تصدير النسخة الكاملة
+                        </button>
+                        <button id="export-backup-advanced-btn" class="bg-gray-600 hover:bg-gray-700 text-white px-5 py-2.5 rounded-xl font-bold transition flex items-center gap-2">
+                            <i class="fas fa-cog"></i> تصدير متقدم
+                        </button>
+                    </div>
+                    <div id="export-progress" class="mt-3 hidden">
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="export-progress-bar" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1 text-center" id="export-status-text">جاري تحضير الملف...</p>
+                    </div>
+                </div>
+                
+                <!-- قسم الاستيراد -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-upload text-blue-600 text-xl"></i>
+                        <h5 class="font-bold text-gray-800 dark:text-white text-lg">استعادة من نسخة احتياطية</h5>
+                    </div>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">اختر ملف JSON تم تصديره مسبقاً لاستعادة البيانات. يمكنك اختيار الدمج أو الاستبدال الكامل.</p>
+                    <div class="flex flex-wrap gap-3">
+                        <label class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold transition flex items-center gap-2 cursor-pointer">
+                            <i class="fas fa-file-import"></i> اختيار ملف للاستعادة
+                            <input type="file" id="import-backup-file" accept=".json" class="hidden">
+                        </label>
+                        <button id="import-backup-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl font-bold transition flex items-center gap-2 disabled:opacity-50" disabled>
+                            <i class="fas fa-upload"></i> بدء الاستعادة
+                        </button>
+                    </div>
+                    <div id="import-progress" class="mt-3 hidden">
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="import-progress-bar" class="bg-purple-500 h-2 rounded-full" style="width: 0%"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1 text-center" id="import-status-text">جاري المعالجة...</p>
+                    </div>
+                    <div id="import-options" class="mt-4 hidden">
+                        <p class="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">كيف تريد استعادة البيانات؟</p>
+                        <div class="flex gap-3">
+                            <button id="import-merge-btn" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-lg text-sm font-bold transition">دمج مع البيانات الحالية</button>
+                            <button id="import-replace-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg text-sm font-bold transition">استبدال كامل</button>
+                        </div>
+                        <p class="text-xs text-red-500 mt-2">⚠️ تحذير: الاستبدال الكامل سيمسح جميع البيانات الحالية نهائياً.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- معلومات إضافية -->
+            <div class="mt-6 p-3 bg-white/60 dark:bg-gray-800/60 rounded-xl text-sm text-gray-600 dark:text-gray-400 flex justify-between items-center flex-wrap gap-2">
+                <span><i class="fas fa-history ml-1"></i> آخر نسخة احتياطية: <span id="last-backup-date">غير متوفر</span></span>
+                <span><i class="fas fa-chart-simple ml-1"></i> حجم البيانات الحالية: <span id="current-data-size">0</span> KB</span>
+                <button id="refresh-backup-info" class="text-indigo-600 hover:text-indigo-800 text-xs"><i class="fas fa-sync-alt"></i> تحديث</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!--======================================= -->
+<!-- النوافذ المنبثقة (Modals) -->
+<!-- ========================================== -->
+
+<!-- نافذة إضافة / تعديل حساب بنكي -->
+<div id="bank-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 transition-opacity flex">
+    <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl relative border border-gray-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+        <h2 id="bank-modal-title" class="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">إضافة حساب بنكي جديد</h2>
+        
+        <form id="bank-form">
+            <input type="hidden" id="bank-edit-id">
+            
+            <div class="mb-4">
+                <label class="block text-gray-700 font-bold mb-2">اسم البنك / الحساب</label>
+                <input type="text" id="bank-name" placeholder="مثال: بنك الكريمي - جاري" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" required>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2 text-sm">رقم الحساب</label>
+                    <input type="text" id="bank-acc-num" dir="ltr" placeholder="اختياري" class="w-full p-2 border border-gray-300 rounded-lg text-left outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2 text-sm">رقم البطاقة</label>
+                    <input type="text" id="bank-card-num" dir="ltr" placeholder="اختياري" class="w-full p-2 border border-gray-300 rounded-lg text-left outline-none">
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2 text-sm">اسم صاحب البطاقة</label>
+                    <input type="text" id="bank-card-holder" placeholder="اختياري" class="w-full p-2 border border-gray-300 rounded-lg outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2 text-sm">الرقم السري</label>
+                    <input type="text" id="bank-pin" dir="ltr" placeholder="اختياري" class="w-full p-2 border border-gray-300 rounded-lg text-left outline-none">
+                </div>
+            </div>
+            
+            <div class="mb-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                <div class="mb-3">
+                    <label class="block text-gray-800 font-bold mb-2">الشركة المالكة (للفلترة والتصنيف)</label>
+                    <input type="text" id="bank-company-input" placeholder="مثال: شركة أبو حذيفة للصرافة" class="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
+                </div>
+                
+                <div>
+                    <label class="block text-gray-800 font-bold mb-2">وقت تجديد السقف اليومي</label>
+                    <select id="bank-reset-time-input" class="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
+                        <option value="00:00">12:00 صباحاً (منتصف الليل)</option>
+                        <option value="23:00">11:00 مساءً</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-gray-700 font-bold mb-2">السقف المالي اليومي</label>
+                <input type="number" id="bank-ceiling" placeholder="مثال: 50000" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold" required min="1">
+            </div>
+            
+            <div class="flex gap-3">
+                <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition relative overflow-hidden shadow-md">
+                    <span id="bank-btn-text">حفظ الحساب البنكي</span>
+                    <div id="bank-spinner" class="hidden absolute inset-0 flex items-center justify-center bg-blue-700">
+                        <div class="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                </button>
+                <button type="button" id="close-bank-modal" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg transition shadow-md">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- نافذة إضافة / تعديل عميل مديون -->
+<div id="debtor-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
+    <div class="glass-card p-6 responsive-modal">
+        <h3 class="text-xl font-bold text-blue-900 mb-4 flex items-center">
+            <i class="fas fa-user-plus ml-2"></i> <span id="debtor-modal-title">إضافة عميل مديون</span>
+        </h3>
+        <form id="debtor-form" class="space-y-4">
+            <input type="hidden" id="debtor-edit-id" value="">
+            <div class="form-group">
+                <label class="form-label">اسم العميل</label>
+                <input type="text" id="debtor-name" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">المبلغ المستحق (المديونية)</label>
+                <input type="number" id="debtor-amount" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+            </div>
+                        <div class="form-group">
+                <label class="form-label">المنطقة</label>
+                <select id="debtor-region" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                    <option value="">اختر المنطقة</option>
+                    <!-- سيتم تعبئة المناطق المسجلة سابقاً هنا برمجياً -->
+                    <option value="new_manual_region" class="font-bold text-blue-600">➕ إضافة منطقة جديدة يدوياً...</option>
+                </select>
+                <!-- حقل مخفي يظهر فقط عند اختيار "إضافة منطقة جديدة" -->
+                <input type="text" id="debtor-region-manual" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none mt-2 hidden" placeholder="اكتب اسم المنطقة الجديدة هنا...">
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button type="submit" class="btn-primary flex-1 text-white py-3 rounded-xl flex items-center justify-center gap-2">
+                    <span id="debtor-btn-text">حفظ</span>
+                    <span id="debtor-spinner" class="loading-spinner hidden"></span>
+                </button>
+                <button type="button" id="close-debtor-modal" class="flex-1 bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- نافذة إضافة عملية إيداع فاشلة -->
+<div id="failed-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
+    <div class="glass-card p-6 responsive-modal">
+        <h3 class="text-xl font-bold text-red-600 mb-4 flex items-center">
+            <i class="fas fa-times-circle ml-2"></i> إضافة عملية إيداع فاشلة
+        </h3>
+        <form id="failed-form" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label class="form-label">التاريخ</label>
+                    <input type="date" id="failed-date" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">الوقت</label>
+                    <input type="time" id="failed-time" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">الحساب البنكي</label>
+                <select id="failed-bank-name" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                    <option value="">اختر الحساب</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">رقم الحساب</label>
+                <input type="text" id="failed-account-number" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">المبلغ</label>
+                <input type="number" id="failed-amount" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">عنوان الفرع (اختياري)</label>
+                <input type="text" id="failed-branch-address" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label class="form-label">رقم الفرع</label>
+                    <input type="text" id="failed-branch-number" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">رقم الجهاز</label>
+                    <input type="text" id="failed-device-number" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">رقم البطاقة المستخدمة (اختياري)</label>
+                <input type="text" id="failed-card-number" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+            </div>
+  <div class="grid grid-cols-2 gap-4">
+    <div class="form-group">
+        <label class="form-label">اسم صاحب البطاقة</label>
+        <input type="text" id="failed-card-holder" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+    </div>
+    <div class="form-group">
+        <label class="form-label">رمز البطاقة</label>
+        <input type="text" id="failed-card-code" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+    </div>
+</div>
+
+<!-- ========== الحقول الجديدة لإدارة الحالة ========== -->
+<div class="form-group">
+    <label class="form-label">حالة الإيداع الفاشل</label>
+    <select id="failed-status" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none">
+        <option value="pending">⏳ قيد المطالبة</option>
+        <option value="claimed">📤 تم رفع المطالبة</option>
+        <option value="refunded">✅ تم الاسترداد</option>
+        <option value="rejected">❌ تم الرد باعتذار</option>
+    </select>
+</div>
+
+<div id="refund-amount-group" class="form-group hidden">
+    <label class="form-label">المبلغ المسترد (في حالة الاسترداد)</label>
+    <input type="number" id="failed-refund-amount" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" step="0.01">
+</div>
+
+<div id="rejection-reason-group" class="form-group hidden">
+    <label class="form-label">سبب الاعتذار (في حالة الرفض)</label>
+    <textarea id="failed-rejection-reason" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" rows="2"></textarea>
+</div>
+
+<div class="form-group">
+    <label class="form-label">نص رد البنك (رابط أو صورة نصية)</label>
+    <textarea id="failed-bank-response-text" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" rows="3" placeholder="أدخل نص رد البنك هنا، أو رابط الصورة..."></textarea>
+</div>
+            <div class="flex gap-3 mt-6">
+                <button type="submit" class="btn-primary bg-gradient-to-r from-red-500 to-red-600 flex-1 text-white py-3 rounded-xl flex items-center justify-center gap-2 border-0">
+                    <span id="failed-btn-text">حفظ العملية</span>
+                    <span id="failed-spinner" class="loading-spinner hidden"></span>
+                </button>
+                <button type="button" id="close-failed-modal" class="flex-1 bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- نافذة مشاركة التقرير / العملية -->
+<div id="share-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
+    <div class="glass-card p-6 responsive-modal">
+        <h3 class="text-xl font-bold text-blue-900 mb-4 flex items-center">
+            <i class="fas fa-share-alt ml-2"></i> مشاركة التقرير
+        </h3>
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 font-mono text-sm leading-relaxed whitespace-pre-line max-h-[50vh] overflow-y-auto" style="direction: rtl;" id="share-content">
+        </div>
+        <div class="flex gap-3">
+            <button id="copy-share-btn" class="btn-primary flex-1 text-white py-3 rounded-xl flex items-center justify-center">
+                <i class="fas fa-copy ml-2"></i> نسخ النص
+            </button>
+            <button id="close-share-modal" class="flex-1 bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition">إغلاق</button>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة إضافة / تعديل مستخدم -->
+<div id="user-modal" class="hidden fixed inset-0 modal-backdrop z-[60] flex items-center justify-center p-4">
+    <div class="glass-card p-6 responsive-modal border-t-4 border-t-blue-500">
+        <h3 class="text-xl font-bold text-blue-900 mb-4 flex items-center">
+            <i class="fas fa-user-shield ml-2"></i> <span id="user-modal-title">إضافة مستخدم جديد</span>
+        </h3>
+        <form id="user-form" class="space-y-4">
+            <input type="hidden" id="user-edit-id" value="">
+            <div class="form-group">
+                <label class="form-label">الاسم الظاهر (المختصر)</label>
+                <input type="text" id="user-display-name" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" placeholder="مثال: أحمد" required>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label class="form-label">اسم الدخول (Username)</label>
+                    <input type="text" id="user-username" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none text-left" dir="ltr" placeholder="ahmed" required autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">كلمة المرور</label>
+                    <input type="password" id="user-password" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none text-left" dir="ltr" placeholder="***" required autocomplete="new-password">
+                    <p class="text-xs text-gray-500 mt-1" id="user-password-hint">اتركه فارغاً إذا لم ترغب بتغييره (في التعديل).</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label class="form-label">دور المستخدم (Role)</label>
+                    <select id="user-role" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none" required>
+                        <option value="agent">مندوب (Agent)</option>
+                        <option value="admin">مدير (Admin)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">المعادلة السريعة (للدخول الذكي)</label>
+                    <input type="text" id="user-quick-eq" class="input-field w-full px-4 py-3 border-2 border-gray-200 focus:outline-none text-left" dir="ltr" placeholder="مثال: 12+88">
+                    <p class="text-xs text-gray-500 mt-1">يجب أن تكون عملية حسابية صحيحة.</p>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button type="submit" class="btn-primary flex-1 text-white py-3 rounded-xl flex items-center justify-center gap-2">
+                    <span id="user-btn-text">إضافة المستخدم</span>
+                    <span id="user-spinner" class="loading-spinner hidden"></span>
+                </button>
+                <button type="button" id="close-user-modal" class="flex-1 bg-gray-300 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-400 transition">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- نافذة إرسال إشعار جديد - النسخة المصححة -->
+<div id="notification-modal" class="hidden fixed inset-0 modal-backdrop z-[60] flex items-center justify-center p-4">
+    <div class="glass-card p-6 responsive-modal border-t-4 border-t-yellow-500 bg-white rounded-2xl shadow-2xl max-w-md w-full">
+        
+        <!-- عنوان النافذة -->
+        <h3 class="text-xl font-bold text-blue-900 mb-4 flex items-center">
+            <i class="fas fa-paper-plane ml-2 text-yellow-500"></i> 
+            <span id="notification-modal-title">إرسال إشعار جديد</span>
+        </h3>
+
+        <form id="notification-form" class="space-y-4">
+            <!-- حقل العنوان -->
+            <div class="form-group">
+                <label class="form-label font-bold text-gray-700">عنوان الإشعار</label>
+                <input type="text" id="notif-title" class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition" placeholder="مثال: تحديث هام" required>
+            </div>
+
+            <!-- حقل النص -->
+            <div class="form-group">
+                <label class="form-label font-bold text-gray-700">نص الإشعار</label>
+                <textarea id="notif-body" class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition" rows="3" placeholder="اكتب تفاصيل الإشعار هنا..." required></textarea>
+            </div>
+
+            <!-- قسم تحديد المستلم - يظهر فقط للمسؤولين -->
+            <div class="form-group admin-only hidden" id="notif-target-group">
+                <label class="form-label font-bold text-gray-800 block mb-2">إرسال إلى:</label>
+                
+                <!-- اختيار نوع المستهدف -->
+                <select id="notif-target-type" class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 transition mb-3">
+                    <option value="all">إرسال للكل (جميع المستخدمين)</option>
+                    <option value="admins">إرسال للمدراء فقط</option>
+                    <option value="specific" class="font-bold text-blue-600">👤 تحديد مستخدمين مخصصين...</option>
+                </select>
+                
+                <!-- قائمة المستخدمين المخصصة (تظهر عند اختيار "specific") -->
+                <div id="custom-users-list" class="hidden border-2 border-blue-100 rounded-xl p-3 max-h-48 overflow-y-auto bg-gray-50 shadow-inner space-y-2">
+                    <!-- سيتم رسم بطاقات المستخدمين هنا برمجياً -->
+                </div>
+            </div>
+
+            <!-- أزرار التحكم - الآن داخل النموذج بشكل صحيح -->
+            <div class="flex gap-3 mt-6">
+                <button type="submit" class="bg-purple-600 hover:bg-purple-700 flex-[2] text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-lg">
+                    <span id="notif-btn-text">إرسال الإشعار</span>
+                    <span id="notif-spinner" class="loading-spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                </button>
+                <button type="button" id="close-notification-modal" class="flex-1 bg-gray-200 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-300 transition">
+                    إلغاء
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- نافذة تأكيد الحذف (لجميع العمليات) -->
+<div id="confirm-modal" class="hidden fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4">
+    <div class="glass-card p-6 responsive-modal text-center border-t-4 border-t-red-500">
+        <i class="fas fa-exclamation-triangle text-5xl text-red-500 mb-4"></i>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">تأكيد الحذف</h3>
+        <p class="text-gray-600 mb-6" id="confirm-message">هل أنت متأكد من حذف هذا العنصر؟</p>
+        <div class="flex gap-3">
+            <button id="confirm-yes-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition">نعم، احذف</button>
+            <button id="confirm-no-btn" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 rounded-lg transition">إلغاء</button>
+        </div>
+    </div>
+</div>
+
+<!-- عنصر الصوت للإشعارات -->
+<audio id="notification-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>   
+   <!-- حاوية التنبيهات المنبثقة -->
+<div id="toast-root" class="fixed bottom-4 left-4 z-50 flex flex-col gap-2"></div>
+    
+   
+<!-- Supabase Client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- Load new modular system as ES module -->
+<script type="module">
+    import { initApp } from './js/main.js';
+    
+    const supabaseUrl = 'https://pgbfibfegrtfieldnitf.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBnYmZpYmZlZ3J0ZmllbGRuaXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzU1MDgsImV4cCI6MjA5NDQ1MTUwOH0.sf8N02kzYQy8nx4UbGyysCFS2fzZbq3mrf-1IjWgPCY';
+    
+    window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            flowType: 'pkce'
+        }
+    });
+    
+    // بدء التطبيق
+    initApp().catch(console.error);
+</script>
+
+<!-- دالة مساعدة للآلة الحاسبة (للتوافق مع onclick القديم) -->
+<script>
+    window.authShell = window.authShell || {
+        press: (symbol) => {
+            // سيتم ربطها لاحقاً من auth.js
+            console.log('Calculator press:', symbol);
+        }
+    };
+</script>
+</body>
+</html>
