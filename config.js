@@ -319,3 +319,19 @@ window.NOTIFICATION_TYPES    = NOTIFICATION_TYPES;
 window.ACCOUNT_PREFIXES      = ACCOUNT_PREFIXES;
 
 console.log(`✅ config.js محمّل — ${APP_CONFIG.NAME} v${APP_CONFIG.VERSION}`);
+
+
+// ═══════════════════════════════════════════════════════════════
+// RPC الجديدة — مضافة في التحديث (لوحة المدير، الملخص، الحسابات)
+// ═══════════════════════════════════════════════════════════════
+window.RPC = Object.freeze({
+  ...RPC,
+  GET_ADMIN_DASHBOARD   : 'get_admin_dashboard',
+  GET_DAILY_SUMMARY     : 'get_daily_summary',
+  GET_CHART_OF_ACCOUNTS : 'get_chart_of_accounts',
+  GET_ACCOUNT_STATEMENT : 'get_account_statement',
+  GET_BANK_STATEMENT    : 'get_bank_statement',
+  GET_AUDIT_LOGS        : 'get_audit_logs',
+});
+
+console.log('✅ config.js v2 — RPC الجديدة مضافة');
