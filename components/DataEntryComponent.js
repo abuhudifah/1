@@ -1,39 +1,34 @@
 /**
- * components/DataEntryComponent.js — v3.0
- * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- * إصلاحات:
- * 1. المندوب في التحصيل "سحب بطاقة": يرى جميع الحسابات البنكية
- *    مرتبة حسب آخر نشاط له (الأحدث أولاً)
- * 2. المندوب في الإيداع: يرى جميع الحسابات البنكية بلا قيود
- *    مرتبة حسب آخر نشاط له (الأحدث أولاً)
- * 3. المدير: فلتر اختيار المندوب يشمل جميع المناديب
- * 4. المساعد الإداري: نفس خيارات المدير
- * 5. مؤشر السقف المالي يُحدَّث فور اختيار الحساب
- * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * components/DataEntryComponent.js — v3.1
+ * إصلاحات المرحلة الحالية:
+ * FIX #3:  المندوب يرى جميع البنوك (جلب مباشر من Supabase/Dexie بدلاً من AppStore.bankAccounts المُفلتَرة)
+ * FIX #12: التحقق من اختيار البنك عند payType === 'card' قبل الحفظ
+ * FIX #30: استخدام isOnline() الموحدة بدلاً من navigator.onLine المباشر
  */
 'use strict';
 
 const DataEntryComponent = {
   _activeForm : 'collection',
   _container  : null,
-  // الحسابات البنكية مرتبة حسب آخر نشاط للمستخدم الحالي
   _sortedBanks: [],
 
   async render(container) {
     this._container = container;
     container.innerHTML = '';
-    // تجهيز قائمة البنوك المرتبة قبل البناء
     await this._prepareSortedBanks();
     container.appendChild(await this._buildPage());
   },
 
-  // ─── تجهيز الحسابات البنكية مرتبة حسب آخر نشاط للمستخدم ───
   async _prepareSortedBanks() {
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
-    // جلب كل الحسابات البنكية (للمندوب والمدير)
+
+    // FIX #3 + FIX #30:
+    // - نجلب كل البنوك مباشرة من Supabase/Dexie بدون الاعتماد على
+    //   AppStore.bankAccounts التي تُفلتَر للمندوب بحسب إيداعاته اليوم فقط.
+    // - نستخدم isOnline() الموحدة بدلاً من navigator.onLine.
     let allBanks = [];
     try {
-      if (navigator.onLine) {
+      if (isOnline()) {
         const { data } = await supabaseClient
           .from('bank_accounts')
           .select('id,name,financial_ceiling,company_id')
@@ -43,6 +38,7 @@ const DataEntryComponent = {
         allBanks = await db.bank_accounts.toArray();
       }
     } catch {
+      // آخر ملاذ: AppStore (قد تكون فارغة للمندوب الجديد)
       allBanks = AppStore.getState('bankAccounts') || [];
     }
 
@@ -50,10 +46,10 @@ const DataEntryComponent = {
       allBanks = AppStore.getState('bankAccounts') || [];
     }
 
-    // جلب آخر إيداعات للمندوب لترتيب البنوك
+    // ترتيب البنوك حسب آخر نشاط للمندوب
     let lastActivityMap = {};
     try {
-      if (navigator.onLine && agentId) {
+      if (isOnline() && agentId) {
         const { data } = await supabaseClient
           .from('transactions')
           .select('bank_account_id,created_at')
@@ -70,7 +66,6 @@ const DataEntryComponent = {
       }
     } catch {}
 
-    // ترتيب: من لديه نشاط سابق أولاً (الأحدث) ثم الباقين أبجدياً
     this._sortedBanks = [...allBanks].sort((a, b) => {
       const aTime = lastActivityMap[a.id] || '';
       const bTime = lastActivityMap[b.id] || '';
@@ -84,7 +79,6 @@ const DataEntryComponent = {
   async _buildPage() {
     const wrap = document.createElement('div');
 
-    // العنوان + فلتر المندوب (للمدير والمساعد)
     const header = document.createElement('div');
     header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;';
 
@@ -93,18 +87,14 @@ const DataEntryComponent = {
     title.textContent = 'إدخال البيانات';
     header.appendChild(title);
 
-    // فلتر المندوب للمدير والمساعد الإداري
     if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
       const agentFilter = this._buildAgentFilter();
       header.appendChild(agentFilter);
     }
 
     wrap.appendChild(header);
-
-    // أزرار اختيار النموذج
     wrap.appendChild(this._buildFormTabs());
 
-    // حاوية النموذج
     const formArea = document.createElement('div');
     formArea.id = 'data-entry-form-area';
     wrap.appendChild(formArea);
@@ -113,7 +103,6 @@ const DataEntryComponent = {
     return wrap;
   },
 
-  // ─── فلتر المندوب (مدير + مساعد) ───
   _buildAgentFilter() {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
@@ -131,7 +120,6 @@ const DataEntryComponent = {
     const currentUser = AuthService.getCurrentUser();
     select.innerHTML = `<option value="">— نفسي (${escapeHtml(currentUser?.display_name || 'الحساب الحالي')})</option>`;
 
-    // جميع المناديب النشطين
     const agents = AppStore.getState('users').filter(u => u.role === ROLES.AGENT && u.is_active);
     agents.forEach(a => {
       const opt = document.createElement('option');
@@ -140,15 +128,12 @@ const DataEntryComponent = {
       select.appendChild(opt);
     });
 
-    // استعادة القيمة المحفوظة
     const savedAgent = AppStore.getState('selectedAgentId');
     if (savedAgent) select.value = savedAgent;
 
     select.addEventListener('change', async () => {
       AppStore.setSelectedAgent(select.value || null);
-      // إعادة تجهيز البنوك المرتبة بناءً على المندوب المختار
       await this._prepareSortedBanks();
-      // إعادة رسم النموذج النشط
       const area = document.getElementById('data-entry-form-area');
       if (area) this._renderForm(this._activeForm, area);
     });
@@ -157,7 +142,6 @@ const DataEntryComponent = {
     return wrap;
   },
 
-  // ─── تبويبات اختيار النموذج ───
   _buildFormTabs() {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
@@ -212,7 +196,6 @@ const DataEntryComponent = {
     container.appendChild(card);
   },
 
-  // ─── مساعدات DOM ───
   _field(id, label, required=false) {
     const wrap = document.createElement('div');
     wrap.className = 'form-group';
@@ -223,6 +206,7 @@ const DataEntryComponent = {
     wrap.appendChild(lbl);
     return wrap;
   },
+
   _input(id, type='text', placeholder='', attrs={}) {
     const el = document.createElement('input');
     el.id = id; el.type = type; el.placeholder = placeholder;
@@ -230,12 +214,12 @@ const DataEntryComponent = {
     Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v));
     return el;
   },
+
   _errMsg(id) {
     const el = document.createElement('div');
     el.id = id; el.className = 'form-error'; return el;
   },
 
-  // ─── بناء قائمة البنوك مرتبة مع مؤشر آخر نشاط ───
   _buildBankSelect(selectId, placeholder='— اختر الحساب البنكي —') {
     const select = document.createElement('select');
     select.id = selectId;
@@ -249,7 +233,6 @@ const DataEntryComponent = {
     this._sortedBanks.forEach((b, idx) => {
       const opt = document.createElement('option');
       opt.value = b.id;
-      // نضيف ★ للأول ليُعرف كالأكثر استخداماً
       opt.textContent = idx === 0 && this._sortedBanks.length > 1
         ? `★ ${b.name}`
         : b.name;
@@ -270,7 +253,6 @@ const DataEntryComponent = {
     title.innerHTML = '<span>💰</span><span>تحصيل</span>';
     frag.appendChild(title);
 
-    // نوع التحصيل
     const typeField = this._field('col-type','نوع التحصيل',true);
     const typeSelect = document.createElement('select');
     typeSelect.id = 'col-type';
@@ -281,31 +263,33 @@ const DataEntryComponent = {
     typeField.appendChild(typeSelect);
     frag.appendChild(typeField);
 
-    // حقل الحساب البنكي (يظهر عند "سحب بطاقة") — جميع البنوك مرتبة
+    // FIX #12: أضفنا required=true على label البنك لتوضيح الإلزامية بصرياً
     const bankWrap = document.createElement('div');
     bankWrap.id = 'col-bank-wrap';
     bankWrap.style.display = 'none';
-    const bankField = this._field('col-bank-account','الحساب البنكي (سحب بطاقة)');
+    const bankField = this._field('col-bank-account','الحساب البنكي (سحب بطاقة)',true);
     const bankSelect = this._buildBankSelect('col-bank-account','— اختر الحساب البنكي —');
     bankField.appendChild(bankSelect);
+    // رسالة الخطأ الخاصة بالبنك في التحصيل
+    bankField.appendChild(this._errMsg('col-bank-account-err'));
     bankWrap.appendChild(bankField);
     frag.appendChild(bankWrap);
 
     typeSelect.addEventListener('change', () => {
       bankWrap.style.display = typeSelect.value === 'card' ? 'block' : 'none';
+      // مسح الخطأ عند تغيير النوع
+      const errEl = document.getElementById('col-bank-account-err');
+      if (errEl) errEl.textContent = '';
     });
 
-    // المبلغ
     const amtField = this._field('col-amount','المبلغ',true);
     const amtInput = this._input('col-amount','number','0',{min:'1',step:'1'});
     amtField.appendChild(amtInput);
     amtField.appendChild(this._errMsg('col-amount-err'));
     frag.appendChild(amtField);
 
-    // بحث العملاء
     frag.appendChild(this._buildCustomerSearch());
 
-    // الشركة
     const compField = this._field('col-company','لصالح شركة (اختياري)');
     const compSelect = document.createElement('select');
     compSelect.id = 'col-company';
@@ -322,18 +306,17 @@ const DataEntryComponent = {
     frag.appendChild(this._saveBtn('col-save-btn','💾 حفظ التحصيل', async () => {
       await this._saveCollection({
         payType   : typeSelect.value,
-        bankId    : document.getElementById('col-bank-account')?.value||null,
+        bankId    : document.getElementById('col-bank-account')?.value || null,
         amount    : amtInput.value,
-        customer  : document.getElementById('col-customer-search')?.value?.trim()||'',
-        customerId: document.getElementById('col-debtor-id')?.value||null,
-        companyId : compSelect.value||null,
+        customer  : document.getElementById('col-customer-search')?.value?.trim() || '',
+        customerId: document.getElementById('col-debtor-id')?.value || null,
+        companyId : compSelect.value || null,
       });
     }));
 
     return frag;
   },
 
-  // ─── بحث العملاء الذكي ───
   _buildCustomerSearch() {
     const field = this._field('col-customer-search','بحث عن عميل');
     const wrap = document.createElement('div');
@@ -424,14 +407,12 @@ const DataEntryComponent = {
     title.innerHTML = '<span>🏦</span><span>إيداع بنكي</span>';
     frag.appendChild(title);
 
-    // الحساب البنكي — جميع البنوك مرتبة حسب النشاط
     const bankField = this._field('dep-bank','الحساب البنكي',true);
     const bankSelect = this._buildBankSelect('dep-bank','— اختر الحساب البنكي —');
     bankField.appendChild(bankSelect);
     bankField.appendChild(this._errMsg('dep-bank-err'));
     frag.appendChild(bankField);
 
-    // مؤشر السقف
     const ceilingInfo = document.createElement('div');
     ceilingInfo.id = 'dep-ceiling-info';
     ceilingInfo.style.cssText = 'margin:-8px 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg-input);font-size:0.82rem;display:none;border:1px solid var(--border-color);';
@@ -440,7 +421,6 @@ const DataEntryComponent = {
     bankSelect.addEventListener('change', async () => {
       const bank = this._sortedBanks.find(b=>b.id===bankSelect.value);
       if (!bank) { ceilingInfo.style.display='none'; return; }
-      const agentId = AppStore.getState('selectedAgentId')||AuthService.getCurrentUserId();
       const total   = await AccountingService.getDailyDepositsTotal(bank.id, getCurrentSaudiDate());
       const ceil    = parseFloat(bank.financial_ceiling)||0;
       const pct     = Math.min(100,(total/ceil)*100);
@@ -459,14 +439,12 @@ const DataEntryComponent = {
         </div>`;
     });
 
-    // المبلغ
     const amtField = this._field('dep-amount','المبلغ',true);
     const amtInput = this._input('dep-amount','number','0',{min:'1',step:'1'});
     amtField.appendChild(amtInput);
     amtField.appendChild(this._errMsg('dep-amount-err'));
     frag.appendChild(amtField);
 
-    // ملاحظات
     const notesField = this._field('dep-notes','ملاحظات (اختياري)');
     const notesInput = document.createElement('textarea');
     notesInput.id='dep-notes'; notesInput.className='form-control'; notesInput.rows=2;
@@ -501,8 +479,8 @@ const DataEntryComponent = {
     title.innerHTML = '<span>💸</span><span>مصروف</span>';
     frag.appendChild(title);
 
-    const typeField = this._field('exp-type','نوع المصروف',true);
-    const typeSelect = document.createElement('select');
+    const typeField=this._field('exp-type','نوع المصروف',true);
+    const typeSelect=document.createElement('select');
     typeSelect.id='exp-type'; typeSelect.className='form-control';
     typeSelect.innerHTML='<option value="">— اختر النوع —</option>';
     AppStore.getState('expenseAccounts').forEach(e=>{
@@ -516,7 +494,7 @@ const DataEntryComponent = {
     typeField.appendChild(this._errMsg('exp-type-err'));
     frag.appendChild(typeField);
 
-    const newTypeWrap = document.createElement('div');
+    const newTypeWrap=document.createElement('div');
     newTypeWrap.style.display='none';
     const newTypeField=this._field('exp-new-type','اسم النوع الجديد');
     const newTypeInput=this._input('exp-new-type','text','مثال: غرامات');
@@ -581,7 +559,6 @@ const DataEntryComponent = {
     srcField.appendChild(srcSelect);
     frag.appendChild(srcField);
 
-    // حقل المندوب مع autocomplete
     const agentWrap=document.createElement('div');
     agentWrap.id='tr-agent-wrap';
     const agentSearchWrap=document.createElement('div');
@@ -692,40 +669,62 @@ const DataEntryComponent = {
   // ═══════════════ منطق الحفظ ═══════════════
 
   async _saveCollection({ payType, bankId, amount, customer, customerId, companyId }) {
-    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً','error'); return; }
+    if (!isValidAmount(amount)) {
+      showToast('المبلغ يجب أن يكون رقماً موجباً', 'error');
+      return;
+    }
+
+    // FIX #12: التحقق من اختيار البنك عند payType === 'card'
+    if (payType === 'card') {
+      if (!bankId) {
+        const errEl = document.getElementById('col-bank-account-err');
+        if (errEl) errEl.textContent = 'يجب اختيار الحساب البنكي عند سحب البطاقة';
+        showToast('اختر الحساب البنكي لإتمام عملية سحب البطاقة', 'error');
+        return;
+      }
+      // مسح رسالة الخطأ عند النجاح
+      const errEl = document.getElementById('col-bank-account-err');
+      if (errEl) errEl.textContent = '';
+    }
+
     const rounded = roundAmount(amount);
-    const agentId = AppStore.getState('selectedAgentId')||AuthService.getCurrentUserId();
+    const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn = document.getElementById('col-save-btn');
     const restore = setButtonLoading(btn);
     const txData = {
-      type:'collection', amount:rounded,
-      date:AppStore.getState('selectedDate')||getCurrentSaudiDate(),
-      agent_id:agentId, company_id:companyId||null,
-      customer_name:customer||null, customer_id:customerId||null,
-      bank_account_id:payType==='card'?(bankId||null):null,
+      type         : 'collection',
+      amount       : rounded,
+      date         : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id     : agentId,
+      company_id   : companyId || null,
+      customer_name: customer || null,
+      customer_id  : customerId || null,
+      bank_account_id: payType === 'card' ? (bankId || null) : null,
     };
     const result = await AccountingService.createTransactionWithEntries(txData);
     restore();
     if (isOk(result)) {
-      showToast('✅ تم حفظ التحصيل','success');
+      showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
-      await this._showShareModal({type:'تحصيل',amount:rounded,customer,agentId,date:txData.date});
-    } else showToast(`❌ ${result.error}`,'error');
+      await this._showShareModal({ type:'تحصيل', amount:rounded, customer, agentId, date:txData.date });
+    } else {
+      showToast(`❌ ${result.error}`, 'error');
+    }
   },
 
   async _saveDeposit({ bankId, amount, notes }) {
     if (!bankId) { showToast('اختر الحساب البنكي','error'); return; }
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً','error'); return; }
     const rounded = roundAmount(amount);
-    const agentId = AppStore.getState('selectedAgentId')||AuthService.getCurrentUserId();
-    const bank    = this._sortedBanks.find(b=>b.id===bankId)||AppStore.getState('bankAccounts').find(b=>b.id===bankId);
+    const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+    const bank    = this._sortedBanks.find(b=>b.id===bankId) || AppStore.getState('bankAccounts').find(b=>b.id===bankId);
     if (bank) {
-      const prevTotal = await AccountingService.getDailyDepositsTotal(bankId,getCurrentSaudiDate());
-      const ceil = Math.round(bank.financial_ceiling||0);
-      if (ceil>0 && prevTotal+rounded>ceil) {
+      const prevTotal = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
+      const ceil = Math.round(bank.financial_ceiling || 0);
+      if (ceil > 0 && prevTotal + rounded > ceil) {
         const confirmed = await confirmDialog(
           `⚠️ تجاوز السقف!\nالإجمالي بعد العملية: ${(prevTotal+rounded).toLocaleString('en-US')} ر.س\nالسقف اليومي: ${ceil.toLocaleString('en-US')} ر.س\nهل تريد المتابعة؟`,
-          'متابعة','إلغاء','warning'
+          'متابعة', 'إلغاء', 'warning'
         );
         if (!confirmed) return;
       }
@@ -733,58 +732,80 @@ const DataEntryComponent = {
     const btn = document.getElementById('dep-save-btn');
     const restore = setButtonLoading(btn);
     const txData = {
-      type:'deposit', amount:rounded,
-      date:AppStore.getState('selectedDate')||getCurrentSaudiDate(),
-      agent_id:agentId, bank_account_id:bankId,
-      company_id:bank?.company_id||null, details:notes||null,
+      type           : 'deposit',
+      amount         : rounded,
+      date           : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id       : agentId,
+      bank_account_id: bankId,
+      company_id     : bank?.company_id || null,
+      details        : notes || null,
     };
     const result = await AccountingService.createTransactionWithEntries(txData);
     restore();
     if (isOk(result)) {
-      showToast('✅ تم حفظ الإيداع','success');
+      showToast('✅ تم حفظ الإيداع', 'success');
       this._resetForm('dep');
-      const ceil = Math.round(bank?.financial_ceiling||0);
-      const used = await AccountingService.getDailyDepositsTotal(bankId,getCurrentSaudiDate());
-      await this._showShareModal({type:'إيداع',amount:rounded,bankName:bank?.name,agentId,date:txData.date,ceilingRemain:Math.max(0,ceil-used)});
-    } else showToast(`❌ ${result.error}`,'error');
+      const ceil = Math.round(bank?.financial_ceiling || 0);
+      const used = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
+      await this._showShareModal({ type:'إيداع', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain:Math.max(0,ceil-used) });
+    } else {
+      showToast(`❌ ${result.error}`, 'error');
+    }
   },
 
   async _saveExpense({ expenseType, amount, details }) {
     if (!expenseType) { showToast('اختر نوع المصروف','error'); return; }
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً','error'); return; }
     const rounded = roundAmount(amount);
-    const agentId = AppStore.getState('selectedAgentId')||AuthService.getCurrentUserId();
+    const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn = document.getElementById('exp-save-btn');
     const restore = setButtonLoading(btn);
     const result = await AccountingService.createTransactionWithEntries({
-      type:'expense', amount:rounded,
-      date:AppStore.getState('selectedDate')||getCurrentSaudiDate(),
-      agent_id:agentId, expense_type:expenseType, details:details||null,
+      type        : 'expense',
+      amount      : rounded,
+      date        : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id    : agentId,
+      expense_type: expenseType,
+      details     : details || null,
     });
     restore();
-    if(isOk(result)){showToast('✅ تم حفظ المصروف','success');this._resetForm('exp');await this._showShareModal({type:'مصروف',amount:rounded,agentId,date:getCurrentSaudiDate(),details});}
-    else showToast(`❌ ${result.error}`,'error');
+    if (isOk(result)) {
+      showToast('✅ تم حفظ المصروف', 'success');
+      this._resetForm('exp');
+      await this._showShareModal({ type:'مصروف', amount:rounded, agentId, date:getCurrentSaudiDate(), details });
+    } else {
+      showToast(`❌ ${result.error}`, 'error');
+    }
   },
 
   async _saveTransfer({ txType, fromAgentId, toAgentId, companyId, amount }) {
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً','error'); return; }
     const rounded = roundAmount(amount);
-    const agentId = AppStore.getState('selectedAgentId')||AuthService.getCurrentUserId();
+    const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn = document.getElementById('tr-save-btn');
     const restore = setButtonLoading(btn);
     const result = await AccountingService.createTransactionWithEntries({
-      type:txType, amount:rounded,
-      date:AppStore.getState('selectedDate')||getCurrentSaudiDate(),
-      agent_id:agentId, from_agent_id:fromAgentId||null, to_agent_id:toAgentId||null, company_id:companyId||null,
+      type          : txType,
+      amount        : rounded,
+      date          : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id      : agentId,
+      from_agent_id : fromAgentId || null,
+      to_agent_id   : toAgentId   || null,
+      company_id    : companyId   || null,
     });
     restore();
-    if(isOk(result)){showToast('✅ تم حفظ العملية','success');this._resetForm('tr');await this._showShareModal({type:TRANSACTION_TYPE_LABELS[txType]||txType,amount:rounded,agentId,date:getCurrentSaudiDate()});}
-    else showToast(`❌ ${result.error}`,'error');
+    if (isOk(result)) {
+      showToast('✅ تم حفظ العملية', 'success');
+      this._resetForm('tr');
+      await this._showShareModal({ type:TRANSACTION_TYPE_LABELS[txType]||txType, amount:rounded, agentId, date:getCurrentSaudiDate() });
+    } else {
+      showToast(`❌ ${result.error}`, 'error');
+    }
   },
 
   async _showShareModal({ type, amount, agentId, date, customer, bankName, ceilingRemain, details }) {
     const balance = await AccountingService.getAccountBalance(`AGT_${agentId}`);
-    const balVal  = isOk(balance)?balance.data:0;
+    const balVal  = isOk(balance) ? balance.data : 0;
     const users   = AppStore.getState('users');
     const agent   = users.find(u=>u.id===agentId);
     const lines = [
@@ -792,21 +813,23 @@ const DataEntryComponent = {
       `💰 المبلغ: *${amount.toLocaleString('en-US')} ر.س*`,
       `📅 ${escapeHtml(formatDateArabic(date))}`,
     ];
-    if(customer) lines.push(`👤 العميل: ${escapeHtml(customer)}`);
-    if(bankName) lines.push(`🏦 الحساب: ${escapeHtml(bankName)}`);
-    if(details)  lines.push(`📝 ${escapeHtml(details)}`);
+    if (customer) lines.push(`👤 العميل: ${escapeHtml(customer)}`);
+    if (bankName) lines.push(`🏦 الحساب: ${escapeHtml(bankName)}`);
+    if (details)  lines.push(`📝 ${escapeHtml(details)}`);
     lines.push(`─────────────────`);
     lines.push(`📊 رصيد الصندوق: *${Math.abs(Math.round(balVal)).toLocaleString('en-US')} ر.س${Math.round(balVal)<0?' (مدين)':''}*`);
-    if(ceilingRemain!==undefined) lines.push(`🔹 المتبقي من السقف: *${ceilingRemain.toLocaleString('en-US')} ر.س*`);
+    if (ceilingRemain !== undefined) lines.push(`🔹 المتبقي من السقف: *${ceilingRemain.toLocaleString('en-US')} ر.س*`);
     lines.push(`─────────────────`);
     lines.push(`نظام أبو حذيفة 🔐`);
     const text = lines.join('\n');
-    const overlay=document.createElement('div');
-    overlay.className='modal-overlay'; overlay.style.cssText='display:flex;z-index:1200;';
-    overlay.addEventListener('click',e=>{if(e.target===overlay)document.body.removeChild(overlay);});
-    const box=document.createElement('div');
-    box.className='modal-box'; box.style.maxWidth='420px';
-    box.innerHTML=`
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'display:flex;z-index:1200;';
+    overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
+    const box = document.createElement('div');
+    box.className = 'modal-box';
+    box.style.maxWidth = '420px';
+    box.innerHTML = `
       <div class="modal-header">
         <h3 class="modal-title">📤 مشاركة ملخص العملية</h3>
         <button class="modal-close" id="share-close-btn">✕</button>
@@ -825,29 +848,31 @@ const DataEntryComponent = {
       <button id="share-dismiss-btn" class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:0.82rem;color:var(--text-muted);">إغلاق</button>`;
     document.body.appendChild(overlay);
     overlay.appendChild(box);
-    box.querySelector('#share-close-btn').addEventListener('click',()=>document.body.removeChild(overlay));
-    box.querySelector('#share-dismiss-btn').addEventListener('click',()=>document.body.removeChild(overlay));
-    box.querySelector('#share-copy-btn').addEventListener('click',async()=>await copyToClipboard(text,'تم نسخ الملخص'));
-    box.querySelector('#share-wa-btn').addEventListener('click',()=>window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`,'_blank'));
-    if(window.lucide)lucide.createIcons();
+    box.querySelector('#share-close-btn').addEventListener('click', () => document.body.removeChild(overlay));
+    box.querySelector('#share-dismiss-btn').addEventListener('click', () => document.body.removeChild(overlay));
+    box.querySelector('#share-copy-btn').addEventListener('click', async () => await copyToClipboard(text, 'تم نسخ الملخص'));
+    box.querySelector('#share-wa-btn').addEventListener('click', () => window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank'));
+    if (window.lucide) lucide.createIcons();
   },
 
   _resetForm(prefix) {
-    [`#${prefix}-amount`,`#${prefix}-notes`,`#${prefix}-details`,`#${prefix}-new-type`].forEach(sel=>{
-      const el=document.querySelector(sel);
-      if(el)el.value='';
+    [`#${prefix}-amount`, `#${prefix}-notes`, `#${prefix}-details`, `#${prefix}-new-type`].forEach(sel => {
+      const el = document.querySelector(sel);
+      if (el) el.value = '';
     });
-    document.querySelectorAll(`select[id^="${prefix}-"]`).forEach(s=>{s.selectedIndex=0;});
-    ['col-bank-wrap','dep-ceiling-info','tr-agent-wrap','tr-company-wrap'].forEach(id=>{
-      const el=document.getElementById(id);
-      if(el)el.style.display=id==='tr-agent-wrap'?'block':'none';
+    document.querySelectorAll(`select[id^="${prefix}-"]`).forEach(s => { s.selectedIndex = 0; });
+    ['col-bank-wrap', 'dep-ceiling-info', 'tr-agent-wrap', 'tr-company-wrap'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = id === 'tr-agent-wrap' ? 'block' : 'none';
     });
-    const ddEl=document.getElementById('col-customer-dropdown');
-    if(ddEl)ddEl.style.display='none';
-    const debtEl=document.getElementById('col-debt-display');
-    if(debtEl)debtEl.style.display='none';
+    const ddEl = document.getElementById('col-customer-dropdown');
+    if (ddEl) ddEl.style.display = 'none';
+    const debtEl = document.getElementById('col-debt-display');
+    if (debtEl) debtEl.style.display = 'none';
+    // مسح جميع رسائل الخطأ في النموذج
+    document.querySelectorAll(`[id^="${prefix}-"][id$="-err"]`).forEach(el => { el.textContent = ''; });
   },
 };
 
 window.DataEntryComponent = DataEntryComponent;
-console.log('✅ DataEntryComponent v3.0 — جميع البنوك للمندوب + مرتبة بالأحدث');
+console.log('✅ DataEntryComponent v3.1 — FIX #3 (بنوك المندوب) #12 (تحقق card) #30 (isOnline)');
