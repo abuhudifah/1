@@ -1528,6 +1528,348 @@ body.dark-mode .login-page-bg {
   --login-bg-mid: #0f2044;
   --login-bg-end: #0a0f1e;
 }
+
+/* ============================================================
+   تحسينات بصرية شاملة — v3.0 additions
+   تُضاف في نهاية assets/css/styles.css
+   ============================================================ */
+
+/* ── تحسينات الهيدر على الجوال ── */
+@media (max-width: 640px) {
+  .app-header {
+    padding: 0 12px;
+    gap    : 8px;
+  }
+  .header-user-info { display: none; }
+  .header-date      { display: none; }
+  .header-title     { font-size: 0.85rem; }
+  .header-account-num { display: none; }
+  .header-actions { gap: 4px; }
+  .header-icon-btn { width: 34px; height: 34px; border-radius: 8px; }
+}
+
+/* ── تحسين الهيدر العام ── */
+.app-header {
+  transition: box-shadow var(--transition-normal);
+}
+.app-header.scrolled {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+}
+
+/* ── تحسين بطاقات KPI ── */
+.kpi-card {
+  animation: fadeIn 0.35s ease forwards;
+}
+.kpi-card:nth-child(1) { animation-delay: 0.00s; }
+.kpi-card:nth-child(2) { animation-delay: 0.06s; }
+.kpi-card:nth-child(3) { animation-delay: 0.12s; }
+.kpi-card:nth-child(4) { animation-delay: 0.18s; }
+
+/* ── تحسين glass-card ── */
+.glass-card {
+  animation: fadeIn 0.3s ease;
+}
+
+/* ── أزرار الهيدر محسّنة ── */
+.header-icon-btn {
+  transition: all var(--transition-fast);
+}
+.header-icon-btn:active {
+  transform: scale(0.92);
+}
+
+/* ── شريط التنقل محسّن ── */
+.nav-tab {
+  position: relative;
+  overflow: hidden;
+}
+.nav-tab::after {
+  content   : '';
+  position  : absolute;
+  bottom    : 0;
+  right     : 50%;
+  left      : 50%;
+  height    : 2px;
+  background: var(--accent);
+  transition: right var(--transition-normal), left var(--transition-normal);
+  border-radius: 2px 2px 0 0;
+}
+.nav-tab.active::after {
+  right: 0;
+  left : 0;
+}
+
+/* ── Skeleton محسّن ── */
+.skeleton {
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    var(--border-color) 0%,
+    rgba(148,163,184,0.08) 40%,
+    var(--border-color) 100%
+  );
+  background-size: 300% 100%;
+}
+@keyframes skeleton-pulse {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: -100% 50%; }
+}
+
+/* ── animate-spin محسّن ── */
+.animate-spin {
+  animation: spin 0.65s linear infinite;
+}
+
+/* ── تحسين جداول البيانات ── */
+.table-wrapper {
+  border-radius: 12px;
+  overflow     : hidden;
+  box-shadow   : var(--shadow-sm);
+}
+
+.data-table thead th {
+  font-size: 0.80rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.data-table tbody tr {
+  transition: background var(--transition-fast), transform 80ms;
+}
+
+/* ── تحسين النماذج ── */
+.form-control {
+  transition: all var(--transition-fast);
+}
+.form-control:focus {
+  transform: none;
+}
+
+/* ── تحسين أزرار ── */
+.btn {
+  position: relative;
+  overflow: hidden;
+}
+.btn::after {
+  content   : '';
+  position  : absolute;
+  inset     : 0;
+  background: rgba(255,255,255,0);
+  transition: background var(--transition-fast);
+}
+.btn:active::after {
+  background: rgba(255,255,255,0.15);
+}
+
+/* ── حالة فارغة محسّنة ── */
+.empty-state {
+  min-height: 200px;
+}
+.empty-state-icon {
+  font-size: 3.2rem;
+  animation: float 3s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-8px); }
+}
+
+/* ── تحسين مؤشر المزامنة ── */
+.sync-dot.synced {
+  box-shadow: 0 0 6px var(--success);
+}
+.sync-dot.pending {
+  box-shadow: 0 0 6px var(--warning);
+}
+.sync-dot.conflict {
+  box-shadow: 0 0 8px var(--danger);
+}
+
+/* ── Modal محسّن ── */
+.modal-overlay {
+  animation: fadeIn 0.2s ease;
+}
+.modal-box {
+  animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── بطاقة مندوب محسّنة ── */
+.agent-box {
+  transition: transform var(--transition-spring), box-shadow var(--transition-normal);
+}
+.agent-box:hover {
+  transform : translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── شارة الإشعارات محسّنة ── */
+.notif-badge {
+  animation: badge-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes badge-pop {
+  0%   { transform: scale(0); }
+  100% { transform: scale(1); }
+}
+
+/* ── تحسين حقول date في الوضع المظلم ── */
+body.dark-mode input[type="date"],
+body.dark-mode input[type="month"],
+body.dark-mode input[type="time"] {
+  color-scheme: dark;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+/* ── تحسين Dropdown ── */
+body.dark-mode select option {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+/* ── إصلاح الحاسبة في الوضع المظلم — fallback ── */
+body.dark-mode #login-page .calc-result { color: #f1f5f9 !important; }
+body.dark-mode #login-page .calc-expr   { color: rgba(248,250,252,0.35) !important; }
+
+/* ── تحسين شريط التقدم ── */
+.progress-fill {
+  will-change: width;
+}
+
+/* ── تحسين صناديق المناديب في الجوال ── */
+@media (max-width: 480px) {
+  #agents-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── تحسين جدول بيانات في الجوال ── */
+@media (max-width: 640px) {
+  .table-wrapper {
+    border-radius: 8px;
+  }
+  .data-table thead th,
+  .data-table tbody td {
+    padding: 8px 8px;
+    font-size: 0.78rem;
+  }
+}
+
+/* ── تحسين أزرار نوع النموذج (DataEntry) ── */
+#data-entry-form-area .glass-card {
+  animation: slideInDown 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── تحسين toast ── */
+#toast-container {
+  position: fixed !important;
+  bottom  : 24px !important;
+  top     : auto !important;
+  left    : 50% !important;
+  transform: translateX(-50%) !important;
+  z-index : 99999;
+  display : flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  width: max-content;
+  max-width: 90vw;
+}
+
+.toast-item {
+  animation: slideInDown 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+/* ── تحسين header-logo-placeholder مع حرف عربي ── */
+.header-logo-placeholder {
+  font-size: 1.2rem !important;
+  letter-spacing: 0;
+}
+
+/* ── تحسين شريط المزامنة في الهيدر ── */
+#header-sync-btn i.animate-spin {
+  display: inline-block;
+  animation: spin 0.65s linear infinite;
+}
+
+/* ── نمط الطباعة محسّن ── */
+@media print {
+  #app-header,
+  #app-nav,
+  .header-actions,
+  .btn,
+  #dash-refresh-btn {
+    display: none !important;
+  }
+  .app-content {
+    padding-top: 0 !important;
+  }
+  .glass-card {
+    break-inside: avoid;
+  }
+  .data-table tbody tr {
+    break-inside: avoid;
+  }
+}
+
+/* ── تحسين نمط عمليات المقلوبة ── */
+.tx-reversed {
+  opacity: 0.5;
+  text-decoration: line-through;
+  filter: grayscale(0.6);
+}
+
+/* ── مؤشر السقف البنكي ── */
+.bank-ceiling-badge {
+  display    : inline-flex;
+  align-items: center;
+  gap        : 4px;
+  padding    : 3px 10px;
+  border-radius: 99px;
+  font-size  : 0.72rem;
+  font-weight: 700;
+}
+.bank-ceiling-badge.ok      { background: rgba(5,150,105,0.12); color: var(--success); }
+.bank-ceiling-badge.warning { background: rgba(217,119,6,0.12);  color: var(--warning); }
+.bank-ceiling-badge.danger  { background: rgba(220,38,38,0.12);  color: var(--danger);  }
+
+/* ── تحسين select الفلاتر ── */
+.form-group select.form-control {
+  cursor: pointer;
+}
+
+/* ── Animation لانتقال المحتوى ── */
+.app-content {
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+/* ── تحسين empty state أيقونة ── */
+@keyframes bounce-in {
+  0%   { transform: scale(0.3); opacity: 0; }
+  50%  { transform: scale(1.1); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1);   opacity: 1; }
+}
+.empty-state-icon {
+  animation: bounce-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* ── تحسين تبديل الوضع المظلم (لا يومض) ── */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
+}
+/* استثناء الحركات والانتقالات المقصودة */
+.animate-fade-in, .animate-scale-in, .animate-slide-right,
+.kpi-card, .glass-card, .modal-box, .modal-overlay,
+.spinner, .sync-dot, .skeleton, .progress-fill {
+  transition: none;
+}
+
+/* ── نهاية التحسينات ── */
+
 /* ============================================================
    نهاية الملف
    ============================================================ */
