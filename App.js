@@ -1,626 +1,621 @@
 /**
- * App.js
+ * store/AppStore.js
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
- * التطبيق الرئيسي — التهيئة والتوجيه وبناء الهيكل
+ * إدارة الحالة المركزية (EventTarget)
  *
- * المسؤوليات:
- * - تهيئة جميع الخدمات بالترتيب الصحيح
- * - بناء الهيدر وشريط التنقل
- * - إدارة التوجيه بين التبويبات
- * - إظهار/إخفاء الشاشات
- * - الاستماع لأحداث AppStore وتحديث الهيكل
- * - إدارة الوضع المظلم
- * - [المرحلة 3] تشغيل IdleTimer للمندوبين فقط
+ * يعتمد على نمط EventTarget — بدون مكتبات خارجية
+ * كل تغيير في الحالة يُطلق حدثاً يستمع إليه المكوّن المعني
+ * مما يتجنب إعادة رسم الواجهة بالكامل عند كل تحديث
+ *
+ * الحالة المركزية:
+ * - currentUser / role / allowedTabs
+ * - currentTab (التبويب النشط)
+ * - isOnline / syncQueueLength / syncRunning
+ * - transactions (اليوم الحالي)
+ * - notifications (غير المقروءة)
+ * - bankAccounts / debtors / companies / expenseAccounts
+ * - systemSettings (الشعار، الإعدادات)
+ * - kpiData (لوحة المعلومات)
+ * - selectedAgentId (عند إدخال بيانات بالنيابة)
  */
 
 'use strict';
 
 // ============================================================
-// متغيرات الهيكل العام
+// الحالة المركزية الابتدائية
 // ============================================================
 
-let _headerEl   = null;
-let _navEl      = null;
-let _contentEl  = null;
-let _dateTimer  = null;
+const _initialState = {
+  // المصادقة
+  currentUser     : null,
+  role            : null,
+  allowedTabs     : [],
+  accountNumber   : null,
 
-// خريطة المكونات المحمَّلة (lazy loading)
-const _loadedComponents = new Map();
+  // التنقل
+  currentTab      : null,
+  previousTab     : null,
+
+  // الاتصال والمزامنة
+  isOnline        : navigator.onLine,
+  syncQueueLength : 0,
+  syncRunning     : false,
+  lastSyncAt      : null,
+  conflictsCount  : 0,
+
+  // العمليات (التاريخ المحدد حالياً في كل تبويب)
+  selectedDate    : getCurrentSaudiDate(),
+  selectedAgentId : null,           // المدير يختار مندوباً للإدخال نيابةً
+  transactions    : [],             // عمليات اليوم المحدد
+  transactionsLoading: false,
+
+  // الإشعارات
+  notifications       : [],
+  unreadNotifCount    : 0,
+
+  // البيانات الأساسية (تُحمَّل مرة واحدة)
+  bankAccounts        : [],
+  debtors             : [],
+  companies           : [],
+  expenseAccounts     : [],
+  users               : [],         // للمدير فقط
+
+  // إعدادات النظام
+  systemSettings      : new Map(),
+  logoUrl             : null,
+
+  // لوحة المعلومات (KPI)
+  kpiData             : null,
+  kpiLoading          : false,
+};
+
+// نسخة العمل (deep copy من الابتدائية)
+let _state = { ..._initialState };
 
 // ============================================================
-// نقطة الدخول الرئيسية
+// AppStore — الكائن الرئيسي
 // ============================================================
 
-document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🚀 App.js: بدء تهيئة النظام...');
+const AppStore = new EventTarget();
+
+// ============================================================
+// الدوال الأساسية: setState وgetState
+// ============================================================
+
+/**
+ * يُحدّث الحالة ويُطلق حدث التغيير
+ * @param {object|Function} updater - كائن تحديث أو دالة (prevState => newState)
+ * @param {string} [eventName='store:stateChanged'] - اسم الحدث المُطلَق
+ */
+function setState(updater, eventName = 'store:stateChanged') {
+  const prev = { ..._state };
+
+  if (typeof updater === 'function') {
+    _state = { ..._state, ...updater(prev) };
+  } else {
+    _state = { ..._state, ...updater };
+  }
+
+  // إطلاق الحدث مع الحالة الجديدة والقديمة
+  AppStore.dispatchEvent(new CustomEvent(eventName, {
+    detail: { state: _state, prev, changed: updater },
+  }));
+
+  // حدث عام لأي مستمع
+  if (eventName !== 'store:stateChanged') {
+    AppStore.dispatchEvent(new CustomEvent('store:stateChanged', {
+      detail: { state: _state, prev },
+    }));
+  }
+}
+
+/**
+ * يُعيد نسخة من الحالة الحالية (أو قيمة مفتاح محدد)
+ * @param {string} [key] - اختياري: مفتاح محدد
+ * @returns {*}
+ */
+function getState(key = null) {
+  if (key) return _state[key];
+  return { ..._state };
+}
+
+// ============================================================
+// المصادقة
+// ============================================================
+
+/**
+ * يُعيّن بيانات المستخدم بعد تسجيل الدخول
+ * @param {object} profile
+ */
+function setCurrentUser(profile) {
+  if (!profile) return;
+  setState({
+    currentUser   : profile,
+    role          : profile.role,
+    allowedTabs   : AuthService.getAllowedTabs(),
+    accountNumber : AuthService.generateAccountNumber(profile),
+    currentTab    : AuthService.getAllowedTabs()[0] || null,
+  }, 'store:userChanged');
+}
+
+/**
+ * يُصفّر بيانات المستخدم عند تسجيل الخروج
+ */
+function clearCurrentUser() {
+  _state = { ..._initialState, isOnline: navigator.onLine };
+  AppStore.dispatchEvent(new CustomEvent('store:userCleared'));
+  AppStore.dispatchEvent(new CustomEvent('store:stateChanged', {
+    detail: { state: _state },
+  }));
+}
+
+// ============================================================
+// التبويبات
+// ============================================================
+
+/**
+ * يُبدّل التبويب النشط
+ * @param {string} tabId
+ * @returns {boolean} - هل التبديل مسموح؟
+ */
+function setCurrentTab(tabId) {
+  if (!AuthService.canAccessTab(tabId)) {
+    showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
+    return false;
+  }
+
+  setState({
+    previousTab : _state.currentTab,
+    currentTab  : tabId,
+  }, 'store:tabChanged');
+
+  return true;
+}
+
+// ============================================================
+// العمليات المالية
+// ============================================================
+
+/**
+ * يُضيف معاملة جديدة لقائمة اليوم الحالي في الحالة
+ * (بدون إعادة جلب من قاعدة البيانات)
+ * @param {object} transaction
+ */
+function addTransaction(transaction) {
+  const updated = [transaction, ..._state.transactions];
+  setState({ transactions: updated }, 'store:transactionAdded');
+}
+
+/**
+ * يُحدّث معاملة موجودة في الحالة المحلية
+ * @param {string} id
+ * @param {object} changes
+ */
+function updateTransaction(id, changes) {
+  const updated = _state.transactions.map(tx =>
+    tx.id === id ? { ...tx, ...changes } : tx
+  );
+  setState({ transactions: updated }, 'store:transactionUpdated');
+}
+
+/**
+ * يحذف معاملة من الحالة المحلية
+ * @param {string} id
+ */
+function deleteTransaction(id) {
+  const updated = _state.transactions.filter(tx => tx.id !== id);
+  setState({ transactions: updated }, 'store:transactionDeleted');
+}
+
+/**
+ * يُبدّل العلامة is_reversed لمعاملة (بعد عكسها)
+ * @param {string} id
+ */
+function markTransactionReversed(id) {
+  updateTransaction(id, { is_reversed: true });
+}
+
+// ============================================================
+// تحميل / تحديث البيانات
+// ============================================================
+
+/**
+ * يجلب عمليات التاريخ والمندوب المحدد
+ * @param {string} [date] - افتراضي: اليوم
+ * @param {string} [agentId] - افتراضي: المستخدم الحالي
+ * @returns {Promise<void>}
+ */
+async function refreshTransactions(date = null, agentId = null) {
+  const targetDate  = date    || _state.selectedDate;
+  const targetAgent = agentId || _state.selectedAgentId || AuthService.getCurrentUserId();
+
+  setState({ transactionsLoading: true });
 
   try {
-    // 1. تهيئة Dexie (قاعدة البيانات المحلية)
-    const dexieResult = await initDexie();
-    if (!isOk(dexieResult)) {
-      _showFatalError('فشل فتح قاعدة البيانات المحلية. أعد تحميل الصفحة.');
-      return;
+    const filters = { date: targetDate };
+    if (targetAgent) filters.agent_id = targetAgent;
+
+    const result = await repo.query(TABLES.TRANSACTIONS, filters, {
+      orderBy  : 'created_at',
+      ascending: false,
+      pageSize : 200, // عرض جميع عمليات اليوم
+    });
+
+    if (isOk(result)) {
+      setState({
+        transactions       : result.data.data || [],
+        transactionsLoading: false,
+        selectedDate       : targetDate,
+        selectedAgentId    : targetAgent,
+      }, 'store:transactionsRefreshed');
+    }
+  } catch (e) {
+    console.error('❌ AppStore.refreshTransactions():', e);
+    setState({ transactionsLoading: false });
+  }
+}
+
+/**
+ * يُحدّث بيانات التاريخ المحدد
+ * @param {string} date - YYYY-MM-DD
+ */
+function setSelectedDate(date) {
+  setState({ selectedDate: date }, 'store:dateChanged');
+  refreshTransactions(date, _state.selectedAgentId);
+}
+
+/**
+ * يُحدّث المندوب المختار (للمدير عند الإدخال نيابةً)
+ * @param {string|null} agentId
+ */
+function setSelectedAgent(agentId) {
+  setState({ selectedAgentId: agentId }, 'store:agentChanged');
+}
+
+/**
+ * يجلب ويُحدّث البيانات الأساسية (bankAccounts, debtors, companies...)
+ * @returns {Promise<void>}
+ */
+async function refreshData() {
+  try {
+    const user = AuthService.getCurrentUser();
+    if (!user) return;
+
+    const tasks = [
+      _loadCompanies(),
+      _loadExpenseAccounts(),
+      _loadSystemSettings(),
+      _loadNotifications(user),
+    ];
+
+    if (user.role === ROLES.ADMIN || user.role === ROLES.ADMIN_ASSISTANT) {
+      tasks.push(_loadBankAccounts());
+      tasks.push(_loadDebtors());
+      tasks.push(_loadUsers());
+    } else if (user.role === ROLES.AGENT) {
+      tasks.push(_loadAgentBankAccounts(user.id));
+      tasks.push(_loadAgentDebtors(user.id));
     }
 
-    // 2. تنظيف البيانات القديمة في الخلفية
-    runStartupCleanup();
-
-    // 3. تهيئة خدمة المزامنة
-    SyncService.init();
-
-    // 4. تهيئة مدير الوضع المظلم (مرة واحدة)
-    if (window.ThemeManager) {
-      ThemeManager.init();
-    } else {
-      console.warn('⚠️ ThemeManager غير موجود، استخدم fallback');
-      _restoreDarkMode(); // fallback قديم
-    }
-
-    // 5. التحقق من جلسة نشطة
-    const sessionResult = await AuthService.checkSession();
-
-    if (isOk(sessionResult)) {
-      // جلسة نشطة — دخول مباشر للتطبيق
-      const { profile } = sessionResult.data;
-      await _bootApp(profile);
-    } else {
-      // لا جلسة — عرض شاشة الدخول
-      _showLoginScreen();
-    }
+    await Promise.allSettled(tasks);
 
   } catch (e) {
-    console.error('❌ App.js: خطأ فادح في التهيئة:', e);
-    _showFatalError(`خطأ في تهيئة النظام: ${e.message}`);
+    console.error('❌ AppStore.refreshData():', e);
+  }
+}
+
+// ============================================================
+// تحميل كل نوع بيانات
+// ============================================================
+
+async function _loadCompanies() {
+  const companies = await getLocalCompanies();
+  setState({ companies }, 'store:companiesLoaded');
+}
+
+async function _loadExpenseAccounts() {
+  const expenseAccounts = await getLocalExpenseAccounts();
+  setState({ expenseAccounts }, 'store:expenseAccountsLoaded');
+}
+
+async function _loadSystemSettings() {
+  const settings = await getLocalSettings();
+  const logoSetting = settings.get('logo');
+  const logoUrl = logoSetting?.value
+    ? logoSetting.value
+    : (logoSetting?.type === 'upload' ? logoSetting?.value : null);
+
+  setState({ systemSettings: settings, logoUrl }, 'store:settingsLoaded');
+}
+
+// ============================================================
+// دالة مساعدة: تحليل JSON بأمان
+// ============================================================
+
+/**
+ * يُحلّل قيمة JSON بأمان بدون إلقاء استثناء
+ * ✅ الإصلاح: بديل آمن لـ JSON.parse() المجردة في _loadNotifications
+ * @param {*} value - القيمة المُراد تحليلها
+ * @param {*} fallback - القيمة الافتراضية عند الفشل
+ * @returns {*}
+ */
+function _safeJsonParse(value, fallback = []) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return fallback;
+  if (typeof value !== 'string') return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed ?? fallback;
+  } catch {
+    console.warn('⚠️  AppStore._safeJsonParse: بيانات JSON فاسدة:', value);
+    return fallback;
+  }
+}
+
+async function _loadNotifications(user) {
+  try {
+    const allNotifs = await db.notifications
+      .orderBy('created_at')
+      .reverse()
+      .limit(50)
+      .toArray();
+
+    // فلترة بحسب target
+    const visible = allNotifs.filter(n => {
+      if (n.target === '"all"' || n.target === 'all') return true;
+      if (Array.isArray(n.target) && n.target.includes(user.id)) return true;
+      if (typeof n.target === 'string') {
+        try {
+          const parsed = JSON.parse(n.target);
+          if (parsed === 'all') return true;
+          if (Array.isArray(parsed) && parsed.includes(user.id)) return true;
+        } catch { /* تجاهل */ }
+      }
+      return false;
+    });
+
+    // فلترة المُخفية
+    // ✅ الإصلاح: استبدال JSON.parse() المجردة بـ _safeJsonParse()
+    // لمنع الانهيار عند وجود بيانات فاسدة في hidden_by أو read_by
+    const notHidden = visible.filter(n => {
+      const hidden = _safeJsonParse(n.hidden_by, []);
+      return !hidden.includes(user.id);
+    });
+
+    const unread = notHidden.filter(n => {
+      const read = _safeJsonParse(n.read_by, []);
+      return !read.includes(user.id);
+    });
+
+    setState({
+      notifications     : notHidden,
+      unreadNotifCount  : unread.length,
+    }, 'store:notificationsLoaded');
+
+  } catch (e) {
+    console.error('❌ AppStore._loadNotifications():', e);
+    // عدم انهيار الحالة — إبقاء الإشعارات فارغة
+    setState({
+      notifications    : [],
+      unreadNotifCount : 0,
+    }, 'store:notificationsLoaded');
+  }
+}
+
+async function _loadBankAccounts() {
+  const bankAccounts = await getLocalBankAccounts();
+  setState({ bankAccounts }, 'store:bankAccountsLoaded');
+}
+
+async function _loadDebtors() {
+  try {
+    const debtors = await db.debtors.toArray();
+    setState({ debtors }, 'store:debtorsLoaded');
+  } catch { /* تجاهل */ }
+}
+
+async function _loadUsers() {
+  try {
+    const users = await db.users
+      .where('is_active')
+      .equals(1)
+      .toArray();
+    setState({ users }, 'store:usersLoaded');
+  } catch { /* تجاهل */ }
+}
+
+async function _loadAgentBankAccounts(agentId) {
+  try {
+    const today = getCurrentSaudiDate();
+    const deposits = await db.transactions
+      .where('[date+agent_id]')
+      .equals([today, agentId])
+      .filter(tx => tx.type === TRANSACTION_TYPES.DEPOSIT && tx.bank_account_id)
+      .toArray();
+
+    const bankIds = [...new Set(deposits.map(d => d.bank_account_id))];
+    const bankAccounts = await db.bank_accounts
+      .where('id')
+      .anyOf(bankIds)
+      .toArray();
+
+    setState({ bankAccounts }, 'store:bankAccountsLoaded');
+  } catch { /* تجاهل */ }
+}
+
+async function _loadAgentDebtors(agentId) {
+  try {
+    const debtors = await db.debtors
+      .filter(d => {
+        try {
+          const agents = Array.isArray(d.assigned_agents)
+            ? d.assigned_agents
+            : JSON.parse(d.assigned_agents || '[]');
+          return agents.includes(agentId);
+        } catch { return false; }
+      })
+      .toArray();
+
+    setState({ debtors }, 'store:debtorsLoaded');
+  } catch { /* تجاهل */ }
+}
+
+// ============================================================
+// الاتصال والمزامنة
+// ============================================================
+
+/**
+ * يُحدّث حالة الاتصال بالإنترنت
+ * @param {boolean} online
+ */
+function setOnlineStatus(online) {
+  setState({ isOnline: online }, 'store:onlineStatusChanged');
+}
+
+/**
+ * يُحدّث عدد العمليات المعلقة في الطابور
+ * @param {number} count
+ */
+function updateSyncQueueLength(count) {
+  setState({ syncQueueLength: count }, 'store:syncQueueChanged');
+}
+
+/**
+ * يُحدّث حالة تشغيل المزامنة
+ * @param {boolean} running
+ * @param {string} [lastSyncAt]
+ */
+function setSyncRunning(running, lastSyncAt = null) {
+  setState({
+    syncRunning : running,
+    lastSyncAt  : lastSyncAt || _state.lastSyncAt,
+  }, 'store:syncStatusChanged');
+}
+
+// ============================================================
+// الإشعارات
+// ============================================================
+
+/**
+ * يُضيف إشعاراً للقائمة ويزيد العداد
+ * @param {object} notification
+ */
+function addNotification(notification) {
+  const updated = [notification, ..._state.notifications];
+  setState({
+    notifications    : updated,
+    unreadNotifCount : _state.unreadNotifCount + 1,
+  }, 'store:notificationAdded');
+}
+
+/**
+ * يُحدّث عداد الإشعارات غير المقروءة
+ */
+function decrementUnreadCount() {
+  setState({
+    unreadNotifCount: Math.max(0, _state.unreadNotifCount - 1),
+  }, 'store:notifCountChanged');
+}
+
+// ============================================================
+// KPI ولوحة المعلومات
+// ============================================================
+
+/**
+ * يُحدّث بيانات KPI في لوحة المعلومات
+ * @param {object} data
+ */
+function setKpiData(data) {
+  setState({ kpiData: data, kpiLoading: false }, 'store:kpiUpdated');
+}
+
+function setKpiLoading(loading) {
+  setState({ kpiLoading: loading });
+}
+
+// ============================================================
+// الاستماع للأحداث الخارجية (من SyncService والخدمات)
+// ============================================================
+
+window.addEventListener('store:setOnlineStatus', (e) => {
+  setOnlineStatus(e.detail.online);
+});
+
+window.addEventListener('store:updateSyncQueueLength', (e) => {
+  updateSyncQueueLength(e.detail.count);
+});
+
+window.addEventListener('store:syncRunning', (e) => {
+  setSyncRunning(e.detail.running, e.detail.lastSyncAt);
+});
+
+window.addEventListener('store:notificationsUpdated', () => {
+  const user = AuthService.getCurrentUser();
+  if (user) _loadNotifications(user);
+});
+
+window.addEventListener('store:conflictsUpdated', (e) => {
+  setState({ conflictsCount: e.detail.count }, 'store:conflictsChanged');
+});
+
+window.addEventListener('store:conflictAdded', () => {
+  setState({ conflictsCount: _state.conflictsCount + 1 }, 'store:conflictsChanged');
+});
+
+window.addEventListener('store:tempIdReplaced', (e) => {
+  const { tempId, realId } = e.detail;
+  // تحديث المعاملات في الحالة المحلية
+  const updated = _state.transactions.map(tx =>
+    tx.id === tempId ? { ...tx, id: realId, sync_status: SYNC_STATUS.SYNCED } : tx
+  );
+  setState({ transactions: updated });
+});
+
+window.addEventListener('accounting:transactionCreated', (e) => {
+  const { transaction } = e.detail;
+  if (transaction.date === _state.selectedDate) {
+    if (_state.selectedAgentId === null ||
+        _state.selectedAgentId === transaction.agent_id) {
+      addTransaction(transaction);
+    }
   }
 });
 
-// ============================================================
-// تشغيل التطبيق بعد تسجيل الدخول
-// ============================================================
+window.addEventListener('accounting:transactionReversed', (e) => {
+  markTransactionReversed(e.detail.transactionId);
+});
 
-/**
- * يُشغّل التطبيق الكامل بعد التحقق من هوية المستخدم
- * @param {object} profile - بيانات المستخدم من جدول users
- */
-async function _bootApp(profile) {
-  // إخفاء شاشة التحميل
-  _hideLoadingScreen();
-
-  // تعيين المستخدم في AppStore
-  AppStore.setCurrentUser(profile);
-
-  // ─── [المرحلة 3] إدارة IdleTimer بناءً على الدور ───
-  if (window.IdleTimer) {
-    if (profile.role === ROLES.AGENT) {
-      // المندوب فقط: تشغيل مؤقت الخمول
-      IdleTimer.start();
-      console.log('⏱️  App.js: IdleTimer مُشغَّل للمندوب:', profile.display_name);
-    } else {
-      // المدير والمساعد: إيقاف المؤقت (في حال كان يعمل من جلسة سابقة)
-      IdleTimer.stop();
-    }
-  }
-
-  // بناء هيكل التطبيق
-  _buildAppShell();
-
-  // تحميل البيانات الأساسية
-  await AppStore.refreshData();
-
-  // الاستماع لأحداث AppStore
-  _bindStoreEvents();
-
-  // الانتقال للتبويب الأول المسموح
-  const firstTab = AuthService.getAllowedTabs()[0];
-  if (firstTab) {
-    await _navigateTo(firstTab);
-  }
-
-  // تحديث التاريخ في الهيدر كل دقيقة
-  _startDateClock();
-
-  console.log(`✅ App.js: النظام جاهز — ${profile.display_name} (${profile.role})`);
-}
+window.addEventListener('auth:logout', () => {
+  clearCurrentUser();
+});
 
 // ============================================================
-// بناء هيكل التطبيق (Shell)
+// تصدير المتجر
 // ============================================================
 
-function _buildAppShell() {
-  const root = document.getElementById('app-root');
-  root.innerHTML = '';
-
-  // --- الهيدر ---
-  _headerEl = _buildHeader();
-  root.appendChild(_headerEl);
-
-  // --- شريط التنقل ---
-  _navEl = _buildNav();
-  root.appendChild(_navEl);
-
-  // --- منطقة المحتوى ---
-  _contentEl = document.createElement('main');
-  _contentEl.id = 'app-content';
-  _contentEl.className = 'app-content';
-  root.appendChild(_contentEl);
-
-  // تهيئة أيقونات Lucide
-  if (window.lucide) lucide.createIcons();
-}
-
-// ============================================================
-// بناء الهيدر
-// ============================================================
-
-function _buildHeader() {
-  const user    = AppStore.getState('currentUser');
-  const state   = AppStore.getState();
-  const logoUrl = state.logoUrl;
-  const accNum  = state.accountNumber;
-
-  const header = document.createElement('header');
-  header.id = 'app-header';
-  header.className = 'app-header';
-
-  // --- الجانب الأيمن: الشعار + العنوان ---
-  const right = document.createElement('div');
-  right.className = 'header-logo';
-
-  // الشعار
-  const logoWrap = document.createElement('div');
-  if (logoUrl) {
-    const img = document.createElement('img');
-    img.src = logoUrl;
-    img.alt = 'شعار النظام';
-    img.className = 'header-logo img';
-    img.onerror = () => { img.replaceWith(_buildLogoPlaceholder(user)); };
-    logoWrap.appendChild(img);
-  } else {
-    logoWrap.appendChild(_buildLogoPlaceholder(user));
-  }
-  right.appendChild(logoWrap);
-
-  // العنوان
-  const title = document.createElement('span');
-  title.className = 'header-title';
-  title.textContent = APP_CONFIG.NAME_SHORT;
-  right.appendChild(title);
-
-  // رقم الحساب مع زر نسخ
-  if (accNum) {
-    const accBtn = document.createElement('div');
-    accBtn.className = 'header-account-num';
-    accBtn.title = 'انقر للنسخ';
-    accBtn.innerHTML = `<span id="header-acc-num">${escapeHtml(accNum)}</span>
-      <i data-lucide="copy" style="width:13px;height:13px"></i>`;
-    accBtn.addEventListener('click', () => copyToClipboard(accNum, `رقم الحساب ${accNum} — تم النسخ`));
-    right.appendChild(accBtn);
-  }
-
-  header.appendChild(right);
-
-  // --- الوسط: معلومات المستخدم ---
-  const center = document.createElement('div');
-  center.className = 'header-user-info';
-  center.innerHTML = `<strong>${escapeHtml(user?.display_name || '')}</strong>
-    <span>${escapeHtml(ROLE_LABELS[user?.role] || '')}</span>`;
-  header.appendChild(center);
-
-  // --- التاريخ ---
-  const dateEl = document.createElement('div');
-  dateEl.id = 'header-date';
-  dateEl.className = 'header-date';
-  dateEl.textContent = formatDateArabic(getCurrentSaudiDate());
-  header.appendChild(dateEl);
-
-  // --- الجانب الأيسر: الأزرار ---
-  const actions = document.createElement('div');
-  actions.className = 'header-actions';
-
-  // زر الإشعارات
-  const notifBtn = document.createElement('button');
-  notifBtn.id = 'header-notif-btn';
-  notifBtn.className = 'header-icon-btn';
-  notifBtn.title = 'الإشعارات';
-  notifBtn.setAttribute('aria-label', 'الإشعارات');
-  notifBtn.innerHTML = '<i data-lucide="bell" style="width:18px;height:18px"></i>';
-  const notifBadge = document.createElement('span');
-  notifBadge.id = 'notif-badge';
-  notifBadge.className = 'notif-badge';
-  notifBadge.style.display = 'none';
-  notifBtn.appendChild(notifBadge);
-  notifBtn.addEventListener('click', () => _navigateTo(TABS.NOTIFICATIONS));
-
-  // زر المزامنة
-  const syncBtn = document.createElement('button');
-  syncBtn.id = 'header-sync-btn';
-  syncBtn.className = 'header-icon-btn';
-  syncBtn.title = 'مزامنة يدوية';
-  syncBtn.setAttribute('aria-label', 'مزامنة');
-  syncBtn.innerHTML = '<i data-lucide="refresh-cw" style="width:18px;height:18px"></i>';
-  syncBtn.addEventListener('click', async () => {
-    syncBtn.classList.add('animate-spin');
-    syncBtn.disabled = true;
-    await SyncService.manualSync();
-    syncBtn.classList.remove('animate-spin');
-    syncBtn.disabled = false;
-  });
-
-  // مؤشر حالة الاتصال
-  const onlineDot = document.createElement('span');
-  onlineDot.id = 'online-dot';
-  onlineDot.className = `sync-dot ${navigator.onLine ? 'synced' : 'conflict'}`;
-  onlineDot.title = navigator.onLine ? 'متصل' : 'غير متصل';
-
-  // زر تسجيل الخروج
-  const logoutBtn = document.createElement('button');
-  logoutBtn.className = 'header-icon-btn';
-  logoutBtn.title = 'تسجيل الخروج';
-  logoutBtn.setAttribute('aria-label', 'تسجيل الخروج');
-  logoutBtn.innerHTML = '<i data-lucide="log-out" style="width:18px;height:18px"></i>';
-  logoutBtn.addEventListener('click', _handleLogout);
-
-  actions.appendChild(onlineDot);
-  actions.appendChild(notifBtn);
-  actions.appendChild(syncBtn);
-  actions.appendChild(logoutBtn);
-  header.appendChild(actions);
-
-  return header;
-}
-
-function _buildLogoPlaceholder(user) {
-  const el = document.createElement('div');
-  el.className = 'header-logo-placeholder';
-  const initials = (user?.display_name || 'أ').charAt(0);
-  el.textContent = initials;
-  return el;
-}
-
-// ============================================================
-// بناء شريط التنقل
-// ============================================================
-
-function _buildNav() {
-  const nav = document.createElement('nav');
-  nav.id = 'app-nav';
-  nav.className = 'app-nav';
-  nav.setAttribute('role', 'navigation');
-  nav.setAttribute('aria-label', 'التبويبات الرئيسية');
-
-  const tabs = AuthService.getAllowedTabs();
-
-  tabs.forEach(tabId => {
-    const label = TAB_LABELS[tabId] || tabId;
-    const btn = document.createElement('button');
-    btn.className = 'nav-tab';
-    btn.dataset.tab = tabId;
-    btn.setAttribute('role', 'tab');
-    btn.setAttribute('aria-selected', 'false');
-    btn.textContent = label;
-    btn.addEventListener('click', () => _navigateTo(tabId));
-    nav.appendChild(btn);
-  });
-
-  return nav;
-}
-
-// ============================================================
-// التوجيه بين التبويبات
-// ============================================================
-
-/**
- * ينتقل لتبويب محدد ويُحمّل مكوّنه
- * @param {string} tabId
- */
-async function _navigateTo(tabId) {
-  if (!AuthService.canAccessTab(tabId)) {
-    showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
-    return;
-  }
-
-  // تحديث AppStore
-  AppStore.setCurrentTab(tabId);
-
-  // تحديث أزرار النافبار
-  _updateNavHighlight(tabId);
-
-  // تفريغ منطقة المحتوى مع أنيميشن
-  if (_contentEl) {
-    _contentEl.style.opacity = '0';
-    _contentEl.style.transform = 'translateY(6px)';
-    await sleep(120);
-    _contentEl.innerHTML = '';
-    _contentEl.style.opacity = '';
-    _contentEl.style.transform = '';
-    _contentEl.className = 'app-content animate-fade-in';
-  }
-
-  // عرض مؤشر تحميل مؤقت
-  _showContentLoader();
-
-  // تحميل وعرض المكوّن
-  try {
-    await _mountComponent(tabId);
-  } catch (e) {
-    console.error(`❌ App.js: خطأ في تحميل مكوّن ${tabId}:`, e);
-    _contentEl.innerHTML = `<div class="empty-state">
-      <div class="empty-state-icon">⚠️</div>
-      <div class="empty-state-text">حدث خطأ في تحميل هذا التبويب</div>
-    </div>`;
-  }
-}
-
-/**
- * يُركّب المكوّن المناسب في منطقة المحتوى
- * @param {string} tabId
- */
-async function _mountComponent(tabId) {
-  if (!_contentEl) return;
-
-  const componentMap = {
-    [TABS.DASHBOARD]          : () => DashboardComponent?.render(_contentEl),
-    [TABS.DATA_ENTRY]         : () => DataEntryComponent?.render(_contentEl),
-    [TABS.DAILY_SUMMARY]      : () => DailySummaryComponent?.render(_contentEl),
-    [TABS.BANK_ACCOUNTS]      : () => BankAccountsComponent?.render(_contentEl),
-    [TABS.DEBTORS]            : () => DebtorsComponent?.render(_contentEl),
-    [TABS.FAILED_DEPOSITS]    : () => FailedDepositsComponent?.render(_contentEl),
-    [TABS.NOTIFICATIONS]      : () => NotificationsComponent?.render(_contentEl),
-    [TABS.ALL_OPERATIONS]     : () => AllOperationsComponent?.render(_contentEl),
-    [TABS.AUDIT_LOG]          : () => AuditLogComponent?.render(_contentEl),
-    [TABS.USERS]              : () => UsersComponent?.render(_contentEl),
-    [TABS.ACCOUNT_MANAGEMENT] : () => AccountManagementComponent?.render(_contentEl),
-    [TABS.SETTINGS]           : () => SettingsComponent?.render(_contentEl),
-  };
-
-  const mountFn = componentMap[tabId];
-  if (mountFn) {
-    await mountFn();
-    // تجديد أيقونات Lucide بعد تحميل المحتوى
-    if (window.lucide) lucide.createIcons();
-  } else {
-    _contentEl.innerHTML = `<div class="empty-state">
-      <div class="empty-state-icon">🚧</div>
-      <div class="empty-state-text">هذا التبويب قيد التطوير</div>
-    </div>`;
-  }
-}
-
-function _showContentLoader() {
-  if (!_contentEl) return;
-  _contentEl.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:center;padding:60px 20px;">
-      <div class="spinner spinner-dark"></div>
-    </div>`;
-}
-
-function _updateNavHighlight(activeTab) {
-  if (!_navEl) return;
-  _navEl.querySelectorAll('.nav-tab').forEach(btn => {
-    const isActive = btn.dataset.tab === activeTab;
-    btn.classList.toggle('active', isActive);
-    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
-  });
-}
-
-// ============================================================
-// الاستماع لأحداث AppStore
-// ============================================================
-
-function _bindStoreEvents() {
-  // تغيير حالة الاتصال
-  AppStore.addEventListener('store:onlineStatusChanged', (e) => {
-    const { isOnline: online } = e.detail.state;
-    const dot = document.getElementById('online-dot');
-    if (dot) {
-      dot.className = `sync-dot ${online ? 'synced' : 'conflict'}`;
-      dot.title = online ? 'متصل' : 'غير متصل';
-    }
-  });
-
-  // تغيير عدد الإشعارات
-  AppStore.addEventListener('store:notificationsLoaded', (e) => {
-    _updateNotifBadge(e.detail.state.unreadNotifCount);
-  });
-
-  AppStore.addEventListener('store:notificationAdded', (e) => {
-    _updateNotifBadge(e.detail.state.unreadNotifCount);
-  });
-
-  // تغيير المستخدم
-  AppStore.addEventListener('store:userChanged', (e) => {
-    _updateHeaderUserInfo(e.detail.state);
-  });
-
-  // تغيير الشعار
-  AppStore.addEventListener('store:settingsLoaded', (e) => {
-    _updateHeaderLogo(e.detail.state.logoUrl);
-  });
-
-  // حالة المزامنة
-  AppStore.addEventListener('store:syncStatusChanged', (e) => {
-    _updateSyncIndicator(e.detail.state);
-  });
-
-  // تغيير التبويب النشط (من المكونات الداخلية)
-  AppStore.addEventListener('store:tabChanged', (e) => {
-    const { currentTab } = e.detail.state;
-    if (currentTab) _updateNavHighlight(currentTab);
-  });
-
-  // تسجيل الخروج
-  AppStore.addEventListener('store:userCleared', () => {
-    _showLoginScreen();
-  });
-}
-
-// ============================================================
-// تحديث عناصر الهيدر ديناميكياً
-// ============================================================
-
-function _updateNotifBadge(count) {
-  const badge = document.getElementById('notif-badge');
-  if (!badge) return;
-  if (count > 0) {
-    badge.textContent = count > 99 ? '99+' : String(count);
-    badge.style.display = 'flex';
-  } else {
-    badge.style.display = 'none';
-  }
-}
-
-function _updateHeaderUserInfo(state) {
-  const userInfoEl = _headerEl?.querySelector('.header-user-info');
-  if (userInfoEl && state.currentUser) {
-    userInfoEl.innerHTML = `
-      <strong>${escapeHtml(state.currentUser.display_name)}</strong>
-      <span>${escapeHtml(ROLE_LABELS[state.currentUser.role] || '')}</span>`;
-  }
-}
-
-function _updateHeaderLogo(logoUrl) {
-  const logoWrap = _headerEl?.querySelector('.header-logo');
-  if (!logoWrap) return;
-  const existing = logoWrap.querySelector('img, .header-logo-placeholder');
-  if (!existing) return;
-
-  if (logoUrl) {
-    const img = document.createElement('img');
-    img.src = logoUrl;
-    img.alt = 'شعار النظام';
-    img.className = 'header-logo img';
-    img.onerror = () => img.replaceWith(_buildLogoPlaceholder(AppStore.getState('currentUser')));
-    existing.replaceWith(img);
-  }
-}
-
-function _updateSyncIndicator(state) {
-  const syncBtn = document.getElementById('header-sync-btn');
-  if (!syncBtn) return;
-  if (state.syncRunning) {
-    syncBtn.querySelector('i')?.setAttribute('data-lucide', 'loader');
-    syncBtn.title = `مزامنة (${state.syncQueueLength || 0} عملية)`;
-  } else {
-    syncBtn.querySelector('i')?.setAttribute('data-lucide', 'refresh-cw');
-    syncBtn.title = 'مزامنة يدوية';
-  }
-  if (window.lucide) lucide.createIcons();
-}
-
-// ============================================================
-// تسجيل الدخول / الخروج
-// ============================================================
-
-function _showLoginScreen() {
-  // ─── [المرحلة 3] إيقاف IdleTimer عند العودة لشاشة الدخول ───
-  if (window.IdleTimer) {
-    IdleTimer.stop();
-  }
-
-  _hideLoadingScreen();
-  _stopDateClock();
-
-  const root = document.getElementById('app-root');
-  root.innerHTML = '';
-
-  if (window.LoginComponent) {
-    LoginComponent.render(root, _onLoginSuccess);
-  } else {
-    root.innerHTML = '<div style="padding:40px;text-align:center">جاري التحميل...</div>';
-  }
-}
-
-async function _onLoginSuccess(profile) {
-  await _bootApp(profile);
-}
-
-async function _handleLogout() {
-  // ─── [المرحلة 3] إيقاف IdleTimer قبل تسجيل الخروج ───
-  if (window.IdleTimer) {
-    IdleTimer.stop();
-  }
-
-  const confirmed = await confirmDialog(
-    'هل تريد تسجيل الخروج من النظام؟',
-    'خروج',
-    'إلغاء',
-    'warning'
-  );
-  if (!confirmed) {
-    // إذا ألغى المستخدم الخروج، أعد تشغيل IdleTimer إن كان مندوباً
-    const user = AuthService.getCurrentUser();
-    if (window.IdleTimer && user?.role === ROLES.AGENT) {
-      IdleTimer.start();
-    }
-    return;
-  }
-
-  SyncService.stop();
-  _stopDateClock();
-  await AuthService.logout();
-}
-
-// ============================================================
-// شاشة التحميل الأولية
-// ============================================================
-
-function _hideLoadingScreen() {
-  const loading = document.getElementById('app-loading');
-  if (loading) {
-    loading.style.opacity = '0';
-    setTimeout(() => loading.remove(), 400);
-  }
-}
-
-function _showFatalError(msg) {
-  _hideLoadingScreen();
-  const root = document.getElementById('app-root');
-  root.innerHTML = `
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-                min-height:100vh;gap:16px;padding:20px;background:var(--bg-page)">
-      <div style="font-size:3rem">⚠️</div>
-      <h2 style="color:var(--danger);text-align:center">${escapeHtml(msg)}</h2>
-      <button onclick="location.reload()" class="btn btn-primary">إعادة تحميل الصفحة</button>
-    </div>`;
-}
-
-// ============================================================
-// ساعة التاريخ في الهيدر
-// ============================================================
-
-function _startDateClock() {
-  const update = () => {
-    const el = document.getElementById('header-date');
-    if (el) el.textContent = formatDateArabic(getCurrentSaudiDate());
-  };
-  update();
-  // تحديث عند بداية كل دقيقة
-  const now = new Date();
-  const msToNextMin = (60 - now.getSeconds()) * 1000;
-  setTimeout(() => {
-    update();
-    _dateTimer = setInterval(update, 60000);
-  }, msToNextMin);
-}
-
-function _stopDateClock() {
-  if (_dateTimer) {
-    clearInterval(_dateTimer);
-    _dateTimer = null;
-  }
-}
-
-// ============================================================
-// تصدير
-// ============================================================
-
-window.App = {
-  navigateTo    : _navigateTo,
-  bootApp       : _bootApp,
-  onLoginSuccess: _onLoginSuccess,
-};
-
-// تصدير للاستخدام الداخلي من المكونات
-window._appNavigateTo = _navigateTo;
-
-console.log('✅ App.js محمّل — التطبيق الرئيسي جاهز (مع IdleTimer للمندوبين)');
+Object.assign(AppStore, {
+  setState,
+  getState,
+  setCurrentUser,
+  clearCurrentUser,
+  setCurrentTab,
+  addTransaction,
+  updateTransaction,
+  deleteTransaction,
+  markTransactionReversed,
+  refreshTransactions,
+  setSelectedDate,
+  setSelectedAgent,
+  refreshData,
+  setOnlineStatus,
+  updateSyncQueueLength,
+  setSyncRunning,
+  addNotification,
+  decrementUnreadCount,
+  setKpiData,
+  setKpiLoading,
+});
+
+window.AppStore = AppStore;
+
+console.log('✅ AppStore.js محمّل — إدارة الحالة المركزية جاهزة');
