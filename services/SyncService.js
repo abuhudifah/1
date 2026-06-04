@@ -145,24 +145,44 @@ async function _triggerSync(reason = 'manual') {
 
 /**
  * يُزامن جميع الجداول التي قد تحتوي على سجلات معلقة
+ * ✅ إصلاح: تخطي الجداول التي لها عمليات نشطة في SyncQueue
+ * لمنع الازدواجية مع processQueue() والكتابة المزدوجة على Supabase
  */
 async function _syncPendingRecords() {
-  const tablesToSync = [
-    TABLES.TRANSACTIONS,
-    TABLES.FAILED_DEPOSITS,
-    TABLES.DEBTORS,
-    TABLES.NOTIFICATIONS,
-  ];
+  try {
+    // جلب أسماء الجداول التي لها عمليات نشطة في الطابور
+    const activeQueueItems = await db.sync_queue
+      .where('sync_status')
+      .anyOf(['pending', 'processing'])
+      .toArray();
 
-  for (const table of tablesToSync) {
-    try {
-      const result = await repo.syncPendingOperations(table);
-      if (isOk(result) && result.data.synced > 0) {
-        console.log(`   ✓ ${table}: ${result.data.synced} سجل مُزامَن`);
+    const queuedTables = new Set(activeQueueItems.map(item => item.table_name));
+
+    const tablesToSync = [
+      TABLES.TRANSACTIONS,
+      TABLES.FAILED_DEPOSITS,
+      TABLES.DEBTORS,
+      TABLES.NOTIFICATIONS,
+    ];
+
+    for (const table of tablesToSync) {
+      // ✅ تخطي الجداول التي في الطابور — سيتولاها processQueue
+      if (queuedTables.has(table)) {
+        console.log(`   ⏭️  ${table}: تم التخطي (موجود في طابور المزامنة)`);
+        continue;
       }
-    } catch (e) {
-      console.warn(`   ⚠️  فشل مزامنة ${table}:`, e.message);
+
+      try {
+        const result = await repo.syncPendingOperations(table);
+        if (isOk(result) && result.data.synced > 0) {
+          console.log(`   ✓ ${table}: ${result.data.synced} سجل مُزامَن`);
+        }
+      } catch (e) {
+        console.warn(`   ⚠️  فشل مزامنة ${table}:`, e.message);
+      }
     }
+  } catch (e) {
+    console.warn('⚠️  فشل _syncPendingRecords:', e.message);
   }
 }
 
