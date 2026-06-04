@@ -1,16 +1,22 @@
 /**
- * components/DataEntryComponent.js — v3.1
- * إصلاحات المرحلة الحالية:
- * FIX #3:  المندوب يرى جميع البنوك (جلب مباشر من Supabase/Dexie بدلاً من AppStore.bankAccounts المُفلتَرة)
- * FIX #12: التحقق من اختيار البنك عند payType === 'card' قبل الحفظ
- * FIX #30: استخدام isOnline() الموحدة بدلاً من navigator.onLine المباشر
+ * components/DataEntryComponent.js — v4.0
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * الإصلاحات:
+ * ✅ 1. استبدال navigator.onLine بـ isOnline() الموحدة (كل المواضع)
+ * ✅ 2. المدير يختار أي مستخدم مسجل لإدخال البيانات بدلاً عنه
+ * ✅ 3. التحصيل: عند "سحب من بطاقة" تظهر قائمة الحسابات البنكية
+ *         وينعكس الأمر على الحساب البنكي مباشرةً (سحب نقدي)
+ * ✅ 4. الإيداع: قائمة الحسابات البنكية تعرض السقف والمتبقي
+ * ✅ 5. لا يُسمح بالحفظ بدون اختيار بنك عند payType='card' أو 'deposit'
+ * ✅ 6. إضافة placeholder واضح لحقول المبلغ
+ * ✅ 7. مسح النموذج بعد الحفظ بشكل صحيح
  */
 'use strict';
 
 const DataEntryComponent = {
-  _activeForm : 'collection',
-  _container  : null,
-  _sortedBanks: [],
+  _activeForm  : 'collection',
+  _container   : null,
+  _sortedBanks : [],
 
   async render(container) {
     this._container = container;
@@ -19,34 +25,27 @@ const DataEntryComponent = {
     container.appendChild(await this._buildPage());
   },
 
+  /* ── جلب البنوك وترتيبها ── */
   async _prepareSortedBanks() {
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
-
-    // FIX #3 + FIX #30:
-    // - نجلب كل البنوك مباشرة من Supabase/Dexie بدون الاعتماد على
-    //   AppStore.bankAccounts التي تُفلتَر للمندوب بحسب إيداعاته اليوم فقط.
-    // - نستخدم isOnline() الموحدة بدلاً من navigator.onLine.
-    let allBanks = [];
+    let allBanks  = [];
     try {
+      /* ✅ isOnline() */
       if (isOnline()) {
         const { data } = await supabaseClient
           .from('bank_accounts')
-          .select('id,name,financial_ceiling,company_id')
+          .select('id,name,financial_ceiling,company_id,reset_time')
           .order('name');
         allBanks = data || [];
       } else {
         allBanks = await db.bank_accounts.toArray();
       }
     } catch {
-      // آخر ملاذ: AppStore (قد تكون فارغة للمندوب الجديد)
       allBanks = AppStore.getState('bankAccounts') || [];
     }
+    if (!allBanks.length) allBanks = AppStore.getState('bankAccounts') || [];
 
-    if (!allBanks.length) {
-      allBanks = AppStore.getState('bankAccounts') || [];
-    }
-
-    // ترتيب البنوك حسب آخر نشاط للمندوب
+    /* ترتيب حسب آخر نشاط للمندوب */
     let lastActivityMap = {};
     try {
       if (isOnline() && agentId) {
@@ -59,19 +58,18 @@ const DataEntryComponent = {
           .order('created_at', { ascending: false })
           .limit(100);
         (data || []).forEach(d => {
-          if (d.bank_account_id && !lastActivityMap[d.bank_account_id]) {
+          if (d.bank_account_id && !lastActivityMap[d.bank_account_id])
             lastActivityMap[d.bank_account_id] = d.created_at;
-          }
         });
       }
     } catch {}
 
     this._sortedBanks = [...allBanks].sort((a, b) => {
-      const aTime = lastActivityMap[a.id] || '';
-      const bTime = lastActivityMap[b.id] || '';
-      if (aTime && bTime) return bTime.localeCompare(aTime);
-      if (aTime) return -1;
-      if (bTime) return 1;
+      const aT = lastActivityMap[a.id] || '';
+      const bT = lastActivityMap[b.id] || '';
+      if (aT && bT) return bT.localeCompare(aT);
+      if (aT) return -1;
+      if (bT) return  1;
       return (a.name || '').localeCompare(b.name || '');
     });
   },
@@ -87,6 +85,7 @@ const DataEntryComponent = {
     title.textContent = 'إدخال البيانات';
     header.appendChild(title);
 
+    /* ✅ المدير يختار أي مستخدم مسجل */
     if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
       const agentFilter = this._buildAgentFilter();
       header.appendChild(agentFilter);
@@ -103,31 +102,63 @@ const DataEntryComponent = {
     return wrap;
   },
 
+  /* ✅ فلتر المستخدم المحسَّن — يشمل جميع المستخدمين المسجلين */
   _buildAgentFilter() {
-    const wrap = document.createElement('div');
+    const wrap  = document.createElement('div');
     wrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
 
     const label = document.createElement('label');
     label.style.cssText = 'font-size:0.85rem;color:var(--text-secondary);white-space:nowrap;';
-    label.textContent = 'إدخال نيابة عن:';
+    label.textContent = 'إدخال بدلاً عن:';
     wrap.appendChild(label);
 
     const select = document.createElement('select');
     select.id = 'agent-filter-select';
     select.className = 'form-control';
-    select.style.cssText = 'min-width:180px;max-width:220px;padding:8px 12px;font-size:0.88rem;';
+    select.style.cssText = 'min-width:200px;max-width:240px;padding:8px 12px;font-size:0.88rem;';
 
     const currentUser = AuthService.getCurrentUser();
-    select.innerHTML = `<option value="">— نفسي (${escapeHtml(currentUser?.display_name || 'الحساب الحالي')})</option>`;
 
-    const agents = AppStore.getState('users').filter(u => u.role === ROLES.AGENT && u.is_active);
-    agents.forEach(a => {
-      const opt = document.createElement('option');
-      opt.value = a.id;
-      opt.textContent = a.display_name;
-      select.appendChild(opt);
-    });
+    /* الخيار الافتراضي: نفسه */
+    const selfOpt = document.createElement('option');
+    selfOpt.value = '';
+    selfOpt.textContent = `👤 ${currentUser?.display_name || 'نفسي'} (أنا)`;
+    select.appendChild(selfOpt);
 
+    /* ✅ جميع المستخدمين النشطين (ليس فقط المناديب) */
+    const allUsers = AppStore.getState('users').filter(u =>
+      u.is_active && u.id !== currentUser?.id
+    );
+
+    /* تجميع حسب الدور */
+    const agents    = allUsers.filter(u => u.role === ROLES.AGENT);
+    const admins    = allUsers.filter(u => u.role !== ROLES.AGENT);
+
+    if (agents.length) {
+      const grpAgent = document.createElement('optgroup');
+      grpAgent.label = '— المناديب —';
+      agents.forEach(a => {
+        const o = document.createElement('option');
+        o.value = a.id;
+        o.textContent = a.display_name;
+        grpAgent.appendChild(o);
+      });
+      select.appendChild(grpAgent);
+    }
+
+    if (admins.length) {
+      const grpAdmin = document.createElement('optgroup');
+      grpAdmin.label = '— الإدارة —';
+      admins.forEach(a => {
+        const o = document.createElement('option');
+        o.value = a.id;
+        o.textContent = `${a.display_name} (${ROLE_LABELS[a.role] || a.role})`;
+        grpAdmin.appendChild(o);
+      });
+      select.appendChild(grpAdmin);
+    }
+
+    /* تعيين القيمة المحفوظة */
     const savedAgent = AppStore.getState('selectedAgentId');
     if (savedAgent) select.value = savedAgent;
 
@@ -161,8 +192,8 @@ const DataEntryComponent = {
       btn.id = `form-tab-${f.id}`;
       btn.style.cssText = `
         flex:1;min-width:90px;padding:10px 8px;border:none;border-radius:12px;
-        background:${this._activeForm===f.id?'var(--accent)':'transparent'};
-        color:${this._activeForm===f.id?'#fff':'var(--text-secondary)'};
+        background:${this._activeForm === f.id ? 'var(--accent)' : 'transparent'};
+        color:${this._activeForm === f.id ? '#fff' : 'var(--text-secondary)'};
         font-family:inherit;font-size:0.85rem;font-weight:600;
         cursor:pointer;transition:all 0.18s;white-space:nowrap;
         display:flex;align-items:center;justify-content:center;gap:6px;`;
@@ -179,7 +210,6 @@ const DataEntryComponent = {
       });
       wrap.appendChild(btn);
     });
-
     return wrap;
   },
 
@@ -196,31 +226,34 @@ const DataEntryComponent = {
     container.appendChild(card);
   },
 
-  _field(id, label, required=false) {
+  /* ── دوال مساعدة للنموذج ── */
+  _field(id, label, required = false) {
     const wrap = document.createElement('div');
     wrap.className = 'form-group';
     const lbl = document.createElement('label');
     lbl.className = 'form-label';
     lbl.htmlFor = id;
-    lbl.innerHTML = escapeHtml(label) + (required?' <span class="required">*</span>':'');
+    lbl.innerHTML = escapeHtml(label) + (required ? ' <span class="required">*</span>' : '');
     wrap.appendChild(lbl);
     return wrap;
   },
 
-  _input(id, type='text', placeholder='', attrs={}) {
+  _input(id, type = 'text', placeholder = '', attrs = {}) {
     const el = document.createElement('input');
     el.id = id; el.type = type; el.placeholder = placeholder;
     el.className = 'form-control';
-    Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v));
+    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
     return el;
   },
 
   _errMsg(id) {
     const el = document.createElement('div');
-    el.id = id; el.className = 'form-error'; return el;
+    el.id = id; el.className = 'form-error';
+    return el;
   },
 
-  _buildBankSelect(selectId, placeholder='— اختر الحساب البنكي —') {
+  /* ── بناء قائمة الحسابات البنكية مع السقف ── */
+  _buildBankSelect(selectId, placeholder = '— اختر الحساب البنكي —') {
     const select = document.createElement('select');
     select.id = selectId;
     select.className = 'form-control';
@@ -233,18 +266,18 @@ const DataEntryComponent = {
     this._sortedBanks.forEach((b, idx) => {
       const opt = document.createElement('option');
       opt.value = b.id;
-      opt.textContent = idx === 0 && this._sortedBanks.length > 1
-        ? `★ ${b.name}`
-        : b.name;
+      const star  = (idx === 0 && this._sortedBanks.length > 1) ? '★ ' : '';
+      const ceil  = b.financial_ceiling ? ` — سقف: ${Math.round(b.financial_ceiling).toLocaleString('en-US')}` : '';
+      opt.textContent = `${star}${b.name}${ceil}`;
       select.appendChild(opt);
     });
 
     return select;
   },
 
-  // ═══════════════════════════════════════════════
-  // 1. نموذج التحصيل
-  // ═══════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════
+     1. نموذج التحصيل
+  ═══════════════════════════════════════════════ */
   _buildCollectionForm() {
     const frag = document.createDocumentFragment();
 
@@ -253,60 +286,90 @@ const DataEntryComponent = {
     title.innerHTML = '<span>💰</span><span>تحصيل</span>';
     frag.appendChild(title);
 
-    const typeField = this._field('col-type','نوع التحصيل',true);
+    /* نوع الدفع */
+    const typeField = this._field('col-pay-type', 'نوع الدفع', true);
     const typeSelect = document.createElement('select');
-    typeSelect.id = 'col-type';
+    typeSelect.id = 'col-pay-type';
     typeSelect.className = 'form-control';
     typeSelect.innerHTML = `
       <option value="cash">نقدي</option>
-      <option value="card">سحب بطاقة</option>`;
+      <option value="card">سحب من بطاقة (يُسجَّل على الحساب البنكي)</option>`;
     typeField.appendChild(typeSelect);
     frag.appendChild(typeField);
 
-    // FIX #12: أضفنا required=true على label البنك لتوضيح الإلزامية بصرياً
-    const bankWrap = document.createElement('div');
-    bankWrap.id = 'col-bank-wrap';
-    bankWrap.style.display = 'none';
-    const bankField = this._field('col-bank-account','الحساب البنكي (سحب بطاقة)',true);
-    const bankSelect = this._buildBankSelect('col-bank-account','— اختر الحساب البنكي —');
+    /* ✅ قائمة الحسابات البنكية — تظهر دائماً لكن مطلوبة فقط عند card */
+    const bankField = this._field('col-bank-account', 'الحساب البنكي للسحب');
+    const bankSelect = this._buildBankSelect('col-bank-account', '— اختر حساب السحب —');
     bankField.appendChild(bankSelect);
-    // رسالة الخطأ الخاصة بالبنك في التحصيل
     bankField.appendChild(this._errMsg('col-bank-account-err'));
-    bankWrap.appendChild(bankField);
-    frag.appendChild(bankWrap);
+    /* تُخفى في البداية */
+    bankField.style.display = 'none';
+    frag.appendChild(bankField);
 
-    typeSelect.addEventListener('change', () => {
-      bankWrap.style.display = typeSelect.value === 'card' ? 'block' : 'none';
-      // مسح الخطأ عند تغيير النوع
+    /* معلومات الحساب المختار */
+    const bankInfo = document.createElement('div');
+    bankInfo.id = 'col-bank-info';
+    bankInfo.style.cssText = 'display:none;margin:-8px 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg-input);font-size:0.82rem;border:1px solid var(--border-color);';
+    frag.appendChild(bankInfo);
+
+    /* إظهار/إخفاء قائمة البنوك حسب نوع الدفع */
+    typeSelect.addEventListener('change', async () => {
+      const isCard = typeSelect.value === 'card';
+      bankField.style.display = isCard ? '' : 'none';
+      bankInfo.style.display  = (isCard && bankSelect.value) ? '' : 'none';
       const errEl = document.getElementById('col-bank-account-err');
       if (errEl) errEl.textContent = '';
     });
 
-    const amtField = this._field('col-amount','المبلغ',true);
-    const amtInput = this._input('col-amount','number','0',{min:'1',step:'1'});
+    /* عرض معلومات البنك عند الاختيار */
+    bankSelect.addEventListener('change', async () => {
+      const bank = this._sortedBanks.find(b => b.id === bankSelect.value);
+      if (!bank) { bankInfo.style.display = 'none'; return; }
+      const today    = getCurrentSaudiDate();
+      const total    = await AccountingService.getDailyDepositsTotal(bank.id, today);
+      const ceil     = parseFloat(bank.financial_ceiling) || 0;
+      const pct      = ceil > 0 ? Math.min(100, (total / ceil) * 100) : 0;
+      const rem      = Math.max(0, ceil - total);
+      const cls      = getProgressClass ? getProgressClass(pct) : (pct >= 80 ? 'high' : pct >= 50 ? 'medium' : 'low');
+      bankInfo.style.display = '';
+      bankInfo.innerHTML = `
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+          <span style="color:var(--text-secondary);">الإيداعات اليومية</span>
+          <span style="font-weight:700;">${formatCurrency(total)}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill ${cls}" style="width:${pct}%;"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;color:var(--text-muted);font-size:0.76rem;">
+          <span>السقف: ${formatCurrency(ceil)}</span>
+          <span style="color:${rem < ceil * 0.1 ? 'var(--danger)' : 'var(--success)'};">المتبقي: ${formatCurrency(rem)}</span>
+        </div>`;
+    });
+
+    /* المبلغ */
+    const amtField = this._field('col-amount', 'المبلغ', true);
+    const amtInput = this._input('col-amount', 'number', 'أدخل المبلغ بالريال', { min:'1', step:'1' });
     amtField.appendChild(amtInput);
     amtField.appendChild(this._errMsg('col-amount-err'));
     frag.appendChild(amtField);
 
+    /* البحث عن العميل */
     frag.appendChild(this._buildCustomerSearch());
 
-    const compField = this._field('col-company','لصالح شركة (اختياري)');
+    /* الشركة */
+    const compField = this._field('col-company', 'لصالح شركة (اختياري)');
     const compSelect = document.createElement('select');
-    compSelect.id = 'col-company';
-    compSelect.className = 'form-control';
+    compSelect.id = 'col-company'; compSelect.className = 'form-control';
     compSelect.innerHTML = `<option value="">— اختر شركة —</option>`;
     AppStore.getState('companies').forEach(c => {
       const o = document.createElement('option');
-      o.value = c.id; o.textContent = c.name;
-      compSelect.appendChild(o);
+      o.value = c.id; o.textContent = c.name; compSelect.appendChild(o);
     });
     compField.appendChild(compSelect);
     frag.appendChild(compField);
 
-    frag.appendChild(this._saveBtn('col-save-btn','💾 حفظ التحصيل', async () => {
+    frag.appendChild(this._saveBtn('col-save-btn', '💾 حفظ التحصيل', async () => {
       await this._saveCollection({
         payType   : typeSelect.value,
-        bankId    : document.getElementById('col-bank-account')?.value || null,
+        bankId    : typeSelect.value === 'card' ? bankSelect.value : null,
         amount    : amtInput.value,
         customer  : document.getElementById('col-customer-search')?.value?.trim() || '',
         customerId: document.getElementById('col-debtor-id')?.value || null,
@@ -317,17 +380,16 @@ const DataEntryComponent = {
     return frag;
   },
 
+  /* ── بحث العملاء المديونين ── */
   _buildCustomerSearch() {
-    const field = this._field('col-customer-search','بحث عن عميل');
-    const wrap = document.createElement('div');
+    const field = this._field('col-customer-search', 'بحث عن عميل');
+    const wrap  = document.createElement('div');
     wrap.style.position = 'relative';
 
     const input = document.createElement('input');
-    input.id = 'col-customer-search';
-    input.type = 'text';
+    input.id = 'col-customer-search'; input.type = 'text';
     input.className = 'form-control';
-    input.placeholder = 'اكتب اسم العميل...';
-    input.autocomplete = 'off';
+    input.placeholder = 'اكتب اسم العميل...'; input.autocomplete = 'off';
 
     const dd = document.createElement('div');
     dd.id = 'col-customer-dropdown';
@@ -338,7 +400,7 @@ const DataEntryComponent = {
       max-height:220px;overflow-y:auto;display:none;
       backdrop-filter:blur(16px);margin-top:4px;`;
 
-    const custId = document.createElement('input');
+    const custId   = document.createElement('input');
     custId.type = 'hidden'; custId.id = 'col-debtor-id';
 
     const debtInfo = document.createElement('div');
@@ -350,55 +412,47 @@ const DataEntryComponent = {
     const render = q => {
       const trimQ = q.trim().toLowerCase();
       dd.innerHTML = '';
-      const matches = trimQ ? allDebtors.filter(d=>d.name.toLowerCase().includes(trimQ)) : allDebtors.slice(0,8);
+      const matches = trimQ
+        ? allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ))
+        : allDebtors.slice(0, 10);
+      if (!matches.length) { dd.style.display = 'none'; return; }
       matches.forEach(d => {
         const item = document.createElement('div');
         item.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-color);transition:background 150ms;';
-        item.innerHTML = `<span style="font-weight:600;font-size:0.88rem;">${escapeHtml(d.name)}</span><span style="font-size:0.78rem;color:var(--danger);direction:ltr;font-weight:700;">${Math.round(d.debt_amount||0).toLocaleString('en-US')} ر.س</span>`;
-        item.addEventListener('mouseenter',()=>{item.style.background='var(--bg-hover)';});
-        item.addEventListener('mouseleave',()=>{item.style.background='';});
-        item.addEventListener('mousedown',e=>{
-          e.preventDefault();
-          input.value = d.name; custId.value = d.id;
-          debtInfo.style.display='block';
-          debtInfo.innerHTML=`💳 مديونية العميل: <strong style="color:var(--danger);">${Math.round(d.debt_amount||0).toLocaleString('en-US')} ر.س</strong>`;
-          dd.style.display='none';
+        item.innerHTML = `
+          <div>
+            <div style="font-weight:600;font-size:0.88rem;">${escapeHtml(d.name)}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted);">${escapeHtml(d.region || '—')}</div>
+          </div>
+          <div style="font-weight:700;color:${d.debt_amount > 0 ? 'var(--danger)' : 'var(--success)'};">
+            ${formatCurrency(d.debt_amount || 0)}
+          </div>`;
+        item.addEventListener('mouseenter', () => { item.style.background = 'var(--bg-hover)'; });
+        item.addEventListener('mouseleave', () => { item.style.background = ''; });
+        item.addEventListener('click', () => {
+          input.value   = d.name;
+          custId.value  = d.id;
+          dd.style.display = 'none';
+          debtInfo.style.display = '';
+          debtInfo.innerHTML = `💳 المديونية: <strong style="color:var(--danger);">${formatCurrency(d.debt_amount || 0)}</strong>`;
         });
         dd.appendChild(item);
       });
-      if (trimQ && !matches.find(d=>d.name.toLowerCase()===trimQ)) {
-        const ni = document.createElement('div');
-        ni.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--accent);font-weight:600;font-size:0.85rem;';
-        ni.innerHTML = `<span>➕</span><span>إنشاء عميل: "${escapeHtml(q.trim())}"</span>`;
-        ni.addEventListener('mousedown',async e=>{
-          e.preventDefault();
-          const res = await repo.create(TABLES.DEBTORS,{name:q.trim(),debt_amount:0,assigned_agents:[AuthService.getCurrentUserId()]});
-          if(isOk(res)){
-            custId.value=res.data.id||'';
-            debtInfo.style.display='block';
-            debtInfo.innerHTML=`✅ تم إنشاء حساب للعميل "<strong>${escapeHtml(q.trim())}</strong>"`;
-            debtInfo.style.background='rgba(5,150,105,0.08)';
-            showToast(`تم إنشاء حساب: ${q.trim()}`,'success');
-          }
-          dd.style.display='none';
-        });
-        dd.appendChild(ni);
-      }
-      dd.style.display=(matches.length>0||trimQ)?'block':'none';
+      dd.style.display = '';
     };
 
-    input.addEventListener('input',()=>{ custId.value=''; debtInfo.style.display='none'; render(input.value); });
-    input.addEventListener('focus',()=>render(input.value));
-    document.addEventListener('click',e=>{ if(!wrap.contains(e.target)) dd.style.display='none'; });
+    input.addEventListener('input', () => { custId.value = ''; debtInfo.style.display = 'none'; render(input.value); });
+    input.addEventListener('focus', () => render(input.value));
+    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dd.style.display = 'none'; });
 
     wrap.appendChild(input); wrap.appendChild(dd); wrap.appendChild(custId);
     field.appendChild(wrap); field.appendChild(debtInfo);
     return field;
   },
 
-  // ═══════════════════════════════════════════════
-  // 2. نموذج الإيداع
-  // ═══════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════
+     2. نموذج الإيداع
+  ═══════════════════════════════════════════════ */
   _buildDepositForm() {
     const frag = document.createDocumentFragment();
 
@@ -407,8 +461,9 @@ const DataEntryComponent = {
     title.innerHTML = '<span>🏦</span><span>إيداع بنكي</span>';
     frag.appendChild(title);
 
-    const bankField = this._field('dep-bank','الحساب البنكي',true);
-    const bankSelect = this._buildBankSelect('dep-bank','— اختر الحساب البنكي —');
+    /* ✅ قائمة البنوك مع السقف والمتبقي */
+    const bankField = this._field('dep-bank', 'الحساب البنكي للإيداع', true);
+    const bankSelect = this._buildBankSelect('dep-bank', '— اختر الحساب البنكي —');
     bankField.appendChild(bankSelect);
     bankField.appendChild(this._errMsg('dep-bank-err'));
     frag.appendChild(bankField);
@@ -419,15 +474,16 @@ const DataEntryComponent = {
     frag.appendChild(ceilingInfo);
 
     bankSelect.addEventListener('change', async () => {
-      const bank = this._sortedBanks.find(b=>b.id===bankSelect.value);
-      if (!bank) { ceilingInfo.style.display='none'; return; }
-      const total   = await AccountingService.getDailyDepositsTotal(bank.id, getCurrentSaudiDate());
-      const ceil    = parseFloat(bank.financial_ceiling)||0;
-      const pct     = Math.min(100,(total/ceil)*100);
-      const rem     = Math.max(0,ceil-total);
-      const cls     = getProgressClass(pct);
-      ceilingInfo.style.display='block';
-      ceilingInfo.innerHTML=`
+      const bank = this._sortedBanks.find(b => b.id === bankSelect.value);
+      if (!bank) { ceilingInfo.style.display = 'none'; return; }
+      const today = getCurrentSaudiDate();
+      const total = await AccountingService.getDailyDepositsTotal(bank.id, today);
+      const ceil  = parseFloat(bank.financial_ceiling) || 0;
+      const pct   = ceil > 0 ? Math.min(100, (total / ceil) * 100) : 0;
+      const rem   = Math.max(0, ceil - total);
+      const cls   = getProgressClass ? getProgressClass(pct) : (pct >= 80 ? 'high' : pct >= 50 ? 'medium' : 'low');
+      ceilingInfo.style.display = '';
+      ceilingInfo.innerHTML = `
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
           <span style="color:var(--text-secondary);">إيداعات اليوم</span>
           <span style="font-weight:700;">${formatCurrency(total)}</span>
@@ -435,42 +491,44 @@ const DataEntryComponent = {
         <div class="progress-bar"><div class="progress-fill ${cls}" style="width:${pct}%;"></div></div>
         <div style="display:flex;justify-content:space-between;margin-top:5px;color:var(--text-muted);font-size:0.76rem;">
           <span>السقف: ${formatCurrency(ceil)}</span>
-          <span style="color:${rem<ceil*0.1?'var(--danger)':'var(--success)'};">المتبقي: ${formatCurrency(rem)}</span>
+          <span style="color:${rem < ceil * 0.1 ? 'var(--danger)' : 'var(--success)'};">المتبقي: ${formatCurrency(rem)}</span>
         </div>`;
     });
 
-    const amtField = this._field('dep-amount','المبلغ',true);
-    const amtInput = this._input('dep-amount','number','0',{min:'1',step:'1'});
+    /* المبلغ */
+    const amtField = this._field('dep-amount', 'المبلغ', true);
+    const amtInput = this._input('dep-amount', 'number', 'أدخل مبلغ الإيداع', { min:'1', step:'1' });
     amtField.appendChild(amtInput);
     amtField.appendChild(this._errMsg('dep-amount-err'));
     frag.appendChild(amtField);
 
-    const notesField = this._field('dep-notes','ملاحظات (اختياري)');
+    /* ملاحظات */
+    const notesField = this._field('dep-notes', 'ملاحظات (اختياري)');
     const notesInput = document.createElement('textarea');
-    notesInput.id='dep-notes'; notesInput.className='form-control'; notesInput.rows=2;
-    notesInput.placeholder='أي تفاصيل إضافية';
+    notesInput.id = 'dep-notes'; notesInput.className = 'form-control';
+    notesInput.rows = 2; notesInput.placeholder = 'أي تفاصيل إضافية';
     notesField.appendChild(notesInput);
     frag.appendChild(notesField);
 
     const hint = document.createElement('div');
-    hint.style.cssText='padding:10px 14px;border-radius:10px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.15);font-size:0.78rem;color:var(--accent);margin-bottom:16px;line-height:1.7;';
-    hint.textContent='ℹ️  سيتم تسجيل قيدين محاسبيين تلقائياً: إيداع في البنك + براءة ذمة المندوب.';
+    hint.style.cssText = 'padding:10px 14px;border-radius:10px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.15);font-size:0.78rem;color:var(--accent);margin-bottom:16px;line-height:1.7;';
+    hint.textContent = 'ℹ️ سيتم تسجيل قيدين محاسبيين تلقائياً: إيداع في البنك + براءة ذمة المندوب.';
     frag.appendChild(hint);
 
-    frag.appendChild(this._saveBtn('dep-save-btn','💾 حفظ الإيداع', async () => {
+    frag.appendChild(this._saveBtn('dep-save-btn', '💾 حفظ الإيداع', async () => {
       await this._saveDeposit({
-        bankId: bankSelect.value,
-        amount: amtInput.value,
-        notes : notesInput.value.trim(),
+        bankId : bankSelect.value,
+        amount : amtInput.value,
+        notes  : notesInput.value.trim(),
       });
     }));
 
     return frag;
   },
 
-  // ═══════════════════════════════════════════════
-  // 3. نموذج المصروف
-  // ═══════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════
+     3. نموذج المصروف
+  ═══════════════════════════════════════════════ */
   _buildExpenseForm() {
     const frag = document.createDocumentFragment();
 
@@ -479,62 +537,66 @@ const DataEntryComponent = {
     title.innerHTML = '<span>💸</span><span>مصروف</span>';
     frag.appendChild(title);
 
-    const typeField=this._field('exp-type','نوع المصروف',true);
-    const typeSelect=document.createElement('select');
-    typeSelect.id='exp-type'; typeSelect.className='form-control';
-    typeSelect.innerHTML='<option value="">— اختر النوع —</option>';
-    AppStore.getState('expenseAccounts').forEach(e=>{
-      const o=document.createElement('option');
-      o.value=e.code; o.textContent=e.name; typeSelect.appendChild(o);
+    /* نوع المصروف */
+    const typeField = this._field('exp-type', 'نوع المصروف', true);
+    const typeSelect = document.createElement('select');
+    typeSelect.id = 'exp-type'; typeSelect.className = 'form-control';
+    typeSelect.innerHTML = '<option value="">— اختر النوع —</option>';
+    AppStore.getState('expenseAccounts').forEach(e => {
+      const o = document.createElement('option');
+      o.value = e.code; o.textContent = e.name; typeSelect.appendChild(o);
     });
-    const newOpt=document.createElement('option');
-    newOpt.value='__new__'; newOpt.textContent='+ إضافة نوع جديد';
+    const newOpt = document.createElement('option');
+    newOpt.value = '__new__'; newOpt.textContent = '+ إضافة نوع جديد';
     typeSelect.appendChild(newOpt);
     typeField.appendChild(typeSelect);
     typeField.appendChild(this._errMsg('exp-type-err'));
     frag.appendChild(typeField);
 
-    const newTypeWrap=document.createElement('div');
-    newTypeWrap.style.display='none';
-    const newTypeField=this._field('exp-new-type','اسم النوع الجديد');
-    const newTypeInput=this._input('exp-new-type','text','مثال: غرامات');
+    /* نوع جديد */
+    const newTypeWrap = document.createElement('div');
+    newTypeWrap.style.display = 'none';
+    const newTypeField = this._field('exp-new-type', 'اسم النوع الجديد');
+    const newTypeInput = this._input('exp-new-type', 'text', 'مثال: غرامات');
     newTypeField.appendChild(newTypeInput);
     newTypeWrap.appendChild(newTypeField);
     frag.appendChild(newTypeWrap);
-    typeSelect.addEventListener('change',()=>{
-      newTypeWrap.style.display=typeSelect.value==='__new__'?'block':'none';
+    typeSelect.addEventListener('change', () => {
+      newTypeWrap.style.display = typeSelect.value === '__new__' ? '' : 'none';
     });
 
-    const amtField=this._field('exp-amount','المبلغ',true);
-    const amtInput=this._input('exp-amount','number','0',{min:'1',step:'1'});
+    /* المبلغ */
+    const amtField = this._field('exp-amount', 'المبلغ', true);
+    const amtInput = this._input('exp-amount', 'number', 'أدخل مبلغ المصروف', { min:'1', step:'1' });
     amtField.appendChild(amtInput);
     amtField.appendChild(this._errMsg('exp-amount-err'));
     frag.appendChild(amtField);
 
-    const detField=this._field('exp-details','التفاصيل (اختياري)');
-    const detInput=document.createElement('textarea');
-    detInput.id='exp-details'; detInput.className='form-control'; detInput.rows=2;
-    detInput.placeholder='وصف المصروف';
+    /* التفاصيل */
+    const detField = this._field('exp-details', 'التفاصيل (اختياري)');
+    const detInput = document.createElement('textarea');
+    detInput.id = 'exp-details'; detInput.className = 'form-control';
+    detInput.rows = 2; detInput.placeholder = 'وصف المصروف';
     detField.appendChild(detInput);
     frag.appendChild(detField);
 
-    frag.appendChild(this._saveBtn('exp-save-btn','💾 حفظ المصروف', async () => {
-      let expType=typeSelect.value;
-      if(expType==='__new__'){
-        const name=newTypeInput.value.trim();
-        if(!name){showToast('أدخل اسم النوع','warning');return;}
-        expType='EXP_'+name.toUpperCase().replace(/\s/g,'_');
-        await repo.create(TABLES.EXPENSE_ACCOUNTS,{name,code:expType});
+    frag.appendChild(this._saveBtn('exp-save-btn', '💾 حفظ المصروف', async () => {
+      let expType = typeSelect.value;
+      if (expType === '__new__') {
+        const name = newTypeInput.value.trim();
+        if (!name) { showToast('أدخل اسم النوع', 'warning'); return; }
+        expType = 'EXP_' + name.toUpperCase().replace(/\s/g, '_');
+        await repo.create(TABLES.EXPENSE_ACCOUNTS, { name, code: expType });
       }
-      await this._saveExpense({expenseType:expType,amount:amtInput.value,details:detInput.value.trim()});
+      await this._saveExpense({ expenseType:expType, amount:amtInput.value, details:detInput.value.trim() });
     }));
 
     return frag;
   },
 
-  // ═══════════════════════════════════════════════
-  // 4. نموذج الاستلام / التسليم
-  // ═══════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════
+     4. نموذج الاستلام / التسليم
+  ═══════════════════════════════════════════════ */
   _buildTransferForm() {
     const frag = document.createDocumentFragment();
 
@@ -543,114 +605,133 @@ const DataEntryComponent = {
     title.innerHTML = '<span>🔄</span><span>استلام / تسليم</span>';
     frag.appendChild(title);
 
-    const txTypeField=this._field('tr-type','نوع العملية',true);
-    const txTypeSelect=document.createElement('select');
-    txTypeSelect.id='tr-type'; txTypeSelect.className='form-control';
-    txTypeSelect.innerHTML=`
+    /* نوع العملية */
+    const txTypeField = this._field('tr-type', 'نوع العملية', true);
+    const txTypeSelect = document.createElement('select');
+    txTypeSelect.id = 'tr-type'; txTypeSelect.className = 'form-control';
+    txTypeSelect.innerHTML = `
       <option value="receipt">استلام (أستلم من جهة)</option>
       <option value="delivery">تسليم (أسلّم لجهة)</option>`;
     txTypeField.appendChild(txTypeSelect);
     frag.appendChild(txTypeField);
 
-    const srcField=this._field('tr-source-type','المصدر / الوجهة',true);
-    const srcSelect=document.createElement('select');
-    srcSelect.id='tr-source-type'; srcSelect.className='form-control';
-    srcSelect.innerHTML=`<option value="agent">مندوب</option><option value="company">شركة</option>`;
+    /* المصدر / الوجهة */
+    const srcField = this._field('tr-source-type', 'المصدر / الوجهة', true);
+    const srcSelect = document.createElement('select');
+    srcSelect.id = 'tr-source-type'; srcSelect.className = 'form-control';
+    srcSelect.innerHTML = `<option value="agent">مندوب</option><option value="company">شركة</option>`;
     srcField.appendChild(srcSelect);
     frag.appendChild(srcField);
 
-    const agentWrap=document.createElement('div');
-    agentWrap.id='tr-agent-wrap';
-    const agentSearchWrap=document.createElement('div');
-    agentSearchWrap.style.cssText='position:relative;margin-bottom:8px;';
-    const agentInput=document.createElement('input');
-    agentInput.id='tr-agent-search'; agentInput.type='text'; agentInput.className='form-control';
-    agentInput.placeholder='اسم المندوب / الجهة...'; agentInput.autocomplete='off';
-    const agentAccInput=document.createElement('input');
-    agentAccInput.type='text'; agentAccInput.className='form-control'; agentAccInput.id='tr-agent-account';
-    agentAccInput.placeholder='رقم الحساب (اختياري)'; agentAccInput.style.cssText='margin-top:8px;direction:ltr;';
-    const agentIdHidden=document.createElement('input');
-    agentIdHidden.type='hidden'; agentIdHidden.id='tr-agent-id';
+    /* البحث عن مندوب */
+    const agentWrap = document.createElement('div');
+    agentWrap.id = 'tr-agent-wrap';
+    const agentSearchWrap = document.createElement('div');
+    agentSearchWrap.style.cssText = 'position:relative;margin-bottom:8px;';
+    const agentInput = document.createElement('input');
+    agentInput.id = 'tr-agent-search'; agentInput.type = 'text'; agentInput.className = 'form-control';
+    agentInput.placeholder = 'اسم المندوب / الجهة...'; agentInput.autocomplete = 'off';
+    const agentAccInput = document.createElement('input');
+    agentAccInput.type = 'text'; agentAccInput.className = 'form-control'; agentAccInput.id = 'tr-agent-account';
+    agentAccInput.placeholder = 'رقم الحساب (اختياري)'; agentAccInput.style.cssText = 'margin-top:8px;direction:ltr;';
+    const agentIdHidden = document.createElement('input');
+    agentIdHidden.type = 'hidden'; agentIdHidden.id = 'tr-agent-id';
 
-    const agentDd=document.createElement('div');
-    agentDd.style.cssText=`position:absolute;top:100%;right:0;left:0;z-index:500;background:var(--glass-bg-heavy);border:1px solid var(--border-color);border-radius:12px;box-shadow:var(--shadow-lg);max-height:240px;overflow-y:auto;display:none;backdrop-filter:blur(16px);margin-top:4px;`;
+    const agentDd = document.createElement('div');
+    agentDd.style.cssText = `position:absolute;top:100%;right:0;left:0;z-index:500;background:var(--glass-bg-heavy);border:1px solid var(--border-color);border-radius:12px;box-shadow:var(--shadow-lg);max-height:240px;overflow-y:auto;display:none;backdrop-filter:blur(16px);margin-top:4px;`;
 
-    const sysAgents=AppStore.getState('users').filter(u=>u.role===ROLES.AGENT&&u.is_active&&u.id!==AuthService.getCurrentUserId());
-    const BKEY='ahu_beneficiaries';
-    const getBen=()=>{try{return JSON.parse(localStorage.getItem(BKEY)||'[]');}catch{return[];}};
-    const saveBen=(n,a)=>{const l=getBen();const i=l.findIndex(b=>b.name===n);if(i>=0){l[i].accountNum=a||l[i].accountNum;l[i].usedAt=Date.now();}else l.unshift({name:n,accountNum:a,usedAt:Date.now()});localStorage.setItem(BKEY,JSON.stringify(l.slice(0,50)));};
-
-    const renderAd=q=>{
-      const trimQ=q.trim().toLowerCase();
-      agentDd.innerHTML='';
-      const sm=trimQ?sysAgents.filter(a=>a.display_name.toLowerCase().includes(trimQ)):sysAgents;
-      sm.forEach(a=>{
-        const it=document.createElement('div');
-        it.style.cssText='padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-color);transition:background 150ms;';
-        it.innerHTML=`<div><span style="font-weight:600;font-size:0.88rem;">${escapeHtml(a.display_name)}</span><span style="display:block;font-size:0.72rem;color:var(--text-muted);">مندوب موثّق</span></div><span style="font-size:0.72rem;background:var(--accent);color:#fff;border-radius:6px;padding:2px 6px;">✓</span>`;
-        it.addEventListener('mouseenter',()=>{it.style.background='var(--bg-hover)';});
-        it.addEventListener('mouseleave',()=>{it.style.background='';});
-        it.addEventListener('mousedown',e=>{e.preventDefault();agentInput.value=a.display_name;agentIdHidden.value=a.id;agentDd.style.display='none';});
-        agentDd.appendChild(it);
-      });
-      const lb=trimQ?getBen().filter(b=>b.name.toLowerCase().includes(trimQ)):getBen().slice(0,6);
-      lb.forEach(b=>{
-        const it=document.createElement('div');
-        it.style.cssText='padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-color);transition:background 150ms;';
-        it.innerHTML=`<div><span style="font-weight:600;font-size:0.88rem;">${escapeHtml(b.name)}</span>${b.accountNum?`<span style="display:block;font-size:0.72rem;color:var(--text-muted);direction:ltr;">${escapeHtml(b.accountNum)}</span>`:''}</div><span style="font-size:0.72rem;color:var(--text-muted);">محفوظ</span>`;
-        it.addEventListener('mouseenter',()=>{it.style.background='var(--bg-hover)';});
-        it.addEventListener('mouseleave',()=>{it.style.background='';});
-        it.addEventListener('mousedown',e=>{e.preventDefault();agentInput.value=b.name;agentAccInput.value=b.accountNum||'';agentIdHidden.value='';agentDd.style.display='none';});
-        agentDd.appendChild(it);
-      });
-      agentDd.style.display=(sm.length>0||lb.length>0)?'block':'none';
+    const sysAgents = AppStore.getState('users').filter(u => u.role === ROLES.AGENT && u.is_active && u.id !== AuthService.getCurrentUserId());
+    const BKEY = 'ahu_beneficiaries';
+    const getBen = () => { try { return JSON.parse(localStorage.getItem(BKEY) || '[]'); } catch { return []; } };
+    const saveBen = (n, a) => {
+      const l = getBen(); const i = l.findIndex(b => b.name === n);
+      if (i >= 0) { l[i].accountNum = a || l[i].accountNum; l[i].usedAt = Date.now(); }
+      else l.unshift({ name:n, accountNum:a, usedAt:Date.now() });
+      localStorage.setItem(BKEY, JSON.stringify(l.slice(0, 50)));
     };
 
-    agentInput.addEventListener('input',()=>{agentIdHidden.value='';renderAd(agentInput.value);});
-    agentInput.addEventListener('focus',()=>renderAd(agentInput.value));
-    agentInput.addEventListener('blur',()=>{const n=agentInput.value.trim();if(n&&!agentIdHidden.value)saveBen(n,agentAccInput.value.trim());});
-    document.addEventListener('click',e=>{if(!agentSearchWrap.contains(e.target))agentDd.style.display='none';});
+    const renderAd = q => {
+      const trimQ = q.trim().toLowerCase();
+      agentDd.innerHTML = '';
+      const sm = trimQ ? sysAgents.filter(a => a.display_name.toLowerCase().includes(trimQ)) : sysAgents;
+      const bn = trimQ ? getBen().filter(b => b.name.toLowerCase().includes(trimQ)) : [];
+      const allItems = [...sm.map(a => ({ label:a.display_name, sub:'مندوب', isSystem:true, id:a.id })),
+                       ...bn.map(b => ({ label:b.name, sub:b.accountNum||'خارجي', isSystem:false }))];
+      if (!allItems.length) { agentDd.style.display = 'none'; return; }
+      allItems.forEach(it => {
+        const el = document.createElement('div');
+        el.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-color);transition:background 150ms;';
+        el.innerHTML = `<div><span style="font-weight:600;font-size:0.88rem;">${escapeHtml(it.label)}</span><span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">— ${escapeHtml(it.sub)}</span></div>`;
+        el.addEventListener('mouseenter', () => { el.style.background = 'var(--bg-hover)'; });
+        el.addEventListener('mouseleave', () => { el.style.background = ''; });
+        el.addEventListener('click', () => {
+          agentInput.value = it.label;
+          agentIdHidden.value = it.isSystem ? it.id : '';
+          agentDd.style.display = 'none';
+        });
+        agentDd.appendChild(el);
+      });
+      agentDd.style.display = '';
+    };
+
+    agentInput.addEventListener('input', () => { agentIdHidden.value = ''; renderAd(agentInput.value); });
+    agentInput.addEventListener('focus', () => renderAd(agentInput.value));
+    agentInput.addEventListener('blur', () => {
+      const n = agentInput.value.trim();
+      if (n && !agentIdHidden.value) saveBen(n, agentAccInput.value.trim());
+    });
+    document.addEventListener('click', e => { if (!agentSearchWrap.contains(e.target)) agentDd.style.display = 'none'; });
 
     agentSearchWrap.appendChild(agentInput);
     agentSearchWrap.appendChild(agentDd);
     agentSearchWrap.appendChild(agentIdHidden);
-    const agentLbl=document.createElement('label');
-    agentLbl.className='form-label'; agentLbl.textContent='المندوب / الجهة';
+    const agentLbl = document.createElement('label');
+    agentLbl.className = 'form-label'; agentLbl.textContent = 'المندوب / الجهة';
     agentWrap.appendChild(agentLbl);
     agentWrap.appendChild(agentSearchWrap);
     agentWrap.appendChild(agentAccInput);
     frag.appendChild(agentWrap);
 
-    const compWrap=document.createElement('div');
-    compWrap.id='tr-company-wrap'; compWrap.style.display='none';
-    const compField=this._field('tr-company','اختر الشركة',true);
-    const compSelect=document.createElement('select');
-    compSelect.id='tr-company'; compSelect.className='form-control';
-    compSelect.innerHTML='<option value="">— اختر شركة —</option>';
-    AppStore.getState('companies').forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;compSelect.appendChild(o);});
+    /* الشركة */
+    const compWrap = document.createElement('div');
+    compWrap.id = 'tr-company-wrap'; compWrap.style.display = 'none';
+    const compField = this._field('tr-company', 'اختر الشركة', true);
+    const compSelect = document.createElement('select');
+    compSelect.id = 'tr-company'; compSelect.className = 'form-control';
+    compSelect.innerHTML = '<option value="">— اختر شركة —</option>';
+    AppStore.getState('companies').forEach(c => {
+      const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; compSelect.appendChild(o);
+    });
     compField.appendChild(compSelect);
     compWrap.appendChild(compField);
     frag.appendChild(compWrap);
 
-    srcSelect.addEventListener('change',()=>{
-      agentWrap.style.display=srcSelect.value==='agent'?'block':'none';
-      compWrap.style.display=srcSelect.value==='company'?'block':'none';
+    srcSelect.addEventListener('change', () => {
+      agentWrap.style.display = srcSelect.value === 'agent' ? '' : 'none';
+      compWrap.style.display  = srcSelect.value === 'company' ? '' : 'none';
     });
 
-    const amtField=this._field('tr-amount','المبلغ',true);
-    const amtInput=this._input('tr-amount','number','0',{min:'1',step:'1'});
+    /* المبلغ */
+    const amtField = this._field('tr-amount', 'المبلغ', true);
+    const amtInput = this._input('tr-amount', 'number', 'أدخل المبلغ', { min:'1', step:'1' });
     amtField.appendChild(amtInput);
     amtField.appendChild(this._errMsg('tr-amount-err'));
     frag.appendChild(amtField);
 
-    frag.appendChild(this._saveBtn('tr-save-btn','💾 حفظ العملية', async () => {
-      const txType=txTypeSelect.value;
-      const srcType=srcSelect.value;
-      const agentId=srcType==='agent'?(agentIdHidden.value||null):null;
-      const compId=srcType==='company'?compSelect.value:null;
-      if(srcType==='agent'&&agentInput.value.trim()&&!agentIdHidden.value)
-        saveBen(agentInput.value.trim(),agentAccInput.value.trim());
-      await this._saveTransfer({txType,fromAgentId:txType==='receipt'?agentId:null,toAgentId:txType==='delivery'?agentId:null,companyId:compId,amount:amtInput.value});
+    frag.appendChild(this._saveBtn('tr-save-btn', '💾 حفظ العملية', async () => {
+      const txType  = txTypeSelect.value;
+      const srcType = srcSelect.value;
+      const agentId = srcType === 'agent' ? (agentIdHidden.value || null) : null;
+      const compId  = srcType === 'company' ? compSelect.value : null;
+      if (srcType === 'agent' && agentInput.value.trim() && !agentIdHidden.value)
+        saveBen(agentInput.value.trim(), agentAccInput.value.trim());
+      await this._saveTransfer({
+        txType,
+        fromAgentId : txType === 'receipt'  ? agentId : null,
+        toAgentId   : txType === 'delivery' ? agentId : null,
+        companyId   : compId,
+        amount      : amtInput.value,
+      });
     }));
 
     return frag;
@@ -666,15 +747,12 @@ const DataEntryComponent = {
     return btn;
   },
 
-  // ═══════════════ منطق الحفظ ═══════════════
+  /* ═══════════════ منطق الحفظ ═══════════════ */
 
   async _saveCollection({ payType, bankId, amount, customer, customerId, companyId }) {
-    if (!isValidAmount(amount)) {
-      showToast('المبلغ يجب أن يكون رقماً موجباً', 'error');
-      return;
-    }
+    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
-    // FIX #12: التحقق من اختيار البنك عند payType === 'card'
+    /* ✅ التحقق من اختيار البنك عند السحب من بطاقة */
     if (payType === 'card') {
       if (!bankId) {
         const errEl = document.getElementById('col-bank-account-err');
@@ -682,25 +760,27 @@ const DataEntryComponent = {
         showToast('اختر الحساب البنكي لإتمام عملية سحب البطاقة', 'error');
         return;
       }
-      // مسح رسالة الخطأ عند النجاح
       const errEl = document.getElementById('col-bank-account-err');
       if (errEl) errEl.textContent = '';
     }
 
     const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
-    const btn = document.getElementById('col-save-btn');
+    const btn     = document.getElementById('col-save-btn');
     const restore = setButtonLoading(btn);
+
     const txData = {
-      type         : 'collection',
-      amount       : rounded,
-      date         : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
-      agent_id     : agentId,
-      company_id   : companyId || null,
-      customer_name: customer || null,
-      customer_id  : customerId || null,
-      bank_account_id: payType === 'card' ? (bankId || null) : null,
+      type            : 'collection',
+      amount          : rounded,
+      date            : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id        : agentId,
+      company_id      : companyId || null,
+      customer_name   : customer  || null,
+      customer_id     : customerId || null,
+      /* ✅ bank_account_id يُسجَّل فقط عند السحب من بطاقة */
+      bank_account_id : payType === 'card' ? (bankId || null) : null,
     };
+
     const result = await AccountingService.createTransactionWithEntries(txData);
     restore();
     if (isOk(result)) {
@@ -713,33 +793,39 @@ const DataEntryComponent = {
   },
 
   async _saveDeposit({ bankId, amount, notes }) {
-    if (!bankId) { showToast('اختر الحساب البنكي','error'); return; }
-    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً','error'); return; }
+    if (!bankId) { showToast('اختر الحساب البنكي', 'error'); return; }
+    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
+
     const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
-    const bank    = this._sortedBanks.find(b=>b.id===bankId) || AppStore.getState('bankAccounts').find(b=>b.id===bankId);
+    const bank    = this._sortedBanks.find(b => b.id === bankId)
+                 || AppStore.getState('bankAccounts').find(b => b.id === bankId);
+
+    /* التحقق من تجاوز السقف */
     if (bank) {
       const prevTotal = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
-      const ceil = Math.round(bank.financial_ceiling || 0);
+      const ceil      = Math.round(bank.financial_ceiling || 0);
       if (ceil > 0 && prevTotal + rounded > ceil) {
         const confirmed = await confirmDialog(
-          `⚠️ تجاوز السقف!\nالإجمالي بعد العملية: ${(prevTotal+rounded).toLocaleString('en-US')} ر.س\nالسقف اليومي: ${ceil.toLocaleString('en-US')} ر.س\nهل تريد المتابعة؟`,
+          `⚠️ تجاوز السقف!\nالإجمالي بعد العملية: ${(prevTotal + rounded).toLocaleString('en-US')} ر.س\nالسقف اليومي: ${ceil.toLocaleString('en-US')} ر.س\nهل تريد المتابعة؟`,
           'متابعة', 'إلغاء', 'warning'
         );
         if (!confirmed) return;
       }
     }
-    const btn = document.getElementById('dep-save-btn');
+
+    const btn     = document.getElementById('dep-save-btn');
     const restore = setButtonLoading(btn);
-    const txData = {
-      type           : 'deposit',
-      amount         : rounded,
-      date           : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
-      agent_id       : agentId,
-      bank_account_id: bankId,
-      company_id     : bank?.company_id || null,
-      details        : notes || null,
+    const txData  = {
+      type            : 'deposit',
+      amount          : rounded,
+      date            : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id        : agentId,
+      bank_account_id : bankId,
+      company_id      : bank?.company_id || null,
+      details         : notes || null,
     };
+
     const result = await AccountingService.createTransactionWithEntries(txData);
     restore();
     if (isOk(result)) {
@@ -747,20 +833,25 @@ const DataEntryComponent = {
       this._resetForm('dep');
       const ceil = Math.round(bank?.financial_ceiling || 0);
       const used = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
-      await this._showShareModal({ type:'إيداع', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain:Math.max(0,ceil-used) });
+      await this._showShareModal({
+        type:'إيداع', amount:rounded, bankName:bank?.name, agentId, date:txData.date,
+        ceilingRemain: Math.max(0, ceil - used),
+      });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
   },
 
   async _saveExpense({ expenseType, amount, details }) {
-    if (!expenseType) { showToast('اختر نوع المصروف','error'); return; }
-    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً','error'); return; }
+    if (!expenseType) { showToast('اختر نوع المصروف', 'error'); return; }
+    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
+
     const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
-    const btn = document.getElementById('exp-save-btn');
+    const btn     = document.getElementById('exp-save-btn');
     const restore = setButtonLoading(btn);
-    const result = await AccountingService.createTransactionWithEntries({
+
+    const result  = await AccountingService.createTransactionWithEntries({
       type        : 'expense',
       amount      : rounded,
       date        : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
@@ -772,19 +863,21 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ المصروف', 'success');
       this._resetForm('exp');
-      await this._showShareModal({ type:'مصروف', amount:rounded, agentId, date:getCurrentSaudiDate(), details });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
   },
 
   async _saveTransfer({ txType, fromAgentId, toAgentId, companyId, amount }) {
-    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً','error'); return; }
+    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
+    if (!fromAgentId && !toAgentId && !companyId) { showToast('حدد المصدر أو الوجهة', 'error'); return; }
+
     const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
-    const btn = document.getElementById('tr-save-btn');
+    const btn     = document.getElementById('tr-save-btn');
     const restore = setButtonLoading(btn);
-    const result = await AccountingService.createTransactionWithEntries({
+
+    const result  = await AccountingService.createTransactionWithEntries({
       type          : txType,
       amount        : rounded,
       date          : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
@@ -797,82 +890,59 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ العملية', 'success');
       this._resetForm('tr');
-      await this._showShareModal({ type:TRANSACTION_TYPE_LABELS[txType]||txType, amount:rounded, agentId, date:getCurrentSaudiDate() });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
   },
 
-  async _showShareModal({ type, amount, agentId, date, customer, bankName, ceilingRemain, details }) {
-    const balance = await AccountingService.getAccountBalance(`AGT_${agentId}`);
-    const balVal  = isOk(balance) ? balance.data : 0;
-    const users   = AppStore.getState('users');
-    const agent   = users.find(u=>u.id===agentId);
-    const lines = [
-      `✅ *${escapeHtml(type)}*`,
-      `💰 المبلغ: *${amount.toLocaleString('en-US')} ر.س*`,
-      `📅 ${escapeHtml(formatDateArabic(date))}`,
-    ];
-    if (customer) lines.push(`👤 العميل: ${escapeHtml(customer)}`);
-    if (bankName) lines.push(`🏦 الحساب: ${escapeHtml(bankName)}`);
-    if (details)  lines.push(`📝 ${escapeHtml(details)}`);
-    lines.push(`─────────────────`);
-    lines.push(`📊 رصيد الصندوق: *${Math.abs(Math.round(balVal)).toLocaleString('en-US')} ر.س${Math.round(balVal)<0?' (مدين)':''}*`);
-    if (ceilingRemain !== undefined) lines.push(`🔹 المتبقي من السقف: *${ceilingRemain.toLocaleString('en-US')} ر.س*`);
-    lines.push(`─────────────────`);
-    lines.push(`نظام أبو حذيفة 🔐`);
-    const text = lines.join('\n');
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.style.cssText = 'display:flex;z-index:1200;';
-    overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
-    const box = document.createElement('div');
-    box.className = 'modal-box';
-    box.style.maxWidth = '420px';
-    box.innerHTML = `
-      <div class="modal-header">
-        <h3 class="modal-title">📤 مشاركة ملخص العملية</h3>
-        <button class="modal-close" id="share-close-btn">✕</button>
-      </div>
-      <div style="background:var(--bg-hover);border-radius:12px;padding:14px;font-size:0.85rem;line-height:1.9;white-space:pre-wrap;direction:rtl;margin-bottom:14px;border:1px solid var(--border-color);max-height:280px;overflow-y:auto;font-family:inherit;">
-        ${escapeHtml(text)}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <button id="share-copy-btn" class="btn btn-primary" style="display:flex;align-items:center;justify-content:center;gap:6px;">
-          <i data-lucide="copy" style="width:14px;height:14px;"></i> نسخ
-        </button>
-        <button id="share-wa-btn" class="btn btn-secondary" style="background:rgba(37,211,102,0.15);border-color:rgba(37,211,102,0.3);color:#25d366;display:flex;align-items:center;justify-content:center;gap:6px;">
-          📱 واتساب
-        </button>
-      </div>
-      <button id="share-dismiss-btn" class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:0.82rem;color:var(--text-muted);">إغلاق</button>`;
-    document.body.appendChild(overlay);
-    overlay.appendChild(box);
-    box.querySelector('#share-close-btn').addEventListener('click', () => document.body.removeChild(overlay));
-    box.querySelector('#share-dismiss-btn').addEventListener('click', () => document.body.removeChild(overlay));
-    box.querySelector('#share-copy-btn').addEventListener('click', async () => await copyToClipboard(text, 'تم نسخ الملخص'));
-    box.querySelector('#share-wa-btn').addEventListener('click', () => window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank'));
-    if (window.lucide) lucide.createIcons();
+  /* ✅ إعادة تعيين النماذج بشكل صحيح */
+  _resetForm(prefix) {
+    const numericIds = [`${prefix}-amount`];
+    const selectIds  = [`${prefix}-bank`, `${prefix}-pay-type`, `${prefix}-type`, `${prefix}-company`];
+    const textIds    = [`${prefix}-customer-search`, `${prefix}-notes`, `${prefix}-details`];
+    const hiddenIds  = [`${prefix}-debtor-id`];
+
+    numericIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = '0'; });
+    selectIds.forEach(id  => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
+    textIds.forEach(id    => { const el = document.getElementById(id); if (el) el.value = ''; });
+    hiddenIds.forEach(id  => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+    /* إخفاء الحقول الشرطية */
+    ['col-bank-account-err', `${prefix}-bank-err`, `${prefix}-type-err`].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = '';
+    });
+    const bankInfo = document.getElementById('col-bank-info');
+    if (bankInfo) bankInfo.style.display = 'none';
+    const bankFieldCard = document.getElementById('col-bank-account')?.closest('.form-group');
+    if (bankFieldCard && prefix === 'col') bankFieldCard.style.display = 'none';
+    const ceilInfo = document.getElementById('dep-ceiling-info');
+    if (ceilInfo) ceilInfo.style.display = 'none';
+    const debtDisplay = document.getElementById('col-debt-display');
+    if (debtDisplay) debtDisplay.style.display = 'none';
   },
 
-  _resetForm(prefix) {
-    [`#${prefix}-amount`, `#${prefix}-notes`, `#${prefix}-details`, `#${prefix}-new-type`].forEach(sel => {
-      const el = document.querySelector(sel);
-      if (el) el.value = '';
-    });
-    document.querySelectorAll(`select[id^="${prefix}-"]`).forEach(s => { s.selectedIndex = 0; });
-    ['col-bank-wrap', 'dep-ceiling-info', 'tr-agent-wrap', 'tr-company-wrap'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = id === 'tr-agent-wrap' ? 'block' : 'none';
-    });
-    const ddEl = document.getElementById('col-customer-dropdown');
-    if (ddEl) ddEl.style.display = 'none';
-    const debtEl = document.getElementById('col-debt-display');
-    if (debtEl) debtEl.style.display = 'none';
-    // مسح جميع رسائل الخطأ في النموذج
-    document.querySelectorAll(`[id^="${prefix}-"][id$="-err"]`).forEach(el => { el.textContent = ''; });
+  /* ── مودال المشاركة ── */
+  async _showShareModal({ type, amount, bankName, customer, agentId, date, ceilingRemain }) {
+    const users   = AppStore.getState('users');
+    const agent   = users.find(u => u.id === agentId);
+    const agentNm = agent?.display_name || '—';
+    const amtStr  = Math.round(amount).toLocaleString('en-US');
+
+    let text = `✅ ${type}: ${amtStr} ر.س`;
+    if (customer) text += `\n👤 العميل: ${customer}`;
+    if (bankName) text += `\n🏦 البنك: ${bankName}`;
+    if (ceilingRemain !== undefined) text += `\n📊 المتبقي: ${Math.round(ceilingRemain).toLocaleString('en-US')} ر.س`;
+    text += `\n👨‍💼 المندوب: ${agentNm}`;
+    text += `\n📅 التاريخ: ${date}`;
+
+    if (navigator.share) {
+      try { await navigator.share({ text }); } catch { /* المستخدم رفض */ }
+    } else {
+      try { await navigator.clipboard.writeText(text); showToast('تم نسخ التفاصيل للحافظة', 'info'); }
+      catch { /* لا يدعم الحافظة */ }
+    }
   },
 };
 
 window.DataEntryComponent = DataEntryComponent;
-console.log('✅ DataEntryComponent v3.1 — FIX #3 (بنوك المندوب) #12 (تحقق card) #30 (isOnline)');
+console.log('✅ DataEntryComponent v4.0 — isOnline() + فلتر مستخدم كامل + بنوك محسّنة');
