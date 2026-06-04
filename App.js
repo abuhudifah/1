@@ -10,6 +10,7 @@
  * - إظهار/إخفاء الشاشات
  * - الاستماع لأحداث AppStore وتحديث الهيكل
  * - إدارة الوضع المظلم
+ * - [المرحلة 3] تشغيل IdleTimer للمندوبين فقط
  */
 
 'use strict';
@@ -47,14 +48,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 3. تهيئة خدمة المزامنة
     SyncService.init();
 
-// تهيئة مدير الوضع المظلم (مرة واحدة)
-if (window.ThemeManager) {
-  ThemeManager.init();
-} else {
-  console.warn('⚠️ ThemeManager غير موجود، استخدم fallback');
-  _restoreDarkMode(); // fallback قديم
-}
-  
+    // 4. تهيئة مدير الوضع المظلم (مرة واحدة)
+    if (window.ThemeManager) {
+      ThemeManager.init();
+    } else {
+      console.warn('⚠️ ThemeManager غير موجود، استخدم fallback');
+      _restoreDarkMode(); // fallback قديم
+    }
 
     // 5. التحقق من جلسة نشطة
     const sessionResult = await AuthService.checkSession();
@@ -88,6 +88,18 @@ async function _bootApp(profile) {
 
   // تعيين المستخدم في AppStore
   AppStore.setCurrentUser(profile);
+
+  // ─── [المرحلة 3] إدارة IdleTimer بناءً على الدور ───
+  if (window.IdleTimer) {
+    if (profile.role === ROLES.AGENT) {
+      // المندوب فقط: تشغيل مؤقت الخمول
+      IdleTimer.start();
+      console.log('⏱️  App.js: IdleTimer مُشغَّل للمندوب:', profile.display_name);
+    } else {
+      // المدير والمساعد: إيقاف المؤقت (في حال كان يعمل من جلسة سابقة)
+      IdleTimer.stop();
+    }
+  }
 
   // بناء هيكل التطبيق
   _buildAppShell();
@@ -237,7 +249,7 @@ function _buildHeader() {
   // مؤشر حالة الاتصال
   const onlineDot = document.createElement('span');
   onlineDot.id = 'online-dot';
-   onlineDot.className = `sync-dot ${navigator.onLine ? 'synced' : 'conflict'}`;
+  onlineDot.className = `sync-dot ${navigator.onLine ? 'synced' : 'conflict'}`;
   onlineDot.title = navigator.onLine ? 'متصل' : 'غير متصل';
 
   // زر تسجيل الخروج
@@ -500,6 +512,11 @@ function _updateSyncIndicator(state) {
 // ============================================================
 
 function _showLoginScreen() {
+  // ─── [المرحلة 3] إيقاف IdleTimer عند العودة لشاشة الدخول ───
+  if (window.IdleTimer) {
+    IdleTimer.stop();
+  }
+
   _hideLoadingScreen();
   _stopDateClock();
 
@@ -518,13 +535,25 @@ async function _onLoginSuccess(profile) {
 }
 
 async function _handleLogout() {
+  // ─── [المرحلة 3] إيقاف IdleTimer قبل تسجيل الخروج ───
+  if (window.IdleTimer) {
+    IdleTimer.stop();
+  }
+
   const confirmed = await confirmDialog(
     'هل تريد تسجيل الخروج من النظام؟',
     'خروج',
     'إلغاء',
     'warning'
   );
-  if (!confirmed) return;
+  if (!confirmed) {
+    // إذا ألغى المستخدم الخروج، أعد تشغيل IdleTimer إن كان مندوباً
+    const user = AuthService.getCurrentUser();
+    if (window.IdleTimer && user?.role === ROLES.AGENT) {
+      IdleTimer.start();
+    }
+    return;
+  }
 
   SyncService.stop();
   _stopDateClock();
@@ -581,19 +610,17 @@ function _stopDateClock() {
   }
 }
 
-
-
 // ============================================================
 // تصدير
 // ============================================================
 
 window.App = {
-  navigateTo  : _navigateTo,
-  bootApp     : _bootApp,
+  navigateTo    : _navigateTo,
+  bootApp       : _bootApp,
   onLoginSuccess: _onLoginSuccess,
 };
 
 // تصدير للاستخدام الداخلي من المكونات
 window._appNavigateTo = _navigateTo;
 
-console.log('✅ App.js محمّل — التطبيق الرئيسي جاهز');
+console.log('✅ App.js محمّل — التطبيق الرئيسي جاهز (مع IdleTimer للمندوبين)');
