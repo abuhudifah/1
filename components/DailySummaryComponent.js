@@ -1,0 +1,769 @@
+/**
+ * components/DailySummaryComponent.js
+ * نظام أبو حذيفة — الملخص اليومي
+ *
+ * المواصفات (الجزء السادس - البند 7):
+ * - بطاقات الإحصائيات: تحصيل، إيداع، مصروف، استلام، تسليم، المتبقي
+ * - الرصيد الافتتاحي (من أمس)
+ * - قائمة العمليات مع أزرار: تعديل | حذف | مشاركة نصية
+ * - فلتر أنواع العمليات
+ * - فلتر التاريخ + فلتر المندوب (للمدير)
+ * - ترقيم صفحات
+ */
+
+'use strict';
+
+const DailySummaryComponent = {
+
+  _page        : 1,
+  _pageSize    : 20,
+  _typeFilter  : '',
+  _container   : null,
+  _editModal   : null,
+
+  async render(container) {
+    this._container = container;
+    this._page = 1;
+    container.innerHTML = '';
+    container.appendChild(await this._buildPage());
+    await this._loadData();
+  },
+
+  async _buildPage() {
+    const wrap = document.createElement('div');
+
+    // --- العنوان وأدوات التحكم ---
+    const topBar = document.createElement('div');
+    topBar.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;';
+
+    const title = document.createElement('h2');
+    title.style.cssText = 'font-size:1.2rem;font-weight:700;color:var(--text-primary);flex:1;';
+    title.textContent = 'الملخص اليومي';
+    topBar.appendChild(title);
+
+    // حقل التاريخ
+    const dateInput = document.createElement('input');
+    dateInput.type      = 'date';
+    dateInput.id        = 'summary-date-input';
+    dateInput.className = 'form-control';
+    dateInput.style.cssText = 'width:160px;padding:8px 12px;font-size:0.88rem;';
+    dateInput.value = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    dateInput.addEventListener('change', () => {
+      AppStore.setSelectedDate(dateInput.value);
+      this._page = 1;
+      this._loadData();
+    });
+    topBar.appendChild(dateInput);
+
+    // فلتر المندوب (للمدير فقط)
+    if (AuthService.isAdmin()) {
+      const agentSelect = document.createElement('select');
+      agentSelect.id = 'summary-agent-filter';
+      agentSelect.className = 'form-control';
+      agentSelect.style.cssText = 'width:160px;padding:8px 12px;font-size:0.88rem;';
+      agentSelect.innerHTML = `<option value="">— جميع المناديب —</option>`;
+      AppStore.getState('users')
+        .filter(u => u.role === ROLES.AGENT && u.is_active)
+        .forEach(a => {
+          const o = document.createElement('option');
+          o.value = a.id;
+          o.textContent = a.display_name;
+          agentSelect.appendChild(o);
+        });
+      const saved = AppStore.getState('selectedAgentId');
+      if (saved) agentSelect.value = saved;
+      agentSelect.addEventListener('change', () => {
+        AppStore.setSelectedAgent(agentSelect.value || null);
+        this._page = 1;
+        this._loadData();
+      });
+      topBar.appendChild(agentSelect);
+    }
+
+    // فلتر نوع العملية
+    const typeSelect = document.createElement('select');
+    typeSelect.id = 'summary-type-filter';
+    typeSelect.className = 'form-control';
+    typeSelect.style.cssText = 'width:140px;padding:8px 12px;font-size:0.88rem;';
+    typeSelect.innerHTML = `
+      <option value="">الكل</option>
+      <option value="collection">تحصيل</option>
+      <option value="deposit">إيداع</option>
+      <option value="expense">مصروف</option>
+      <option value="receipt">استلام</option>
+      <option value="delivery">تسليم</option>
+    `;
+    typeSelect.addEventListener('change', () => {
+      this._typeFilter = typeSelect.value;
+      this._page = 1;
+      this._renderTransactionsList();
+    });
+    topBar.appendChild(typeSelect);
+
+    // أزرار التقارير
+    const btnGroup = document.createElement('div');
+    btnGroup.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+
+    const quickBtn = document.createElement('button');
+    quickBtn.className = 'btn btn-secondary btn-sm';
+    quickBtn.innerHTML = '<i data-lucide="zap" style="width:13px;height:13px"></i> ملخص سريع';
+    quickBtn.addEventListener('click', () => this._shareQuickSummary());
+    btnGroup.appendChild(quickBtn);
+
+    const detailBtn = document.createElement('button');
+    detailBtn.className = 'btn btn-secondary btn-sm';
+    detailBtn.innerHTML = '<i data-lucide="file-text" style="width:13px;height:13px"></i> تقرير مفصل';
+    detailBtn.addEventListener('click', () => this._showDetailedReport());
+    btnGroup.appendChild(detailBtn);
+
+    const printBtn = document.createElement('button');
+    printBtn.className = 'btn btn-secondary btn-sm';
+    printBtn.innerHTML = '<i data-lucide="printer" style="width:13px;height:13px"></i> طباعة';
+    printBtn.addEventListener('click', () => this._printSummary());
+    btnGroup.appendChild(printBtn);
+
+    topBar.appendChild(btnGroup);
+
+    wrap.appendChild(topBar);
+
+    // --- بطاقات الإحصائيات ---
+    const statsRow = document.createElement('div');
+    statsRow.id = 'summary-stats';
+    statsRow.className = 'kpi-grid';
+    statsRow.style.marginBottom = '20px';
+    statsRow.innerHTML = [1,2,3,4,5,6].map(() =>
+      `<div class="kpi-card"><div class="skeleton" style="height:20px;width:60%;margin-bottom:8px;border-radius:4px;"></div>
+       <div class="skeleton" style="height:28px;width:80%;border-radius:6px;"></div></div>`
+    ).join('');
+    wrap.appendChild(statsRow);
+
+    // --- الرصيد الافتتاحي ---
+    const openingWrap = document.createElement('div');
+    openingWrap.id = 'summary-opening';
+    openingWrap.className = 'glass-card-sm';
+    openingWrap.style.cssText = 'margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;';
+    wrap.appendChild(openingWrap);
+
+    // --- قائمة العمليات ---
+    const listCard = document.createElement('div');
+    listCard.className = 'glass-card';
+    listCard.style.padding = '0';
+
+    const listHeader = document.createElement('div');
+    listHeader.style.cssText = 'padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;';
+    listHeader.innerHTML = `
+      <h3 style="font-size:0.9rem;font-weight:700;color:var(--text-secondary);">العمليات</h3>
+      <span id="summary-count" style="font-size:0.78rem;color:var(--text-muted);"></span>`;
+    listCard.appendChild(listHeader);
+
+    const listEl = document.createElement('div');
+    listEl.id = 'summary-tx-list';
+    listEl.style.minHeight = '100px';
+    listCard.appendChild(listEl);
+
+    // ترقيم الصفحات
+    const pagerEl = document.createElement('div');
+    pagerEl.id = 'summary-pager';
+    pagerEl.style.cssText = 'padding:12px 20px;display:flex;justify-content:center;gap:8px;border-top:1px solid var(--border-color);';
+    listCard.appendChild(pagerEl);
+
+    wrap.appendChild(listCard);
+
+    // مودال التعديل (مخفي)
+    this._editModal = this._buildEditModal();
+    wrap.appendChild(this._editModal);
+
+    return wrap;
+  },
+
+  // ============================================================
+  // تحميل البيانات
+  // ============================================================
+
+  async _loadData() {
+    const date    = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const agentId = AuthService.isAdmin()
+      ? (AppStore.getState('selectedAgentId') || null)
+      : AuthService.getCurrentUserId();
+
+    // تحديث AppStore ثم قراءة
+    await AppStore.refreshTransactions(date, agentId);
+    this._renderStats();
+    this._renderOpeningBalance(date, agentId);
+    this._renderTransactionsList();
+  },
+
+  // ============================================================
+  // بطاقات الإحصائيات
+  // ============================================================
+
+  _renderStats() {
+    const el = document.getElementById('summary-stats');
+    if (!el) return;
+
+    const txs = AppStore.getState('transactions').filter(tx => !tx.is_reversed);
+    const s = { collection:0, deposit:0, expense:0, receipt:0, delivery:0 };
+    txs.forEach(tx => { if (s.hasOwnProperty(tx.type)) s[tx.type] += parseFloat(tx.amount||0); });
+    const net = s.collection + s.receipt - s.deposit - s.expense - s.delivery;
+
+    el.innerHTML = `
+      ${this._kpi('تحصيلات', s.collection, 'kpi-success')}
+      ${this._kpi('إيداعات',  s.deposit,    'kpi-accent')}
+      ${this._kpi('مصروفات',  s.expense,    'kpi-danger')}
+      ${this._kpi('استلامات', s.receipt,    'kpi-info')}
+      ${this._kpi('تسليمات',  s.delivery,   'kpi-warning')}
+      ${this._kpi('المتبقي',   net, net >= 0 ? 'kpi-success' : 'kpi-danger')}
+    `;
+  },
+
+  _kpi(label, amount, cls) {
+    return `<div class="kpi-card ${escapeHtml(cls)}">
+      <div class="kpi-label">${escapeHtml(label)}</div>
+      <div class="kpi-value" style="font-size:1.2rem;">${formatCurrency(amount)}</div>
+    </div>`;
+  },
+
+  // ============================================================
+  // الرصيد الافتتاحي
+  // ============================================================
+
+  async _renderOpeningBalance(date, agentId) {
+    const el = document.getElementById('summary-opening');
+    if (!el) return;
+
+    const yesterday = getYesterdaySaudiDate();
+    let opening = 0;
+    if (agentId) {
+      const bal = await AccountingService.getAccountBalance(
+        AccountingService.AccountId.agent(agentId)
+      );
+      if (isOk(bal)) opening = bal.data;
+    }
+
+    el.innerHTML = `
+      <span style="font-size:0.85rem;color:var(--text-secondary);">الرصيد الافتتاحي (${escapeHtml(formatDateArabic(yesterday))})</span>
+      <span style="font-size:1rem;font-weight:700;color:${opening >= 0 ? 'var(--success)' : 'var(--danger)'};">
+        ${formatCurrency(opening)}
+      </span>`;
+  },
+
+  // ============================================================
+  // قائمة العمليات
+  // ============================================================
+
+  _renderTransactionsList() {
+    const listEl = document.getElementById('summary-tx-list');
+    const countEl = document.getElementById('summary-count');
+    const pagerEl = document.getElementById('summary-pager');
+    if (!listEl) return;
+
+    let txs = AppStore.getState('transactions');
+
+    // فلترة حسب النوع
+    if (this._typeFilter) {
+      txs = txs.filter(tx => tx.type === this._typeFilter);
+    }
+
+    // الإجمالي
+    if (countEl) countEl.textContent = `${txs.length} عملية`;
+
+    // ترقيم الصفحات
+    const total  = txs.length;
+    const start  = (this._page - 1) * this._pageSize;
+    const paged  = txs.slice(start, start + this._pageSize);
+
+    if (paged.length === 0) {
+      listEl.innerHTML = `<div class="empty-state" style="padding:32px 0;">
+        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-text">لا توجد عمليات ${this._typeFilter ? 'من هذا النوع ' : ''}في هذا اليوم</div>
+      </div>`;
+      if (pagerEl) pagerEl.innerHTML = '';
+      return;
+    }
+
+    listEl.innerHTML = paged.map(tx => this._buildTxRow(tx)).join('');
+
+    // ربط أحداث الأزرار
+    listEl.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id     = btn.dataset.id;
+        const action = btn.dataset.action;
+        const tx     = txs.find(t => t.id === id);
+        if (!tx) return;
+        if (action === 'edit')   this._openEditModal(tx);
+        if (action === 'delete') this._handleDelete(tx);
+        if (action === 'share')  this._shareTransaction(tx);
+      });
+    });
+
+    // بناء الصفحات
+    if (pagerEl && total > this._pageSize) {
+      const pages = Math.ceil(total / this._pageSize);
+      pagerEl.innerHTML = '';
+      for (let p = 1; p <= pages; p++) {
+        const pbtn = document.createElement('button');
+        pbtn.className = p === this._page ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+        pbtn.textContent = p;
+        pbtn.style.minWidth = '36px';
+        pbtn.addEventListener('click', () => { this._page = p; this._renderTransactionsList(); });
+        pagerEl.appendChild(pbtn);
+      }
+    } else if (pagerEl) {
+      pagerEl.innerHTML = '';
+    }
+
+    if (window.lucide) lucide.createIcons();
+  },
+
+  _buildTxRow(tx) {
+    const color    = getTransactionColor(tx.type);
+    const label    = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
+    const isToday  = tx.date === getCurrentSaudiDate();
+    const canEdit  = AuthService.isAdmin() || isToday;
+    const isPending= tx.sync_status === SYNC_STATUS.PENDING;
+
+    return `
+      <div class="operation-item" style="display:flex;align-items:center;justify-content:space-between;
+            padding:12px 20px;border-bottom:1px solid var(--border-color);
+            ${tx.is_reversed ? 'opacity:0.45;' : ''}">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+          <div style="min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-weight:700;font-size:0.9rem;">${escapeHtml(label)}</span>
+              ${tx.is_reversed ? '<span class="badge badge-danger" style="font-size:0.68rem;">مُعكوس</span>' : ''}
+              ${isPending ? '<span class="sync-dot pending" title="معلق"></span>' : ''}
+            </div>
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
+              ${tx.customer_name ? `${escapeHtml(tx.customer_name)} · ` : ''}
+              ${escapeHtml(timeAgo(tx.created_at))}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <span style="font-weight:700;font-size:0.95rem;color:${color};">${formatCurrency(tx.amount)}</span>
+          <div style="display:flex;gap:4px;">
+            ${canEdit && !tx.is_reversed ? `
+              <button class="btn-icon" data-action="edit" data-id="${escapeHtml(tx.id)}" title="تعديل"
+                style="width:32px;height:32px;font-size:0.9rem;">
+                <i data-lucide="pencil" style="width:14px;height:14px;pointer-events:none;"></i>
+              </button>` : ''}
+            ${AuthService.isAdmin() && !tx.is_reversed ? `
+              <button class="btn-icon" data-action="delete" data-id="${escapeHtml(tx.id)}" title="حذف"
+                style="width:32px;height:32px;color:var(--danger);">
+                <i data-lucide="trash-2" style="width:14px;height:14px;pointer-events:none;"></i>
+              </button>` : ''}
+            <button class="btn-icon" data-action="share" data-id="${escapeHtml(tx.id)}" title="مشاركة"
+              style="width:32px;height:32px;color:var(--success);">
+              <i data-lucide="share-2" style="width:14px;height:14px;pointer-events:none;"></i>
+            </button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  // ============================================================
+  // الحذف
+  // ============================================================
+
+  async _handleDelete(tx) {
+    const isToday = tx.date === getCurrentSaudiDate();
+    const msg = isToday
+      ? `هل تريد حذف عملية ${TRANSACTION_TYPE_LABELS[tx.type]} بمبلغ ${formatCurrency(tx.amount)}؟`
+      : `هذه العملية من تاريخ ${formatDateArabic(tx.date)}. سيتم إنشاء قيد عكسي. هل تريد المتابعة؟`;
+
+    const confirmed = await confirmDialog(msg, 'حذف', 'إلغاء', 'danger');
+    if (!confirmed) return;
+
+    if (isToday) {
+      // حذف مباشر
+      const result = await repo.delete(TABLES.TRANSACTIONS, tx.id);
+      if (isOk(result)) {
+        AppStore.deleteTransaction(tx.id);
+        showToast('تم حذف العملية', 'success');
+      } else {
+        showToast(`فشل الحذف: ${result.error}`, 'error');
+      }
+    } else {
+      // عكس العملية بدلاً من الحذف
+      const result = await AccountingService.reverseEntries(tx.id);
+      if (isOk(result)) {
+        AppStore.markTransactionReversed(tx.id);
+        showToast('تم عكس العملية بنجاح', 'success');
+      } else {
+        showToast(`فشل العكس: ${result.error}`, 'error');
+      }
+    }
+
+    this._renderTransactionsList();
+  },
+
+  // ============================================================
+  // مشاركة نصية
+  // ============================================================
+
+  _shareTransaction(tx) {
+    const label = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
+    const text = [
+      `📊 *${label}*`,
+      `💰 المبلغ: ${formatCurrency(tx.amount)}`,
+      `📅 التاريخ: ${formatDateArabic(tx.date)}`,
+      tx.customer_name ? `👤 العميل: ${tx.customer_name}` : '',
+      tx.details ? `📝 ${tx.details}` : '',
+      `\n— نظام أبو حذيفة للصرافة —`,
+    ].filter(Boolean).join('\n');
+
+    shareText(text, 'تفاصيل العملية');
+  },
+
+  // ─────────────────────────────────────────────
+  // ملخص سريع (نصي للمشاركة)
+  // ─────────────────────────────────────────────
+  async _shareQuickSummary() {
+    const txs  = AppStore.getState('transactions').filter(t => !t.is_reversed);
+    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const s    = { collection:0, deposit:0, expense:0, receipt:0, delivery:0 };
+    txs.forEach(tx => { if (s.hasOwnProperty(tx.type)) s[tx.type] += Math.round(parseFloat(tx.amount||0)); });
+    const net = s.collection + s.receipt - s.deposit - s.expense - s.delivery;
+
+    const user = AuthService.getCurrentUser();
+    const agentId = AuthService.isAdmin()
+      ? (AppStore.getState('selectedAgentId') || user?.id)
+      : user?.id;
+    const balResult = await AccountingService.getAccountBalance(`AGT_${agentId}`);
+    const bal = isOk(balResult) ? Math.round(balResult.data) : net;
+
+    const text = [
+      `📊 *ملخص يوم ${formatDateArabic(date)}*`,
+      `👤 ${escapeHtml(user?.display_name||'')}`,
+      `────────────────`,
+      `📥 تحصيلات:  *${s.collection.toLocaleString('en-US')} ر.س*`,
+      `🏦 إيداعات:   *${s.deposit.toLocaleString('en-US')} ر.س*`,
+      `💸 مصروفات:  *${s.expense.toLocaleString('en-US')} ر.س*`,
+      s.receipt  ? `📤 استلامات: *${s.receipt.toLocaleString('en-US')} ر.س*` : '',
+      s.delivery ? `📦 تسليمات:  *${s.delivery.toLocaleString('en-US')} ر.س*` : '',
+      `────────────────`,
+      `💰 *المتبقي في الصندوق: ${bal>=0?'':'−'}${Math.abs(bal).toLocaleString('en-US')} ر.س*`,
+      ``,
+      `— نظام أبو حذيفة 🔐`,
+    ].filter(l => l !== '').join('\n');
+
+    // مودال المشاركة
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'display:flex;z-index:1200;';
+    overlay.addEventListener('click', e=>{ if(e.target===overlay) document.body.removeChild(overlay); });
+
+    const box = document.createElement('div');
+    box.className = 'modal-box';
+    box.style.maxWidth = '420px';
+    box.innerHTML = `
+      <div class="modal-header">
+        <h3 class="modal-title">⚡ الملخص السريع</h3>
+        <button class="modal-close" id="qs-close">✕</button>
+      </div>
+      <div style="background:var(--bg-hover);border-radius:12px;padding:14px;
+        font-size:0.85rem;line-height:2;white-space:pre-wrap;direction:rtl;
+        margin-bottom:14px;border:1px solid var(--border-color);
+        max-height:300px;overflow-y:auto;">
+        ${escapeHtml(text)}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button id="qs-copy" class="btn btn-primary"
+          style="display:flex;align-items:center;justify-content:center;gap:6px;">
+          <i data-lucide="copy" style="width:14px;height:14px;"></i> نسخ
+        </button>
+        <button id="qs-whatsapp" class="btn btn-secondary"
+          style="background:rgba(37,211,102,0.12);border-color:rgba(37,211,102,0.3);
+                 color:#25d366;display:flex;align-items:center;justify-content:center;gap:6px;">
+          📱 واتساب
+        </button>
+      </div>`;
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('#qs-close').addEventListener('click', ()=>document.body.removeChild(overlay));
+    box.querySelector('#qs-copy').addEventListener('click', ()=>copyToClipboard(text,'تم نسخ الملخص السريع'));
+    box.querySelector('#qs-whatsapp').addEventListener('click', ()=>{
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    });
+    if (window.lucide) lucide.createIcons();
+  },
+
+  // ─────────────────────────────────────────────
+  // تقرير مفصل (قائمة العمليات كاملة)
+  // ─────────────────────────────────────────────
+  _showDetailedReport() {
+    const txs  = AppStore.getState('transactions').filter(t => !t.is_reversed);
+    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const user = AuthService.getCurrentUser();
+    const s    = { collection:0, deposit:0, expense:0, receipt:0, delivery:0 };
+    txs.forEach(tx => { if(s.hasOwnProperty(tx.type)) s[tx.type]+=Math.round(parseFloat(tx.amount||0)); });
+    const net = s.collection + s.receipt - s.deposit - s.expense - s.delivery;
+
+    const lines = [
+      `📋 *تقرير مفصل — ${formatDateArabic(date)}*`,
+      `👤 ${user?.display_name||''}`,
+      `────────────────`,
+      ...txs.map((tx,i)=>{
+        const icon  = getTransactionIcon(tx.type);
+        const label = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
+        const amt   = Math.round(parseFloat(tx.amount||0));
+        const who   = tx.customer_name || tx.details || '';
+        return `${i+1}. ${icon} ${label}: *${amt.toLocaleString('en-US')} ر.س*${who?` — ${who}`:''}`;
+      }),
+      `────────────────`,
+      `📥 تحصيلات: ${s.collection.toLocaleString('en-US')} | 🏦 إيداعات: ${s.deposit.toLocaleString('en-US')}`,
+      `💸 مصروفات: ${s.expense.toLocaleString('en-US')} | 🔄 استلام/تسليم: ${(s.receipt-s.delivery).toLocaleString('en-US')}`,
+      `💰 *المتبقي: ${net>=0?'':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س*`,
+      `— نظام أبو حذيفة 🔐`,
+    ].join('\n');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'display:flex;z-index:1200;';
+    overlay.addEventListener('click', e=>{ if(e.target===overlay) document.body.removeChild(overlay); });
+
+    const box = document.createElement('div');
+    box.className = 'modal-box';
+    box.style.maxWidth = '480px';
+    box.innerHTML = `
+      <div class="modal-header">
+        <h3 class="modal-title">📋 التقرير المفصل (${txs.length} عملية)</h3>
+        <button class="modal-close" id="dr-close">✕</button>
+      </div>
+      <div style="background:var(--bg-hover);border-radius:12px;padding:14px;
+        font-size:0.82rem;line-height:1.9;white-space:pre-wrap;direction:rtl;
+        margin-bottom:14px;border:1px solid var(--border-color);
+        max-height:360px;overflow-y:auto;">
+        ${escapeHtml(lines)}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        <button id="dr-copy" class="btn btn-primary"
+          style="font-size:0.82rem;display:flex;align-items:center;justify-content:center;gap:4px;">
+          <i data-lucide="copy" style="width:12px;height:12px;"></i> نسخ
+        </button>
+        <button id="dr-whatsapp" class="btn btn-secondary"
+          style="font-size:0.82rem;background:rgba(37,211,102,0.12);
+                 border-color:rgba(37,211,102,0.3);color:#25d366;">📱 واتساب</button>
+        <button id="dr-print" class="btn btn-secondary"
+          style="font-size:0.82rem;display:flex;align-items:center;justify-content:center;gap:4px;">
+          <i data-lucide="printer" style="width:12px;height:12px;"></i> طباعة
+        </button>
+      </div>`;
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('#dr-close').addEventListener('click',     ()=>document.body.removeChild(overlay));
+    box.querySelector('#dr-copy').addEventListener('click',      ()=>copyToClipboard(lines,'تم نسخ التقرير المفصل'));
+    box.querySelector('#dr-whatsapp').addEventListener('click',  ()=>window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(lines)}`,'_blank'));
+    box.querySelector('#dr-print').addEventListener('click',     ()=>{ document.body.removeChild(overlay); this._printSummary(); });
+    if (window.lucide) lucide.createIcons();
+  },
+
+  // ─────────────────────────────────────────────
+  // طباعة الملخص اليومي — @media print
+  // ─────────────────────────────────────────────
+  _printSummary() {
+    const txs  = AppStore.getState('transactions').filter(t => !t.is_reversed);
+    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const user = AuthService.getCurrentUser();
+    const logo = AppStore.getState('logoUrl') || '';
+    const s    = { collection:0, deposit:0, expense:0, receipt:0, delivery:0 };
+    txs.forEach(tx => { if(s.hasOwnProperty(tx.type)) s[tx.type]+=Math.round(parseFloat(tx.amount||0)); });
+    const net = s.collection + s.receipt - s.deposit - s.expense - s.delivery;
+
+    const w = window.open('', '_blank', 'width=860,height=650');
+    w.document.write(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>الملخص اليومي — ${formatDateArabic(date)}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700;800&display=swap');
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'IBM Plex Sans Arabic',sans-serif;padding:28px;color:#0f172a;direction:rtl;font-size:13pt;}
+    /* ترويسة */
+    .print-header{display:flex;justify-content:space-between;align-items:center;
+      border-bottom:3px solid #0f172a;padding-bottom:14px;margin-bottom:20px;}
+    .print-header img{height:52px;object-fit:contain;}
+    .print-header h1{font-size:16pt;font-weight:800;}
+    .print-header p{font-size:9pt;color:#64748b;margin-top:3px;}
+    /* بطاقات الإحصاء */
+    .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}
+    .stat-card{background:#f8fafc;border-radius:10px;padding:12px 16px;border-right:3px solid #0f172a;}
+    .stat-card label{font-size:8pt;color:#64748b;display:block;margin-bottom:4px;}
+    .stat-card .val{font-size:13pt;font-weight:800;direction:ltr;text-align:right;}
+    .stat-card.success .val{color:#059669;}
+    .stat-card.danger  .val{color:#dc2626;}
+    .stat-card.info    .val{color:#0284c7;}
+    .stat-card.net     .val{color:${net>=0?'#059669':'#dc2626'};}
+    /* جدول العمليات */
+    table{width:100%;border-collapse:collapse;font-size:10pt;margin-top:16px;}
+    thead{background:#0f172a;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    th{padding:8px 10px;font-weight:700;text-align:right;}
+    td{padding:7px 10px;border-bottom:1px solid #e2e8f0;}
+    tbody tr:nth-child(even){background:#f8fafc;}
+    tfoot td{font-weight:800;background:#f1f5f9;border-top:2px solid #0f172a;}
+    /* تذييل */
+    .footer{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;
+      display:flex;justify-content:space-between;font-size:8pt;color:#64748b;}
+    @media print{body{padding:15px;}}
+  </style>
+</head>
+<body>
+  <div class="print-header">
+    <div>
+      <h1>الملخص اليومي</h1>
+      <p>نظام أبو حذيفة المتكامل للصرافة والتحويلات</p>
+    </div>
+    <div style="text-align:left;">
+      ${logo ? `<img src="${logo}" alt="شعار">` : ''}
+      <p style="font-size:10pt;font-weight:700;margin-top:4px;">${formatDateArabic(date)}</p>
+      <p style="font-size:9pt;color:#64748b;">${user?.display_name||''}</p>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card success"><label>📥 التحصيلات</label><div class="val">+${s.collection.toLocaleString('en-US')} ر.س</div></div>
+    <div class="stat-card info">  <label>🏦 الإيداعات</label> <div class="val">−${s.deposit.toLocaleString('en-US')} ر.س</div></div>
+    <div class="stat-card danger"><label>💸 المصروفات</label> <div class="val">−${s.expense.toLocaleString('en-US')} ر.س</div></div>
+    <div class="stat-card info">  <label>📤 الاستلامات</label><div class="val">+${s.receipt.toLocaleString('en-US')} ر.س</div></div>
+    <div class="stat-card danger"><label>📦 التسليمات</label> <div class="val">−${s.delivery.toLocaleString('en-US')} ر.س</div></div>
+    <div class="stat-card net">   <label>💰 المتبقي</label>  <div class="val">${net>=0?'+':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س</div></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>#</th><th>نوع العملية</th><th>المبلغ (ر.س)</th><th>العميل / التفاصيل</th><th>الوقت</th></tr>
+    </thead>
+    <tbody>
+      ${txs.map((tx,i)=>`
+        <tr>
+          <td>${i+1}</td>
+          <td>${TRANSACTION_TYPE_LABELS[tx.type]||tx.type}</td>
+          <td dir="ltr" style="text-align:left;font-weight:700;">
+            ${Math.round(parseFloat(tx.amount||0)).toLocaleString('en-US')}
+          </td>
+          <td>${tx.customer_name||tx.details||'—'}</td>
+          <td style="font-size:9pt;color:#64748b;">
+            ${tx.created_at?new Date(tx.created_at).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}):'—'}
+          </td>
+        </tr>`).join('')}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="2" style="text-align:center;">الإجمالي (${txs.length} عملية)</td>
+        <td dir="ltr" style="text-align:left;">
+          ${Math.round(txs.reduce((s,t)=>s+parseFloat(t.amount||0),0)).toLocaleString('en-US')}
+        </td>
+        <td colspan="2"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="footer">
+    <span>نظام أبو حذيفة — ${user?.display_name||''}</span>
+    <span>طُبع: ${new Date().toLocaleDateString('ar-SA')} ${new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'})}</span>
+  </div>
+  <script>window.onload=()=>window.print();<\/script>
+</body></html>`);
+    w.document.close();
+  },
+
+  // ============================================================
+  // مودال التعديل
+  // ============================================================
+
+  _buildEditModal() {
+    const overlay = document.createElement('div');
+    overlay.id = 'edit-tx-modal';
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'none';
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) this._closeEditModal();
+    });
+
+    const box = document.createElement('div');
+    box.className = 'modal-box';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    header.innerHTML = `
+      <h3 class="modal-title">تعديل العملية</h3>
+      <button class="modal-close" onclick="DailySummaryComponent._closeEditModal()">✕</button>`;
+    box.appendChild(header);
+
+    const body = document.createElement('div');
+    body.id = 'edit-modal-body';
+    box.appendChild(body);
+
+    overlay.appendChild(box);
+    return overlay;
+  },
+
+  _openEditModal(tx) {
+    const body = document.getElementById('edit-modal-body');
+    if (!body || !this._editModal) return;
+
+    body.innerHTML = `
+      <div class="form-group">
+        <label class="form-label">المبلغ <span class="required">*</span></label>
+        <input id="edit-amount" type="number" class="form-control" value="${escapeHtml(String(tx.amount))}" min="0.01" step="0.01">
+      </div>
+      <div class="form-group">
+        <label class="form-label">التاريخ</label>
+        <input id="edit-date" type="date" class="form-control" value="${escapeHtml(tx.date)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">ملاحظات</label>
+        <textarea id="edit-details" class="form-control" rows="2">${escapeHtml(tx.details || '')}</textarea>
+      </div>
+      <div id="edit-error" class="form-error"></div>
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button id="edit-save-btn" class="btn btn-primary" style="flex:2;">حفظ التعديل</button>
+        <button class="btn btn-secondary" style="flex:1;" onclick="DailySummaryComponent._closeEditModal()">إلغاء</button>
+      </div>`;
+
+    document.getElementById('edit-save-btn')?.addEventListener('click', async () => {
+      const amount  = document.getElementById('edit-amount')?.value;
+      const date    = document.getElementById('edit-date')?.value;
+      const details = document.getElementById('edit-details')?.value;
+      const errEl   = document.getElementById('edit-error');
+
+      if (!isValidAmount(amount)) {
+        if (errEl) errEl.textContent = 'المبلغ غير صالح';
+        return;
+      }
+
+      const btn = document.getElementById('edit-save-btn');
+      const restore = setButtonLoading(btn);
+
+      const result = await repo.update(TABLES.TRANSACTIONS, tx.id, {
+        amount : parseFloat(amount),
+        date   : date || tx.date,
+        details: details?.trim() || null,
+      });
+
+      restore();
+
+      if (isOk(result)) {
+        AppStore.updateTransaction(tx.id, { amount: parseFloat(amount), date, details });
+        showToast('تم تعديل العملية بنجاح', 'success');
+        this._closeEditModal();
+        this._renderTransactionsList();
+      } else {
+        if (errEl) errEl.textContent = result.error;
+      }
+    });
+
+    this._editModal.style.display = 'flex';
+  },
+
+  _closeEditModal() {
+    if (this._editModal) this._editModal.style.display = 'none';
+  },
+};
+
+window.DailySummaryComponent = DailySummaryComponent;
+console.log('✅ DailySummaryComponent.js محمّل');
