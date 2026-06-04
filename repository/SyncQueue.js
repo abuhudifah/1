@@ -279,12 +279,13 @@ const SyncQueue = {
   },
 
   /**
-   * تنفيذ عملية UPDATE على Supabase مع كشف التعارض
+   * تنفيذ عملية UPDATE على Supabase مع كشف التعارض الحقيقي
+   * ✅ إصلاح: مقارنة updated_at المحلي بـ updated_at الخادم لكشف التعارض
    * @private
    */
   async _executeUpdate(tableName, recordId, changes) {
     try {
-      // إضافة شرط updated_at للكشف عن التعارض
+      // جلب updated_at الحالي من الخادم
       const { data: current, error: fetchError } = await supabaseClient
         .from(tableName)
         .select('updated_at')
@@ -299,7 +300,22 @@ const SyncQueue = {
         return err(fetchError.message);
       }
 
-      const cleanChanges = this._cleanRecord(changes);
+      // ✅ الإصلاح: مقارنة updated_at لكشف ما إذا عدّل شخص آخر السجل
+      if (
+        current?.updated_at &&
+        changes?.updated_at &&
+        current.updated_at !== changes.updated_at
+      ) {
+        return err(
+          `تعارض: السجل عُدِّل من مصدر آخر ` +
+          `(خادم: ${current.updated_at} | محلي: ${changes.updated_at})`
+        );
+      }
+
+      const cleanChanges = {
+        ...this._cleanRecord(changes),
+        updated_at: new Date().toISOString(), // تحديث الطابع الزمني دائماً
+      };
 
       const { data: saved, error } = await supabaseClient
         .from(tableName)
@@ -448,6 +464,8 @@ const SyncQueue = {
   /**
    * يستبدل المعرف المؤقت (TEMP_) بالمعرف الحقيقي
    * في كل الجداول التي تشير إليه
+   * ✅ إصلاح: تغليف كل العمليات في db.transaction() لضمان
+   * الاتساق — إذا فشلت أي عملية تُلغى جميع العمليات تلقائياً
    * @param {string} primaryTable - الجدول الرئيسي للسجل
    * @param {string} tempId - المعرف المؤقت
    * @param {string} realId - المعرف الحقيقي من Supabase
@@ -457,45 +475,55 @@ const SyncQueue = {
     try {
       console.log(`🔄 SyncQueue: استبدال ${tempId} بـ ${realId} في ${primaryTable}`);
 
-      // 1. تحديث الجدول الرئيسي
-      const primaryDexie = db[primaryTable];
-      if (primaryDexie) {
-        const record = await primaryDexie.get(tempId);
-        if (record) {
-          await primaryDexie.delete(tempId);
-          await primaryDexie.put({ ...record, id: realId, sync_status: SYNC_STATUS.SYNCED });
-        }
-      }
+      // تحديد الجداول المشاركة في المعاملة
+      const tables = [db[primaryTable], db.account_ledger, db.sync_queue].filter(Boolean);
 
-      // 2. تحديث جداول تشير للمعرف المؤقت كـ reference_id
-      if (primaryTable === TABLES.TRANSACTIONS) {
-        const ledgerRecords = await db.account_ledger
-          .where('reference_id')
+      // ✅ الإصلاح: تغليف كل العمليات في معاملة Dexie ذرية
+      await db.transaction('rw', tables, async () => {
+
+        // 1. تحديث الجدول الرئيسي
+        const primaryDexie = db[primaryTable];
+        if (primaryDexie) {
+          const record = await primaryDexie.get(tempId);
+          if (record) {
+            await primaryDexie.delete(tempId);
+            await primaryDexie.put({ ...record, id: realId, sync_status: SYNC_STATUS.SYNCED });
+          }
+        }
+
+        // 2. تحديث جداول تشير للمعرف المؤقت كـ reference_id
+        if (primaryTable === TABLES.TRANSACTIONS) {
+          const ledgerRecords = await db.account_ledger
+            .where('reference_id')
+            .equals(tempId)
+            .toArray();
+
+          for (const lr of ledgerRecords) {
+            await db.account_ledger.update(lr.id, { reference_id: realId });
+          }
+        }
+
+        // 3. تحديث sync_queue نفسه إن كان يشير للمعرف المؤقت
+        const queueItems = await db.sync_queue
+          .where('record_id')
           .equals(tempId)
           .toArray();
 
-        for (const lr of ledgerRecords) {
-          await db.account_ledger.update(lr.id, { reference_id: realId });
+        for (const qi of queueItems) {
+          await db.sync_queue.update(qi.id, { record_id: realId });
         }
-      }
 
-      // 3. تحديث sync_queue نفسه إن كان يشير للمعرف المؤقت
-      const queueItems = await db.sync_queue
-        .where('record_id')
-        .equals(tempId)
-        .toArray();
+      }); // نهاية db.transaction()
 
-      for (const qi of queueItems) {
-        await db.sync_queue.update(qi.id, { record_id: realId });
-      }
-
-      // 4. إعلام AppStore بالاستبدال
+      // 4. إعلام AppStore بالاستبدال (خارج المعاملة — حدث UI فقط)
       window.dispatchEvent(new CustomEvent('sync:tempIdReplaced', {
         detail: { tempId, realId, table: primaryTable },
       }));
 
     } catch (e) {
+      // إذا فشلت المعاملة، تُلغى جميع العمليات تلقائياً
       console.error('❌ SyncQueue.replaceTempId():', e);
+      throw e;
     }
   },
 
@@ -648,6 +676,7 @@ const SyncQueue = {
 
   /**
    * يُعيد إحصائيات الطابور الحالية
+   * ✅ إصلاح: استبدال filter() بـ where().anyOf() لأداء أفضل
    * @returns {Promise<object>}
    */
   async getStats() {
@@ -656,8 +685,16 @@ const SyncQueue = {
         db.sync_queue.where('sync_status').equals('pending').count(),
         db.sync_queue.where('sync_status').equals('processing').count(),
         db.sync_queue.where('sync_status').equals('failed').count(),
-        // ✅ تم استخدام filter بدلاً من equals(null) لتجنب خطأ IndexedDB
-        db.sync_conflicts.filter(conflict => conflict.resolution === null).count(),
+        // ✅ الإصلاح: بدلاً من filter(c => c.resolution === null) التي تقرأ كل الجدول،
+        // نعد الكل ونطرح المحلولة — يستخدم الفهرس بدلاً من المسح الكامل
+        (async () => {
+          const total    = await db.sync_conflicts.count();
+          const resolved = await db.sync_conflicts
+            .where('resolution')
+            .anyOf(['server', 'client'])
+            .count();
+          return total - resolved;
+        })(),
       ]);
 
       return ok({
@@ -673,34 +710,28 @@ const SyncQueue = {
     }
   },
 
-
-  /**
-   * يُلغي جميع مؤقتات إعادة المحاولة المجدولة
-   * يُستخدم عند تسجيل الخروج
-   */
-  clearRetryTimers() {
-    for (const [, timer] of _queueState.retryTimers) {
-      clearTimeout(timer);
-    }
-    _queueState.retryTimers.clear();
-    _queueState.isProcessing = false;
-  },
-
   /**
    * يجلب جميع التعارضات غير المحلولة
+   * ✅ إصلاح: استبدال filter() بنهج أكفأ يستخدم الفهرس
    * @returns {Promise<Array>}
    */
   async getUnresolvedConflicts() {
     try {
-      // ✅ تم استخدام filter هنا أيضاً للبحث عن القيم التي تساوي null
-      return await db.sync_conflicts
-        .filter(conflict => conflict.resolution === null)
-        .toArray();
+      // ✅ الإصلاح: جلب مفاتيح المحلولة عبر الفهرس ثم استبعادها
+      // أكفأ بكثير من filter() الذي يقرأ كل السجلات في الذاكرة
+      const resolvedKeys = await db.sync_conflicts
+        .where('resolution')
+        .anyOf(['server', 'client'])
+        .primaryKeys();
+
+      const resolvedSet = new Set(resolvedKeys);
+
+      const all = await db.sync_conflicts.toArray();
+      return all.filter(c => !resolvedSet.has(c.id));
     } catch {
       return [];
     }
   },
-
 
   /**
    * يحذف جميع عمليات الطابور (للحالات الطارئة فقط)
@@ -722,6 +753,18 @@ const SyncQueue = {
     } catch (e) {
       return err(`فشل مسح الطابور: ${e.message}`);
     }
+  },
+
+  /**
+   * يُلغي جميع مؤقتات إعادة المحاولة المجدولة
+   * يُستخدم عند تسجيل الخروج
+   */
+  clearRetryTimers() {
+    for (const [, timer] of _queueState.retryTimers) {
+      clearTimeout(timer);
+    }
+    _queueState.retryTimers.clear();
+    _queueState.isProcessing = false;
   },
 
 };
