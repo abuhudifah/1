@@ -106,9 +106,11 @@
        7. AuthService.js   ← المصادقة والجلسات
        8. AccountingService.js ← نظام القيد المزدوج
        9. SyncService.js   ← إدارة المزامنة عبر الشبكة
-       10. AppStore.js     ← الحالة المركزية (EventTarget)
-       11. App.js          ← التطبيق الرئيسي والتوجيه
-       12. المكونات (Components) — بعد App.js
+       10. ThemeManager.js ← مدير الوضع المظلم/الفاتح (موحد)
+       11. IdleTimer.js    ← الخروج التلقائي للمندوبين [المرحلة 3]
+       12. AppStore.js     ← الحالة المركزية (EventTarget)
+       13. App.js          ← التطبيق الرئيسي والتوجيه
+       14. المكونات (Components) — بعد App.js
        ============================================================ -->
 
   <!-- الطبقة الأولى: الإعدادات -->
@@ -127,8 +129,12 @@
   <script src="services/AuthService.js"       defer></script>
   <script src="services/AccountingService.js" defer></script>
   <script src="services/SyncService.js"       defer></script>
+
   <!-- مدير الوضع المظلم (يجب أن يكون قبل LoginComponent) -->
-<script src="services/ThemeManager.js" defer></script>
+  <script src="services/ThemeManager.js"      defer></script>
+
+  <!-- خدمة الخروج التلقائي للمندوبين [المرحلة 3] — بعد AuthService وقبل App.js -->
+  <script src="services/IdleTimer.js"         defer></script>
 
   <!-- الطبقة الخامسة: إدارة الحالة -->
   <script src="store/AppStore.js" defer></script>
