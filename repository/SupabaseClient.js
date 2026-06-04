@@ -22,8 +22,7 @@ const supabaseClient = window.supabase.createClient(
   SUPABASE_CONFIG.ANON_KEY,
   {
     auth: {
-      // تخزين الجلسة في sessionStorage فقط (تختفي عند إغلاق المتصفح)
-      storage              : window.sessionStorage,
+      storage              : window.localStorage,
       persistSession       : true,
       autoRefreshToken     : true,
       detectSessionInUrl   : false,
@@ -41,7 +40,6 @@ const supabaseClient = window.supabase.createClient(
     },
   }
 );
-
 // ============================================================
 // الاستماع لتغييرات حالة المصادقة
 // ============================================================
