@@ -1873,3 +1873,403 @@ body.dark-mode #login-page .calc-expr   { color: rgba(248,250,252,0.35) !importa
 /* ============================================================
    نهاية الملف
    ============================================================ */
+
+
+/* ============================================================
+   styles_v3.css — تحسينات شاملة الوضع الليلي + البصري
+   تُضاف كاملةً في نهاية assets/css/styles.css
+   ============================================================ */
+
+/* ════════════════════════════════════════════════
+   الوضع الليلي المحسّن — إعادة تعريف كاملة
+   ════════════════════════════════════════════════ */
+
+body.dark-mode {
+  --bg-page        : #0b0f1a;
+  --bg-card        : #141924;
+  --bg-input       : #1a2030;
+  --bg-hover       : #1f2a3c;
+
+  --glass-bg       : rgba(20, 25, 36, 0.90);
+  --glass-bg-heavy : rgba(16, 21, 32, 0.97);
+  --glass-border   : rgba(255, 255, 255, 0.06);
+  --glass-hover    : rgba(24, 31, 46, 0.95);
+  --glass-shadow   : 0 8px 32px rgba(0, 0, 0, 0.45);
+
+  --text-primary   : #e8edf5;
+  --text-secondary : #8ea4c0;
+  --text-muted     : #4e6880;
+
+  --border-color   : rgba(255, 255, 255, 0.07);
+
+  --header-bg      : rgba(8, 12, 22, 0.98);
+  --nav-bg         : rgba(10, 14, 24, 0.96);
+
+  --shadow-sm  : 0 2px 8px rgba(0,0,0,0.28);
+  --shadow-md  : 0 8px 24px rgba(0,0,0,0.40);
+  --shadow-lg  : 0 20px 56px rgba(0,0,0,0.55);
+}
+
+/* خلفية الصفحة في الوضع الليلي */
+body.dark-mode::before {
+  background:
+    radial-gradient(ellipse 70% 55% at 8% 8%,   rgba(37, 99, 235, 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 45% at 92% 82%,  rgba(5, 150, 105, 0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 35% at 50% 100%, rgba(37, 99, 235, 0.04) 0%, transparent 70%);
+}
+
+/* تحسين النصوص */
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3,
+body.dark-mode h4 { color: var(--text-primary); }
+
+body.dark-mode p  { color: var(--text-secondary); }
+
+body.dark-mode strong { color: var(--text-primary); }
+
+/* ── شريط التنقل الليلي ── */
+body.dark-mode .app-nav .nav-tab { color: #6a84a0; }
+body.dark-mode .app-nav .nav-tab:hover {
+  background: rgba(37, 99, 235, 0.10);
+  color: #93b4d6;
+}
+body.dark-mode .app-nav .nav-tab.active {
+  background: rgba(37, 99, 235, 0.22);
+  color: #60a5fa;
+  box-shadow: 0 2px 10px rgba(37,99,235,0.20);
+}
+
+/* ── بطاقات KPI الليلية ── */
+body.dark-mode .kpi-card {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+}
+
+/* ── حقول النماذج الليلية ── */
+body.dark-mode .form-control {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.10);
+}
+body.dark-mode .form-control:focus {
+  background: rgba(26, 34, 54, 0.95);
+  border-color: rgba(59,130,246,0.55);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+body.dark-mode .form-control::placeholder { color: #3d5470; }
+body.dark-mode select.form-control {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234e6880' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  color: var(--text-primary);
+}
+body.dark-mode select option {
+  background: #141924;
+  color: var(--text-primary);
+}
+body.dark-mode textarea.form-control {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+/* ── جداول البيانات الليلية ── */
+body.dark-mode .data-table thead {
+  background: rgba(15, 22, 38, 0.98) !important;
+  color: #8ea4c0 !important;
+}
+body.dark-mode .data-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+body.dark-mode .data-table tbody td {
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.05);
+}
+body.dark-mode .table-wrapper {
+  border-color: rgba(255,255,255,0.07);
+}
+
+/* ── بطاقات زجاجية ليلية ── */
+body.dark-mode .glass-card,
+body.dark-mode .glass-card-sm {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+}
+body.dark-mode .glass-card:hover {
+  background: var(--glass-hover);
+  border-color: rgba(255,255,255,0.09);
+}
+
+/* ── أزرار ليلية ── */
+body.dark-mode .btn-secondary {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.10);
+}
+body.dark-mode .btn-secondary:hover {
+  background: rgba(255,255,255,0.10);
+  border-color: var(--accent);
+  color: #60a5fa;
+}
+
+/* ── Dropdown القوائم الليلية ── */
+body.dark-mode #col-customer-dropdown,
+body.dark-mode #tr-agent-dropdown,
+body.dark-mode [id$="-dropdown"] {
+  background: rgba(10,15,25,0.98);
+  border-color: rgba(255,255,255,0.09);
+}
+
+/* ── المودال الليلي ── */
+body.dark-mode .modal-box {
+  background: rgba(16, 21, 34, 0.98);
+  border-color: rgba(255,255,255,0.08);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+}
+body.dark-mode .modal-header {
+  border-bottom-color: rgba(255,255,255,0.07);
+}
+body.dark-mode .modal-close:hover {
+  background: rgba(220,38,38,0.15);
+  color: #f87171;
+}
+
+/* ── الشارات الليلية ── */
+body.dark-mode .badge-neutral {
+  background: rgba(148,163,184,0.12);
+  color: #8ea4c0;
+}
+
+/* ── Toast الليلي ── */
+body.dark-mode .toast-item {
+  background: rgba(16, 21, 34, 0.96) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.55) !important;
+}
+
+/* ── Skeleton الليلي ── */
+body.dark-mode .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.03) 0%,
+    rgba(255,255,255,0.07) 50%,
+    rgba(255,255,255,0.03) 100%
+  );
+  background-size: 300% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+/* ── حقول التاريخ الليلية ── */
+body.dark-mode input[type="date"],
+body.dark-mode input[type="month"],
+body.dark-mode input[type="time"] {
+  color-scheme: dark;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.10);
+}
+
+/* ── شريط التقدم الليلي ── */
+body.dark-mode .progress-bar {
+  background: rgba(255,255,255,0.07);
+}
+
+/* ── أيقونة التحميل الليلية ── */
+body.dark-mode #app-loading {
+  background: #0b0f1a;
+}
+
+/* ── مؤشر الاتصال ── */
+body.dark-mode .sync-dot.synced  { box-shadow: 0 0 6px var(--success); }
+body.dark-mode .sync-dot.pending { box-shadow: 0 0 6px var(--warning); }
+body.dark-mode .sync-dot.conflict{ box-shadow: 0 0 8px var(--danger);  }
+
+/* ── أنيميشن Skeleton ── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+/* ════════════════════════════════════════════════
+   تحسينات بصرية عامة (فاتح + داكن)
+   ════════════════════════════════════════════════ */
+
+/* Toast في الأسفل */
+#toast-container {
+  position: fixed !important;
+  bottom  : 24px !important;
+  top     : auto !important;
+  left    : 50% !important;
+  transform: translateX(-50%) !important;
+  z-index : 99999;
+  display : flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  width: max-content;
+  max-width: 92vw;
+}
+
+/* بطاقات KPI مع أنيميشن متتالي */
+.kpi-grid .kpi-card { animation: fadeIn 0.35s ease both; }
+.kpi-grid .kpi-card:nth-child(1) { animation-delay: 0.00s; }
+.kpi-grid .kpi-card:nth-child(2) { animation-delay: 0.07s; }
+.kpi-grid .kpi-card:nth-child(3) { animation-delay: 0.14s; }
+.kpi-grid .kpi-card:nth-child(4) { animation-delay: 0.21s; }
+.kpi-grid .kpi-card:nth-child(5) { animation-delay: 0.28s; }
+.kpi-grid .kpi-card:nth-child(6) { animation-delay: 0.35s; }
+
+/* Hover رفع البطاقات */
+.kpi-card:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* glass-card animation */
+.glass-card { animation: fadeIn 0.28s ease; }
+
+/* تحسين حواف التبويبات */
+.nav-tab {
+  position: relative;
+  overflow: hidden;
+}
+.nav-tab::before {
+  content  : '';
+  position : absolute;
+  bottom   : 2px;
+  right    : 50%;
+  left     : 50%;
+  height   : 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: right var(--transition-normal), left var(--transition-normal);
+}
+.nav-tab.active::before { right: 8px; left: 8px; }
+
+/* أزرار تأثير النقر */
+.btn:active { transform: scale(0.97) !important; }
+
+/* تحسين حقل المبلغ */
+input[type="number"].form-control::-webkit-inner-spin-button { opacity: 0.4; }
+
+/* Hover لصفوف العمليات */
+.operation-item:hover {
+  background: var(--bg-hover) !important;
+}
+
+/* تأثير hover على الجدول */
+.data-table tbody tr {
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* صندوق المندوب */
+.agent-box {
+  transition: transform var(--transition-spring), box-shadow var(--transition-normal);
+}
+.agent-box:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* تحسين شريط التقدم */
+.progress-fill {
+  will-change: width;
+  transition: width 0.7s cubic-bezier(0.4,0,0.2,1) !important;
+}
+
+/* شارة الإشعارات */
+.notif-badge {
+  animation: badgePop 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes badgePop {
+  0%   { transform: scale(0); }
+  100% { transform: scale(1); }
+}
+
+/* حالة فارغة */
+.empty-state-icon {
+  animation: floatIcon 3s ease-in-out infinite;
+}
+@keyframes floatIcon {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+
+/* spinner محسّن */
+.spinner { will-change: transform; }
+
+/* تحسين header */
+.app-header { will-change: auto; }
+
+/* تحسين App content */
+.app-content {
+  animation: fadeIn 0.3s ease;
+}
+
+/* مؤشر الحسابات البنكية في نموذج الإيداع */
+#dep-ceiling-info {
+  transition: all var(--transition-normal);
+}
+
+/* تحسين خاص بالجوال */
+@media (max-width: 640px) {
+  .app-header {
+    padding: 0 10px;
+    gap: 6px;
+  }
+  .header-user-info,
+  .header-date,
+  .header-title { display: none; }
+  .header-account-num { display: none; }
+  .header-icon-btn { width: 34px; height: 34px; }
+
+  .glass-card { padding: 14px; }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .data-table thead th,
+  .data-table tbody td {
+    padding: 7px 8px;
+    font-size: 0.78rem;
+  }
+
+  .btn { font-size: 0.84rem; padding: 9px 14px; }
+  .btn-sm { padding: 5px 10px; font-size: 0.79rem; }
+
+  .modal-box { padding: 18px; }
+}
+
+@media (max-width: 400px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  :root { --header-height: 54px; --nav-height: 46px; }
+}
+
+/* طباعة */
+@media print {
+  #app-header,
+  #app-nav,
+  .btn,
+  .header-actions { display: none !important; }
+  .app-content { padding-top: 0 !important; }
+  .glass-card {
+    background: #fff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+}
+
+/* تحسين شاشة الدخول (الوضع الفاتح) */
+body:not(.dark-mode) .login-page-wrap {
+  background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 35%, #f0fdf4 65%, #ecfdf5 100%);
+}
+body.dark-mode .login-page-wrap {
+  background: linear-gradient(135deg, #0a0f1e 0%, #0f2044 40%, #0a1628 70%, #0a0f1e 100%);
+}
+
+/* تحسين نص "الحسابات البنكية" */
+body.dark-mode .bank-card-name { color: var(--text-primary); }
+
+/* ══ نهاية ملف التحسينات ══ */
