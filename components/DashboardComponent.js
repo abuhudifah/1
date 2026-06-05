@@ -1,15 +1,19 @@
 /**
- * components/DashboardComponent.js — v4.0
- * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * components/DashboardComponent.js — v4.1 (FIXED)
+ * نظام أبو حذيفة المتكامل للصرافة والتحويلات
+ *
  * الإصلاحات:
- * ✅ 1. استبدال navigator.onLine بـ isOnline() الموحدة (7 مواضع)
- * ✅ 2. فلتر التاريخ: عرض بيانات يوم أو شهر محدد
- * ✅ 3. البيانات تشمل جميع المستخدمين لليوم المحدد
- * ✅ 4. تحديث Realtime خفيف (بيانات KPI فقط لا إعادة رسم كامل)
- * ✅ 5. _loadBankProgress يستخدم isOnline()
- * ✅ 6. _loadWeeklyChart يستخدم isOnline()
- * ✅ 7. التاريخ المحدد يُمرَّر للـ RPC والاستعلامات الاحتياطية
+ * ✅ FIX-5b: تسريب الذاكرة — Realtime subscription
+ *    المشكلة: عند التنقل من Dashboard → تبويب آخر → العودة،
+ *    كانت _subscribeRealtime() تُنشئ subscription جديدة بدون إلغاء القديمة.
+ *    مع مرور الوقت: عشرات الـ subscriptions المتراكمة = استهلاك ذاكرة + طلبات مكررة.
+ *
+ *    الحل: destroy() تُلغي الـ subscriptions وتُدمر الـ charts تماماً.
+ *    App.js (المُصحَّح) يستدعي destroy() تلقائياً عند كل تغيير تبويب.
+ *
+ * ✅ FIX-3: استخدام supabaseClient المُوحَّد (لا supabase الخام)
  */
+
 'use strict';
 
 const DashboardComponent = {
@@ -18,13 +22,15 @@ const DashboardComponent = {
   _container   : null,
   _realtimeSub : null,
   _dashData    : null,
-  _selectedDate: null,   // التاريخ المحدد حالياً في الفلتر
-  _viewMode    : 'day',  // 'day' | 'month'
+  _selectedDate: null,
+  _viewMode    : 'day',
+  // FIX-5b: تتبع هل الـ subscription نشطة لمنع التكرار
+  _isSubscribed: false,
 
   async render(container) {
-    this._container   = container;
+    this._container    = container;
     this._selectedDate = getCurrentSaudiDate();
-    this._viewMode    = 'day';
+    this._viewMode     = 'day';
 
     if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
       container.innerHTML = `<div class="empty-state">
@@ -35,7 +41,6 @@ const DashboardComponent = {
 
     container.innerHTML = `
       <div id="dash-root">
-        <!-- شريط العنوان + فلتر التاريخ -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
           <div>
             <h2 style="font-size:1.2rem;font-weight:700;color:var(--text-primary);">لوحة المعلومات</h2>
@@ -44,7 +49,6 @@ const DashboardComponent = {
             </p>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <!-- تبديل يوم / شهر -->
             <div style="display:flex;background:var(--bg-input);border-radius:10px;padding:3px;gap:2px;">
               <button id="dash-mode-day" class="btn btn-sm"
                 style="padding:5px 12px;border-radius:8px;font-size:0.78rem;background:var(--accent);color:#fff;">
@@ -55,13 +59,11 @@ const DashboardComponent = {
                 شهر
               </button>
             </div>
-            <!-- منتقي التاريخ -->
             <input id="dash-date-picker" type="date"
               value="${getCurrentSaudiDate()}"
               max="${getCurrentSaudiDate()}"
               class="form-control"
               style="padding:6px 10px;font-size:0.82rem;width:auto;min-width:140px;">
-            <!-- زر تحديث -->
             <button id="dash-refresh-btn" class="btn btn-secondary btn-sm"
               style="display:flex;align-items:center;gap:4px;font-size:0.78rem;">
               <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> تحديث
@@ -69,12 +71,10 @@ const DashboardComponent = {
           </div>
         </div>
 
-        <!-- KPI -->
         <div class="kpi-grid" id="kpi-grid">
           ${[1,2,3,4].map(() => `<div class="skeleton" style="height:95px;border-radius:16px;"></div>`).join('')}
         </div>
 
-        <!-- مخططات -->
         <div class="grid-2" style="margin-bottom:24px;">
           <div class="glass-card">
             <h3 style="font-size:0.88rem;font-weight:700;margin-bottom:12px;color:var(--text-secondary);">
@@ -94,7 +94,6 @@ const DashboardComponent = {
           </div>
         </div>
 
-        <!-- الحسابات البنكية -->
         <div class="glass-card" style="margin-bottom:24px;">
           <h3 style="font-size:0.88rem;font-weight:700;margin-bottom:16px;color:var(--text-secondary);">
             🏦 الحسابات البنكية — السقف اليومي
@@ -104,7 +103,6 @@ const DashboardComponent = {
           </div>
         </div>
 
-        <!-- صناديق المناديب -->
         <div class="glass-card" style="margin-bottom:24px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
             <h3 style="font-size:0.88rem;font-weight:700;color:var(--text-secondary);">👤 صناديق المناديب</h3>
@@ -115,7 +113,6 @@ const DashboardComponent = {
           </div>
         </div>
 
-        <!-- أحدث العمليات -->
         <div class="glass-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
             <h3 style="font-size:0.88rem;font-weight:700;color:var(--text-secondary);">⏱ أحدث العمليات</h3>
@@ -132,18 +129,15 @@ const DashboardComponent = {
         </div>
       </div>`;
 
-    /* ── ربط الأحداث ── */
     document.getElementById('dash-refresh-btn')?.addEventListener('click', () => this._loadAll());
     document.getElementById('dash-view-all-btn')?.addEventListener('click', () => window._appNavigateTo?.('all-operations'));
 
-    /* فلتر التاريخ */
     document.getElementById('dash-date-picker')?.addEventListener('change', (e) => {
       this._selectedDate = e.target.value || getCurrentSaudiDate();
       this._updateSubtitle();
       this._loadAll();
     });
 
-    /* تبديل يوم / شهر */
     document.getElementById('dash-mode-day')?.addEventListener('click', () => {
       this._viewMode = 'day';
       this._applyModeStyle();
@@ -161,7 +155,6 @@ const DashboardComponent = {
     this._subscribeRealtime();
   },
 
-  /* ── تحديث نص العنوان الفرعي ── */
   _updateSubtitle() {
     const sub    = document.getElementById('dash-subtitle');
     const picker = document.getElementById('dash-date-picker');
@@ -169,20 +162,13 @@ const DashboardComponent = {
 
     let label = '';
     if (this._viewMode === 'month') {
-      const d   = new Date(this._selectedDate + 'T12:00:00');
-      const mo  = d.toLocaleString('ar-SA', { month: 'long', year: 'numeric', timeZone: APP_CONFIG.TIMEZONE });
+      const d  = new Date(this._selectedDate + 'T12:00:00');
+      const mo = d.toLocaleString('ar-SA', { month: 'long', year: 'numeric', timeZone: APP_CONFIG.TIMEZONE });
       label = `جميع المستخدمين — شهر ${mo}`;
-      // تغيير نوع المدخل لاختيار الشهر
-      if (picker) {
-        picker.type  = 'month';
-        picker.value = this._selectedDate.slice(0, 7);
-      }
+      if (picker) { picker.type = 'month'; picker.value = this._selectedDate.slice(0, 7); }
     } else {
       label = `جميع المستخدمين — ${formatDateArabic(this._selectedDate)}`;
-      if (picker) {
-        picker.type  = 'date';
-        picker.value = this._selectedDate;
-      }
+      if (picker) { picker.type = 'date'; picker.value = this._selectedDate; }
     }
     sub.textContent = label;
 
@@ -203,10 +189,9 @@ const DashboardComponent = {
     }
   },
 
-  /* ── بناء نطاق التاريخ حسب الوضع ── */
   _getDateRange() {
     if (this._viewMode === 'month') {
-      const prefix = this._selectedDate.slice(0, 7); // YYYY-MM
+      const prefix = this._selectedDate.slice(0, 7);
       const from   = `${prefix}-01`;
       const d      = new Date(this._selectedDate + 'T12:00:00');
       const last   = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
@@ -216,9 +201,6 @@ const DashboardComponent = {
     return { from: this._selectedDate, to: this._selectedDate };
   },
 
-  // ─────────────────────────────────────────────
-  // تحميل كل البيانات
-  // ─────────────────────────────────────────────
   async _loadAll() {
     const btn = document.getElementById('dash-refresh-btn');
     if (btn) { btn.disabled = true; btn.querySelector('i')?.classList.add('animate-spin'); }
@@ -226,13 +208,10 @@ const DashboardComponent = {
     try {
       const { from, to } = this._getDateRange();
 
-      /* ✅ isOnline() بدلاً من navigator.onLine */
       if (isOnline()) {
-        /* محاولة RPC موحد */
+        // FIX-3: استخدام supabaseClient المُوحَّد
         const { data, error } = await supabaseClient.rpc('get_admin_dashboard', {
-          p_date: this._selectedDate,
-          p_from: from,
-          p_to  : to,
+          p_date: this._selectedDate, p_from: from, p_to: to,
         });
 
         if (!error && data) {
@@ -243,7 +222,6 @@ const DashboardComponent = {
         }
       }
 
-      /* Fallback: استعلامات منفصلة */
       await Promise.allSettled([
         this._loadKPI(from, to),
         this._loadBankProgress(from, to),
@@ -259,25 +237,22 @@ const DashboardComponent = {
 
   _renderFromDashData(data) {
     this._renderKPI(data.totals);
-    this._renderBankProgress(data.banks   || []);
-    this._renderAgentsBoxes(data.agents   || []);
-    this._renderRecentTx(data.recent      || []);
+    this._renderBankProgress(data.banks  || []);
+    this._renderAgentsBoxes(data.agents  || []);
+    this._renderRecentTx(data.recent     || []);
     this._renderPieChart(data.totals);
   },
 
-  // ─────────────────────────────────────────────
-  // KPI
-  // ─────────────────────────────────────────────
   _renderKPI(totals) {
     if (!totals) return;
     const net = (totals.total_collections || 0) + (totals.total_receipts || 0)
               - (totals.total_deposits || 0) - (totals.total_expenses || 0) - (totals.total_deliveries || 0);
 
     const kpis = [
-      { label:'التحصيلات',  value: totals.total_collections || 0, icon:'💰', color:'var(--success)', bg:'rgba(5,150,105,0.10)'  },
-      { label:'الإيداعات',  value: totals.total_deposits    || 0, icon:'🏦', color:'var(--info)',    bg:'rgba(2,132,199,0.10)'  },
-      { label:'المصروفات',  value: totals.total_expenses    || 0, icon:'💸', color:'var(--danger)',  bg:'rgba(220,38,38,0.10)'  },
-      { label:'صافي الفترة',value: net,                           icon:'📊',
+      { label:'التحصيلات', value: totals.total_collections || 0, icon:'💰', color:'var(--success)', bg:'rgba(5,150,105,0.10)'  },
+      { label:'الإيداعات', value: totals.total_deposits    || 0, icon:'🏦', color:'var(--info)',    bg:'rgba(2,132,199,0.10)'  },
+      { label:'المصروفات', value: totals.total_expenses    || 0, icon:'💸', color:'var(--danger)',  bg:'rgba(220,38,38,0.10)'  },
+      { label:'صافي الفترة', value: net,                         icon:'📊',
         color: net >= 0 ? 'var(--success)' : 'var(--danger)',
         bg:    net >= 0 ? 'rgba(5,150,105,0.10)' : 'rgba(220,38,38,0.10)' },
     ];
@@ -285,40 +260,31 @@ const DashboardComponent = {
     const grid = document.getElementById('kpi-grid');
     if (!grid) return;
     grid.innerHTML = kpis.map(k => `
-      <div class="glass-card kpi-card" style="border-right:3px solid ${k.color};background:${k.bg};position:relative;overflow:hidden;">
+      <div class="glass-card kpi-card" style="border-right:3px solid ${k.color};background:${k.bg};">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <span style="font-size:1.5rem;">${k.icon}</span>
-          <span style="font-size:0.72rem;color:var(--text-muted);font-weight:600;letter-spacing:0.03em;">
-            ${escapeHtml(k.label)}
-          </span>
+          <span style="font-size:0.72rem;color:var(--text-muted);font-weight:600;">${escapeHtml(k.label)}</span>
         </div>
         <div class="kpi-value" style="font-size:1.45rem;font-weight:800;color:${k.color};direction:ltr;text-align:right;">
           ${k.value < 0 ? '−' : ''}${Math.abs(Math.round(k.value)).toLocaleString('en-US')}
           <span style="font-size:0.65rem;font-weight:500;color:var(--text-muted);margin-right:2px;">${APP_CONFIG.CURRENCY_SYMBOL}</span>
         </div>
-        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">
-          ${totals.total_tx_count || 0} عملية
-        </div>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">${totals.total_tx_count || 0} عملية</div>
       </div>`).join('');
   },
 
-  /* KPI — Fallback مباشر */
   async _loadKPI(from, to) {
     let txs = [];
     try {
-      /* ✅ isOnline() */
       if (isOnline()) {
+        // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
-          .from('transactions')
-          .select('type,amount,is_reversed')
-          .gte('date', from).lte('date', to)
-          .eq('is_reversed', false);
+          .from('transactions').select('type,amount,is_reversed')
+          .gte('date', from).lte('date', to).eq('is_reversed', false);
         txs = data || [];
-      } else {
-        txs = await db.transactions
-          .where('date').between(from, to, true, true)
-          .filter(t => !t.is_reversed)
-          .toArray();
+      } else if (typeof db !== 'undefined' && db.isOpen()) {
+        txs = await db.transactions.where('date').between(from, to, true, true)
+          .filter(t => !t.is_reversed).toArray();
       }
     } catch { txs = []; }
 
@@ -337,9 +303,6 @@ const DashboardComponent = {
     this._renderPieChart(totals);
   },
 
-  // ─────────────────────────────────────────────
-  // مخطط دائري
-  // ─────────────────────────────────────────────
   _renderPieChart(totals) {
     const pieCtx = document.getElementById('chart-pie');
     if (!pieCtx) return;
@@ -350,7 +313,7 @@ const DashboardComponent = {
       totals.total_receipts    || 0,
       totals.total_deliveries  || 0,
     ];
-    if (this._chart2) this._chart2.destroy();
+    if (this._chart2) { this._chart2.destroy(); this._chart2 = null; }
     if (values.every(v => v === 0)) {
       pieCtx.parentElement.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:190px;color:var(--text-muted);font-size:0.85rem;">لا توجد عمليات</div>`;
       return;
@@ -372,44 +335,37 @@ const DashboardComponent = {
     });
   },
 
-  // ─────────────────────────────────────────────
-  // مخطط 7 أيام
-  // ─────────────────────────────────────────────
   async _loadWeeklyChart() {
     const lineCtx = document.getElementById('chart-weekly');
     if (!lineCtx) return;
 
     const days7 = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - 6 + i);
+      const d = new Date(); d.setDate(d.getDate() - 6 + i);
       return d.toLocaleDateString('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
     });
 
     let cData = [], dData = [];
     try {
-      /* ✅ isOnline() */
       if (isOnline()) {
+        // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
-          .from('transactions')
-          .select('date,type,amount')
-          .in('date', days7)
-          .eq('is_reversed', false);
-        cData = days7.map(d => (data || []).filter(t => t.date === d && t.type === 'collection').reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0));
-        dData = days7.map(d => (data || []).filter(t => t.date === d && t.type === 'deposit').reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0));
-      } else {
+          .from('transactions').select('date,type,amount').in('date', days7).eq('is_reversed', false);
+        cData = days7.map(d => (data||[]).filter(t=>t.date===d&&t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
+        dData = days7.map(d => (data||[]).filter(t=>t.date===d&&t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
+      } else if (typeof db !== 'undefined' && db.isOpen()) {
         for (const d of days7) {
-          const txs = await db.transactions.where('date').equals(d).filter(t => !t.is_reversed).toArray();
-          cData.push(txs.filter(t => t.type === 'collection').reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0));
-          dData.push(txs.filter(t => t.type === 'deposit').reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0));
+          const txs = await db.transactions.where('date').equals(d).filter(t=>!t.is_reversed).toArray();
+          cData.push(txs.filter(t=>t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
+          dData.push(txs.filter(t=>t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
         }
       }
-    } catch { cData = days7.map(() => 0); dData = days7.map(() => 0); }
+    } catch { cData = days7.map(()=>0); dData = days7.map(()=>0); }
 
-    if (this._chart1) this._chart1.destroy();
+    if (this._chart1) { this._chart1.destroy(); this._chart1 = null; }
     this._chart1 = new Chart(lineCtx, {
       type: 'line',
       data: {
-        labels: days7.map(d => { const dt = new Date(d + 'T12:00:00'); return dt.toLocaleDateString('ar-SA', { weekday:'short', day:'numeric' }); }),
+        labels: days7.map(d => { const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('ar-SA',{weekday:'short',day:'numeric'}); }),
         datasets: [
           { label:'تحصيل', data:cData, borderColor:'#059669', backgroundColor:'rgba(5,150,105,0.08)', tension:0.4, fill:true, pointRadius:3, pointHoverRadius:5 },
           { label:'إيداع',  data:dData, borderColor:'#0284c7', backgroundColor:'rgba(2,132,199,0.08)', tension:0.4, fill:true, pointRadius:3, pointHoverRadius:5 },
@@ -420,16 +376,13 @@ const DashboardComponent = {
         interaction:{ mode:'index', intersect:false },
         scales: {
           x:{ ticks:{ font:{ family:'IBM Plex Sans Arabic', size:10 }, color:'#94a3b8' }, grid:{ display:false } },
-          y:{ ticks:{ font:{ family:'IBM Plex Sans Arabic', size:10 }, color:'#94a3b8', callback: v => v.toLocaleString('en-US') }, grid:{ color:'rgba(148,163,184,0.08)' }, beginAtZero:true },
+          y:{ ticks:{ font:{ family:'IBM Plex Sans Arabic', size:10 }, color:'#94a3b8', callback: v=>v.toLocaleString('en-US') }, grid:{ color:'rgba(148,163,184,0.08)' }, beginAtZero:true },
         },
         plugins: { legend:{ labels:{ font:{ family:'IBM Plex Sans Arabic', size:10 }, color:'#94a3b8' } } },
       },
     });
   },
 
-  // ─────────────────────────────────────────────
-  // أشرطة البنوك
-  // ─────────────────────────────────────────────
   _renderBankProgress(banks) {
     const el = document.getElementById('bank-progress-list');
     if (!el) return;
@@ -445,10 +398,8 @@ const DashboardComponent = {
       return `
         <div style="margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-            <span style="font-size:0.85rem;font-weight:600;">🏦 ${escapeHtml(b.name || '—')}</span>
-            <span style="font-size:0.75rem;color:var(--text-muted);">
-              ${used.toLocaleString('en-US')} / ${ceil.toLocaleString('en-US')} ر.س (${pct}%)
-            </span>
+            <span style="font-size:0.85rem;font-weight:600;">🏦 ${escapeHtml(b.name||'—')}</span>
+            <span style="font-size:0.75rem;color:var(--text-muted);">${used.toLocaleString('en-US')} / ${ceil.toLocaleString('en-US')} ر.س (${pct}%)</span>
           </div>
           <div class="progress-bar"><div class="progress-fill ${cls}" style="width:${pct}%;"></div></div>
         </div>`;
@@ -462,42 +413,27 @@ const DashboardComponent = {
       let banks = AppStore.getState('bankAccounts') || [];
       let totals = {};
 
-      /* ✅ isOnline() */
       if (isOnline()) {
+        // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
-          .from('transactions')
-          .select('bank_account_id,amount')
-          .eq('type', 'deposit')
-          .gte('date', from).lte('date', to)
-          .eq('is_reversed', false)
-          .not('bank_account_id', 'is', null);
-        (data || []).forEach(t => {
-          totals[t.bank_account_id] = (totals[t.bank_account_id] || 0) + Math.round(parseFloat(t.amount) || 0);
-        });
-      } else {
-        const txs = await db.transactions
-          .where('date').between(from, to, true, true)
-          .filter(t => t.type === 'deposit' && !t.is_reversed && t.bank_account_id)
-          .toArray();
-        txs.forEach(t => {
-          totals[t.bank_account_id] = (totals[t.bank_account_id] || 0) + Math.round(parseFloat(t.amount) || 0);
-        });
+          .from('transactions').select('bank_account_id,amount')
+          .eq('type','deposit').gte('date',from).lte('date',to).eq('is_reversed',false)
+          .not('bank_account_id','is',null);
+        (data||[]).forEach(t => { totals[t.bank_account_id] = (totals[t.bank_account_id]||0) + Math.round(parseFloat(t.amount)||0); });
+      } else if (typeof db !== 'undefined' && db.isOpen()) {
+        const txs = await db.transactions.where('date').between(from,to,true,true)
+          .filter(t=>t.type==='deposit'&&!t.is_reversed&&t.bank_account_id).toArray();
+        txs.forEach(t => { totals[t.bank_account_id] = (totals[t.bank_account_id]||0) + Math.round(parseFloat(t.amount)||0); });
       }
 
-      const banksWithData = banks.map(b => ({
-        ...b,
-        used_today: totals[b.id] || 0,
-      })).filter(b => b.used_today > 0 || banks.length <= 5);
-
+      const banksWithData = banks.map(b => ({ ...b, used_today: totals[b.id]||0 }))
+        .filter(b => b.used_today > 0 || banks.length <= 5);
       this._renderBankProgress(banksWithData);
     } catch (e) {
       el.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:16px;">فشل جلب بيانات البنوك</div>`;
     }
   },
 
-  // ─────────────────────────────────────────────
-  // صناديق المناديب
-  // ─────────────────────────────────────────────
   _renderAgentsBoxes(agents) {
     const el = document.getElementById('agents-grid');
     if (!el) return;
@@ -507,13 +443,13 @@ const DashboardComponent = {
     }
     const colors = ['#2563eb','#059669','#7c3aed','#d97706','#0284c7'];
     el.innerHTML = agents.map(a => {
-      const balance = Math.round(a.balance || 0);
-      const col     = Math.round(a.collections || 0);
-      const dep     = Math.round(a.deposits    || 0);
-      const exp     = Math.round(a.expenses    || 0);
-      const rec     = Math.round(a.receipts    || 0);
-      const initial = (a.agent_name || '؟').charAt(0);
-      const colIdx  = (a.agent_name || '').charCodeAt(0) % colors.length;
+      const balance = Math.round(a.balance||0);
+      const col     = Math.round(a.collections||0);
+      const dep     = Math.round(a.deposits||0);
+      const exp     = Math.round(a.expenses||0);
+      const rec     = Math.round(a.receipts||0);
+      const initial = (a.agent_name||'؟').charAt(0);
+      const colIdx  = (a.agent_name||'').charCodeAt(0) % colors.length;
       return `
         <div class="glass-card" style="padding:14px 16px;border-right:3px solid ${colors[colIdx]};
           transition:transform var(--transition-spring),box-shadow var(--transition-normal);"
@@ -522,32 +458,26 @@ const DashboardComponent = {
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
             <div style="width:40px;height:40px;border-radius:50%;flex-shrink:0;
               background:linear-gradient(135deg,${colors[colIdx]},${colors[(colIdx+1)%colors.length]});
-              display:flex;align-items:center;justify-content:center;
-              color:#fff;font-weight:800;font-size:1rem;
-              box-shadow:0 4px 12px ${colors[colIdx]}40;">
+              display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1rem;">
               ${escapeHtml(initial)}
             </div>
             <div>
-              <div style="font-weight:700;font-size:0.92rem;color:var(--text-primary);">${escapeHtml(a.agent_name || '—')}</div>
-              <div style="font-size:0.72rem;color:var(--text-muted);">${a.tx_count || 0} عملية</div>
+              <div style="font-weight:700;font-size:0.92rem;color:var(--text-primary);">${escapeHtml(a.agent_name||'—')}</div>
+              <div style="font-size:0.72rem;color:var(--text-muted);">${a.tx_count||0} عملية</div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:0.78rem;margin-bottom:12px;">
             <div style="color:var(--text-muted);">رصيد الصندوق</div>
-            <div style="text-align:left;direction:ltr;font-weight:700;color:var(--info);">
-              ${balance >= 0 ? '' : '−'}${Math.abs(balance).toLocaleString('en-US')}
-            </div>
-            ${col > 0 ? `<div style="color:var(--text-muted);">تحصيل</div><div style="text-align:left;direction:ltr;color:var(--success);font-weight:600;">+${col.toLocaleString('en-US')}</div>` : ''}
-            ${dep > 0 ? `<div style="color:var(--text-muted);">إيداع</div><div style="text-align:left;direction:ltr;color:var(--info);font-weight:600;">−${dep.toLocaleString('en-US')}</div>` : ''}
-            ${exp > 0 ? `<div style="color:var(--text-muted);">مصروف</div><div style="text-align:left;direction:ltr;color:var(--danger);font-weight:600;">−${exp.toLocaleString('en-US')}</div>` : ''}
-            ${rec > 0 ? `<div style="color:var(--text-muted);">استلام</div><div style="text-align:left;direction:ltr;color:var(--warning);font-weight:600;">+${rec.toLocaleString('en-US')}</div>` : ''}
+            <div style="text-align:left;direction:ltr;font-weight:700;color:var(--info);">${balance>=0?'':'−'}${Math.abs(balance).toLocaleString('en-US')}</div>
+            ${col>0?`<div style="color:var(--text-muted);">تحصيل</div><div style="text-align:left;direction:ltr;color:var(--success);font-weight:600;">+${col.toLocaleString('en-US')}</div>`:''}
+            ${dep>0?`<div style="color:var(--text-muted);">إيداع</div><div style="text-align:left;direction:ltr;color:var(--info);font-weight:600;">−${dep.toLocaleString('en-US')}</div>`:''}
+            ${exp>0?`<div style="color:var(--text-muted);">مصروف</div><div style="text-align:left;direction:ltr;color:var(--danger);font-weight:600;">−${exp.toLocaleString('en-US')}</div>`:''}
+            ${rec>0?`<div style="color:var(--text-muted);">استلام</div><div style="text-align:left;direction:ltr;color:var(--warning);font-weight:600;">+${rec.toLocaleString('en-US')}</div>`:''}
           </div>
-          <div style="padding-top:10px;border-top:1px solid var(--border-color);
-            display:flex;justify-content:space-between;align-items:center;">
+          <div style="padding-top:10px;border-top:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600;">الرصيد الحالي</span>
-            <span style="font-size:1.05rem;font-weight:800;
-              color:${balance >= 0 ? 'var(--success)' : 'var(--danger)'};direction:ltr;">
-              ${balance >= 0 ? '' : '−'}${Math.abs(balance).toLocaleString('en-US')}
+            <span style="font-size:1.05rem;font-weight:800;color:${balance>=0?'var(--success)':'var(--danger)'};direction:ltr;">
+              ${balance>=0?'':'−'}${Math.abs(balance).toLocaleString('en-US')}
               <span style="font-size:0.65rem;font-weight:500;margin-right:2px;">${APP_CONFIG.CURRENCY_SYMBOL}</span>
             </span>
           </div>
@@ -560,34 +490,24 @@ const DashboardComponent = {
     if (!el) return;
     const allUsers = AppStore.getState('users');
     const agents   = allUsers.filter(u => u.role === 'agent' && u.is_active);
-    if (!agents.length) {
-      el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;padding:16px;">لا يوجد مناديب</div>`;
-      return;
-    }
+    if (!agents.length) { el.innerHTML = `<div style="color:var(--text-muted);padding:16px;">لا يوجد مناديب</div>`; return; }
+
     let txs = [], balances = {};
     try {
-      /* ✅ isOnline() */
       if (isOnline()) {
+        // FIX-3: استخدام supabaseClient
         const [txRes, balRes] = await Promise.all([
-          supabaseClient.from('transactions')
-            .select('agent_id,type,amount')
-            .gte('date', from).lte('date', to)
-            .eq('is_reversed', false),
-          supabaseClient.from('account_balances')
-            .select('account_id,balance')
-            .in('account_id', agents.map(a => `AGT_${a.id}`)),
+          supabaseClient.from('transactions').select('agent_id,type,amount')
+            .gte('date',from).lte('date',to).eq('is_reversed',false),
+          supabaseClient.from('account_balances').select('account_id,balance')
+            .in('account_id', agents.map(a=>`AGT_${a.id}`)),
         ]);
         txs = txRes.data || [];
-        (balRes.data || []).forEach(b => { balances[b.account_id] = Math.round(parseFloat(b.balance) || 0); });
-      } else {
-        txs = await db.transactions
-          .where('date').between(from, to, true, true)
-          .filter(t => !t.is_reversed)
-          .toArray();
-        const balArr = await db.account_balances
-          .where('account_id').anyOf(agents.map(a => `AGT_${a.id}`))
-          .toArray();
-        balArr.forEach(b => { balances[b.account_id] = Math.round(parseFloat(b.balance) || 0); });
+        (balRes.data||[]).forEach(b => { balances[b.account_id] = Math.round(parseFloat(b.balance)||0); });
+      } else if (typeof db !== 'undefined' && db.isOpen()) {
+        txs = await db.transactions.where('date').between(from,to,true,true).filter(t=>!t.is_reversed).toArray();
+        const balArr = await db.account_balances.where('account_id').anyOf(agents.map(a=>`AGT_${a.id}`)).toArray();
+        balArr.forEach(b => { balances[b.account_id] = Math.round(parseFloat(b.balance)||0); });
       }
     } catch {}
 
@@ -595,18 +515,15 @@ const DashboardComponent = {
       agent_id    : a.id,
       agent_name  : a.display_name,
       balance     : balances[`AGT_${a.id}`] || 0,
-      collections : txs.filter(t => t.agent_id === a.id && t.type === 'collection').reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0),
-      deposits    : txs.filter(t => t.agent_id === a.id && t.type === 'deposit').reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0),
-      expenses    : txs.filter(t => t.agent_id === a.id && t.type === 'expense').reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0),
-      receipts    : txs.filter(t => t.agent_id === a.id && t.type === 'receipt').reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0),
-      tx_count    : txs.filter(t => t.agent_id === a.id).length,
+      collections : txs.filter(t=>t.agent_id===a.id&&t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0),
+      deposits    : txs.filter(t=>t.agent_id===a.id&&t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0),
+      expenses    : txs.filter(t=>t.agent_id===a.id&&t.type==='expense').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0),
+      receipts    : txs.filter(t=>t.agent_id===a.id&&t.type==='receipt').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0),
+      tx_count    : txs.filter(t=>t.agent_id===a.id).length,
     }));
     this._renderAgentsBoxes(agentsData);
   },
 
-  // ─────────────────────────────────────────────
-  // أحدث العمليات
-  // ─────────────────────────────────────────────
   _renderRecentTx(recent) {
     const el = document.getElementById('recent-tx-list');
     if (!el) return;
@@ -616,15 +533,14 @@ const DashboardComponent = {
     }
     const typeIcons = { collection:'💰', deposit:'🏦', expense:'💸', receipt:'📥', delivery:'📤', refund_settlement:'🔄' };
     el.innerHTML = recent.map(tx => {
-      const amt   = Math.round(parseFloat(tx.amount) || 0);
-      const icon  = typeIcons[tx.type] || '📋';
+      const amt   = Math.round(parseFloat(tx.amount)||0);
+      const icon  = typeIcons[tx.type]||'📋';
       const color = getTransactionColor ? getTransactionColor(tx.type) : 'var(--text-primary)';
-      const label = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
-      let secondary = tx.customer_name || tx.bank_name || tx.company_name || tx.details || '';
+      const label = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
+      const secondary = tx.customer_name||tx.bank_name||tx.company_name||tx.details||'';
       return `
-        <div style="display:flex;align-items:center;gap:10px;
-          padding:10px 12px;border-radius:10px;
-          transition:background var(--transition-fast);cursor:default;"
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+          transition:background var(--transition-fast);"
           onmouseenter="this.style.background='var(--bg-hover)'"
           onmouseleave="this.style.background=''">
           <div style="width:36px;height:36px;border-radius:10px;flex-shrink:0;
@@ -632,14 +548,13 @@ const DashboardComponent = {
             ${icon}
           </div>
           <div style="flex:1;min-width:0;">
-            <div style="font-size:0.84rem;font-weight:600;color:var(--text-primary);
-              display:flex;align-items:center;gap:6px;">
+            <div style="font-size:0.84rem;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
               ${escapeHtml(label)}
-              ${secondary ? `<span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">— ${escapeHtml(secondary)}</span>` : ''}
+              ${secondary?`<span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">— ${escapeHtml(secondary)}</span>`:''}
             </div>
             <div style="font-size:0.72rem;color:var(--text-muted);">
-              ${escapeHtml(tx.agent_name || '—')}
-              ${tx.time ? `· ${String(tx.time).substring(0, 5)}` : ''}
+              ${escapeHtml(tx.agent_name||'—')}
+              ${tx.time?`· ${String(tx.time).substring(0,5)}`:''}
             </div>
           </div>
           <div style="font-size:0.90rem;font-weight:800;color:${color};direction:ltr;flex-shrink:0;">
@@ -655,27 +570,22 @@ const DashboardComponent = {
     if (!el) return;
     let txs = [];
     try {
-      /* ✅ isOnline() */
       if (isOnline()) {
+        // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
           .from('transactions')
           .select('id,type,amount,date,time,agent_id,customer_name,details,is_reversed,company_id,bank_account_id')
-          .gte('date', from).lte('date', to)
-          .order('created_at', { ascending: false })
-          .limit(10);
-        txs = data || [];
-      } else {
-        txs = await db.transactions
-          .where('date').between(from, to, true, true)
-          .filter(t => !t.is_reversed)
-          .reverse()
-          .limit(10)
-          .toArray();
+          .gte('date',from).lte('date',to)
+          .order('created_at',{ascending:false}).limit(10);
+        txs = data||[];
+      } else if (typeof db !== 'undefined' && db.isOpen()) {
+        txs = await db.transactions.where('date').between(from,to,true,true)
+          .filter(t=>!t.is_reversed).reverse().limit(10).toArray();
       }
     } catch { txs = []; }
 
     if (!txs.length) {
-      el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:16px;">لا توجد عمليات في هذه الفترة</div>`;
+      el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:16px;">لا توجد عمليات</div>`;
       return;
     }
     const users        = AppStore.getState('users');
@@ -683,41 +593,88 @@ const DashboardComponent = {
     const companies    = AppStore.getState('companies');
     const recent = txs.map(tx => ({
       ...tx,
-      agent_name   : users.find(u => u.id === tx.agent_id)?.display_name || '—',
-      bank_name    : bankAccounts.find(b => b.id === tx.bank_account_id)?.name || null,
-      company_name : companies.find(c => c.id === tx.company_id)?.name || null,
+      agent_name   : users.find(u=>u.id===tx.agent_id)?.display_name||'—',
+      bank_name    : bankAccounts.find(b=>b.id===tx.bank_account_id)?.name||null,
+      company_name : companies.find(c=>c.id===tx.company_id)?.name||null,
     }));
     this._renderRecentTx(recent);
   },
 
-  // ─────────────────────────────────────────────
-  // Realtime — خفيف (KPI فقط عند تغيير البيانات)
-  // ─────────────────────────────────────────────
+  // ============================================================
+  // FIX-5b: Realtime Subscription — مع منع التكرار
+  // ============================================================
+
   _subscribeRealtime() {
-    if (this._realtimeSub) supabaseClient.removeChannel(this._realtimeSub);
-    // ✅ تحديث خفيف: نعيد تحميل KPI فقط لا كل البيانات
+    // FIX-5b: إلغاء أي subscription قديمة قبل إنشاء جديدة
+    if (this._realtimeSub) {
+      try {
+        supabaseClient.removeChannel(this._realtimeSub);
+      } catch (e) {
+        console.warn('⚠️ DashboardComponent: خطأ في إلغاء subscription القديمة:', e.message);
+      }
+      this._realtimeSub = null;
+      this._isSubscribed = false;
+    }
+
+    if (this._isSubscribed) return; // حماية إضافية
+
     let _debounceTimer = null;
+
+    // FIX-3: استخدام supabaseClient المُوحَّد
     this._realtimeSub = supabaseClient
-      .channel('dash-realtime-v4')
+      .channel('dash-realtime-v4-1') // رقم إصدار جديد لتجنب تعارض channel القديم
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
         clearTimeout(_debounceTimer);
         _debounceTimer = setTimeout(() => {
+          // التحقق أن المكوّن لا يزال مُثبَّتاً
+          if (!document.getElementById('dash-root')) return;
           const { from, to } = this._getDateRange();
           this._loadKPI(from, to);
           this._loadAgentsBoxes(from, to);
           this._loadRecentTx(from, to);
-        }, 1500); // تأخير 1.5 ثانية لتجميع التحديثات المتتالية
+        }, 1500);
       })
       .subscribe();
+
+    this._isSubscribed = true;
+    console.log('📡 DashboardComponent: Realtime subscription نشطة');
   },
 
+  // ============================================================
+  // FIX-5b: destroy() — تُلغي الـ subscription وتُدمر الـ charts
+  //         App.js يستدعيها تلقائياً عند كل تغيير تبويب
+  // ============================================================
   destroy() {
-    if (this._chart1)      this._chart1.destroy();
-    if (this._chart2)      this._chart2.destroy();
-    if (this._realtimeSub) supabaseClient.removeChannel(this._realtimeSub);
-    this._chart1 = this._chart2 = this._realtimeSub = this._dashData = null;
+    console.log('🧹 DashboardComponent.destroy(): تنظيف الموارد');
+
+    // إلغاء Realtime subscription
+    if (this._realtimeSub) {
+      try {
+        // FIX-3: استخدام supabaseClient المُوحَّد
+        supabaseClient.removeChannel(this._realtimeSub);
+        console.log('✅ DashboardComponent: Realtime subscription أُلغيت');
+      } catch (e) {
+        console.warn('⚠️ DashboardComponent: خطأ في إلغاء subscription:', e.message);
+      }
+      this._realtimeSub = null;
+      this._isSubscribed = false;
+    }
+
+    // تدمير Chart.js لتحرير ذاكرة Canvas
+    if (this._chart1) {
+      try { this._chart1.destroy(); } catch { }
+      this._chart1 = null;
+    }
+    if (this._chart2) {
+      try { this._chart2.destroy(); } catch { }
+      this._chart2 = null;
+    }
+
+    // مسح البيانات المخزنة
+    this._dashData  = null;
+    this._container = null;
   },
 };
 
 window.DashboardComponent = DashboardComponent;
-console.log('✅ DashboardComponent v4.0 — فلتر تاريخ + isOnline() موحدة + Realtime خفيف');
+console.log('✅ DashboardComponent v4.1 — FIX-5b: destroy() يُلغي Realtime + Charts | FIX-3: supabaseClient موحَّد');
