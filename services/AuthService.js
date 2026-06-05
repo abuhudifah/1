@@ -1,14 +1,11 @@
 /**
- * services/AuthService.js — v2.0 (Online-First)
+ * services/AuthService.js — v2.1 (Online-First مُصحَّح)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * التغييرات وفق التوثيق:
- * ✅ 1. login() — Dexie يُكتب في الخلفية (لا ينتظره تدفق الدخول)
- * ✅ 2. _fetchUserProfile() — يقرأ من Supabase مباشرة أولاً (Online-First)
- * ✅ 3. checkSession() — يقرأ من Supabase مباشرة أولاً
- * ✅ 4. quickLogin() — يدعم وضع offline مع device_token + Dexie
- * ✅ 5. _preloadEssentialData() — محاطة بـ try/catch (Dexie قد تكون غير متاحة)
- * ✅ 6. كل عمليات Dexie محاطة بـ try/catch لا توقف تدفق العمل
+ * إصلاح v2.1:
+ * - _fetchUserProfile: يُعيد الترتيب الصحيح — Supabase أولاً بعد تأكيد الجلسة
+ *   فإذا فشل (RLS أو شبكة) يسقط إلى Dexie، وإذا كان offline يقرأ من Dexie مباشرة
+ * - login(): يستخدم نفس المنطق بدون تكسير RLS
  */
 'use strict';
 
@@ -21,7 +18,7 @@ const AuthState = {
 const _loginAttempts = new Map();
 
 // ============================================================
-// 1. تسجيل الدخول التقليدي — Online-First
+// 1. تسجيل الدخول التقليدي
 // ============================================================
 
 async function login(email, password) {
@@ -32,7 +29,7 @@ async function login(email, password) {
     if (!email || !password) return err('البريد الإلكتروني وكلمة المرور مطلوبان');
     if (!isValidEmail(email))  return err('البريد الإلكتروني غير صالح');
 
-    // ─── المصادقة عبر Supabase Auth ───
+    // ─── 1. المصادقة عبر Supabase Auth ───
     const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
@@ -45,7 +42,7 @@ async function login(email, password) {
 
     _loginAttempts.delete(email);
 
-    // ─── جلب الملف من Supabase مباشرة (Online-First) ───
+    // ─── 2. جلب الملف — Supabase أولاً (الجلسة مُوجَدة الآن) ───
     const profileResult = await _fetchUserProfile(authData.user.id);
     if (!isOk(profileResult)) {
       await supabaseClient.auth.signOut();
@@ -58,7 +55,7 @@ async function login(email, password) {
       return err('تم تعطيل هذا الحساب. راجع المدير.');
     }
 
-    // ─── حفظ الحالة الداخلية والجلسة ───
+    // ─── 3. حفظ الحالة والجلسة ───
     AuthState.currentUser = profile;
     AuthState.authUser    = authData.user;
 
@@ -72,10 +69,8 @@ async function login(email, password) {
       allowedTabs : profile.allowed_tabs || [],
     });
 
-    // ✅ كتابة Dexie في الخلفية — لا ننتظرها، لا توقف تدفق الدخول
+    // ─── 4. كتابة Dexie في الخلفية — لا ننتظرها ───
     _saveToDexieBackground(profile);
-
-    // ─── تحميل البيانات الأساسية في الخلفية ───
     _preloadEssentialData(profile);
 
     console.log(`✅ AuthService: دخل ${profile.display_name} (${profile.role})`);
@@ -104,7 +99,7 @@ async function logout(clearLocalData = false) {
 
     if (clearLocalData) {
       try {
-        await Promise.all([
+        await Promise.allSettled([
           db.transactions.clear(),
           db.notifications.clear(),
           db.cache_meta.clear(),
@@ -112,7 +107,7 @@ async function logout(clearLocalData = false) {
       } catch { /* Dexie قد لا تكون متاحة */ }
     }
 
-    console.log('👋 AuthService: تم تسجيل الخروج بنجاح');
+    console.log('👋 AuthService: تم تسجيل الخروج');
     window.dispatchEvent(new CustomEvent('auth:logout'));
     return ok(true);
 
@@ -126,7 +121,7 @@ async function logout(clearLocalData = false) {
 }
 
 // ============================================================
-// 3. التحقق من الجلسة — Online-First
+// 3. التحقق من الجلسة
 // ============================================================
 
 async function checkSession() {
@@ -134,8 +129,7 @@ async function checkSession() {
     const { session, error } = await getCurrentSession();
     if (error || !session) return err('لا توجد جلسة نشطة');
 
-    // ✅ جلب من Supabase مباشرة (Online-First) — لا نقرأ من Dexie أولاً
-    const profileResult = await _fetchUserProfileOnline(session.user.id);
+    const profileResult = await _fetchUserProfile(session.user.id);
     if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
 
     const profile = profileResult.data;
@@ -153,9 +147,7 @@ async function checkSession() {
       allowedTabs : profile.allowed_tabs || [],
     });
 
-    // تحديث Dexie في الخلفية
     _saveToDexieBackground(profile);
-
     return ok({ user: session.user, profile });
 
   } catch (e) {
@@ -179,22 +171,20 @@ async function refreshSession() {
 }
 
 // ============================================================
-// 5. الدخول السريع — يدعم Online وOffline
+// 5. الدخول السريع
 // ============================================================
 
 async function enableQuickLogin(equation) {
   try {
     if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
-
     const trimmed = String(equation).trim();
     if (!trimmed) return err('المعادلة فارغة');
 
     try {
       const parser = new window.exprEval.Parser();
       const result = parser.evaluate(trimmed);
-      if (typeof result !== 'number' || !isFinite(result)) {
+      if (typeof result !== 'number' || !isFinite(result))
         return err('المعادلة لا تُنتج رقماً صحيحاً');
-      }
     } catch {
       return err('المعادلة غير صالحة رياضياً');
     }
@@ -209,9 +199,12 @@ async function enableQuickLogin(equation) {
     if (error) return err(`فشل حفظ معادلة الدخول السريع: ${error.message}`);
 
     // تحديث Dexie في الخلفية
-    try { await db.users.update(AuthState.currentUser.id, { quick_equation_hash: hash }); } catch { /* تجاهل */ }
+    try {
+      if (db.isOpen())
+        await db.users.update(AuthState.currentUser.id, { quick_equation_hash: hash });
+    } catch { /* تجاهل */ }
 
-    // تخزين الهاش في localStorage للاستخدام Offline
+    // حفظ للاستخدام offline
     try {
       const deviceToken = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY) || '';
       localStorage.setItem(
@@ -225,15 +218,11 @@ async function enableQuickLogin(equation) {
 
     console.log('✅ AuthService: تم تفعيل الدخول السريع');
     return ok(true);
-
   } catch (e) {
     return err(`خطأ في تفعيل الدخول السريع: ${e.message}`);
   }
 }
 
-/**
- * ✅ الدخول السريع يدعم Online وOffline
- */
 async function quickLogin(equation) {
   try {
     const trimmed = String(equation).trim();
@@ -253,7 +242,7 @@ async function quickLogin(equation) {
         return err(result.data?.message || 'معادلة غير صحيحة أو الحساب معطل');
       }
 
-      const profileResult = await _fetchUserProfileOnline(result.data.user_id);
+      const profileResult = await _fetchUserProfile(result.data.user_id);
       if (!isOk(profileResult)) return err('فشل جلب بيانات المستخدم');
 
       const profile = profileResult.data;
@@ -278,21 +267,17 @@ async function quickLogin(equation) {
       return ok({ profile });
     }
 
-    // ─── وضع عدم الاتصال (طوارئ): من localStorage + Dexie ───
+    // ─── وضع عدم الاتصال: localStorage + Dexie ───
     const deviceToken = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY) || '';
-
-    // البحث في localStorage عن مستخدم بهذا الهاش مرتبط بهذا الجهاز
     let offlineProfile = null;
+
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (!key?.startsWith('ahu_quick_')) continue;
         const data = JSON.parse(localStorage.getItem(key) || '{}');
         if (data.hash === hash && data.deviceToken === deviceToken) {
-          // التحقق من وجود الملف في Dexie
-          if (db.isOpen()) {
-            offlineProfile = await db.users.get(data.userId);
-          }
+          if (db.isOpen()) offlineProfile = await db.users.get(data.userId);
           break;
         }
       }
@@ -305,7 +290,6 @@ async function quickLogin(equation) {
 
     if (!offlineProfile.is_active) return err('تم تعطيل هذا الحساب.');
 
-    // إنشاء جلسة محلية مؤقتة
     AuthState.currentUser = offlineProfile;
     _loginAttempts.delete('quick_login');
 
@@ -330,19 +314,16 @@ async function quickLogin(equation) {
 async function disableQuickLogin() {
   try {
     if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
-
     const { error } = await supabaseClient
       .from(TABLES.USERS)
       .update({ quick_equation_hash: null })
       .eq('id', AuthState.currentUser.id);
-
     if (error) return err(error.message);
-
-    try { await db.users.update(AuthState.currentUser.id, { quick_equation_hash: null }); } catch { /* تجاهل */ }
-
-    // مسح بيانات الدخول السريع من localStorage
-    try { localStorage.removeItem(`ahu_quick_${AuthState.currentUser.id}`); } catch { /* تجاهل */ }
-
+    try {
+      if (db.isOpen())
+        await db.users.update(AuthState.currentUser.id, { quick_equation_hash: null });
+      localStorage.removeItem(`ahu_quick_${AuthState.currentUser.id}`);
+    } catch { /* تجاهل */ }
     return ok(true);
   } catch (e) {
     return err(e.message);
@@ -361,9 +342,7 @@ async function _setupDeviceToken(userId) {
       sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
     }
     return deviceToken;
-  } catch {
-    return generateUUID();
-  }
+  } catch { return generateUUID(); }
 }
 
 function getDeviceToken() {
@@ -372,61 +351,62 @@ function getDeviceToken() {
 }
 
 // ============================================================
-// 7. جلب ملف المستخدم
+// 7. جلب ملف المستخدم — المنطق المُصحَّح
 // ============================================================
 
 /**
- * ✅ Online-First: يقرأ من Supabase مباشرة
- * Dexie كاحتياطي فقط إذا كان offline
+ * يجلب ملف المستخدم بالترتيب الصحيح:
+ *
+ * متصل بالإنترنت:
+ *   1. Supabase (مصدر الحقيقة) — الجلسة مُوجَدة فـ RLS تسمح
+ *   2. Dexie كاحتياطي إذا فشل Supabase لأي سبب
+ *
+ * غير متصل:
+ *   1. Dexie مباشرة
  */
 async function _fetchUserProfile(userId) {
+  // ─── وضع الاتصال ───
   if (isOnline()) {
-    return _fetchUserProfileOnline(userId);
+    try {
+      const { data, error } = await supabaseClient
+        .from(TABLES.USERS)
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (!error && data) return ok(data);
+
+      // فشل Supabase — سقوط إلى Dexie
+      console.warn('⚠️ AuthService._fetchUserProfile: فشل Supabase، محاولة Dexie:', error?.message);
+    } catch (e) {
+      console.warn('⚠️ AuthService._fetchUserProfile: استثناء Supabase:', e.message);
+    }
   }
-  // Offline: من Dexie
+
+  // ─── Dexie (احتياطي أو offline) ───
   try {
     if (db.isOpen()) {
       const local = await db.users.get(userId);
       if (local) return ok(local);
     }
-    return err('غير متصل ولم يُعثر على ملف المستخدم محلياً');
-  } catch (e) {
-    return err(e.message);
+  } catch (dexieErr) {
+    console.warn('⚠️ AuthService._fetchUserProfile: فشل Dexie:', dexieErr.message);
   }
-}
 
-/**
- * يجلب ملف المستخدم مباشرة من Supabase
- */
-async function _fetchUserProfileOnline(userId) {
-  try {
-    const { data, error } = await supabaseClient
-      .from(TABLES.USERS)
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error) return err(error.message);
-    if (!data)  return err('المستخدم غير موجود');
-
-    return ok(data);
-  } catch (e) {
-    return err(e.message);
-  }
+  return err('لم يُعثر على ملف المستخدم في النظام. تواصل مع المدير.');
 }
 
 // ============================================================
-// 8. حفظ في Dexie بالخلفية (لا ينتظره أحد)
+// 8. كتابة Dexie في الخلفية
 // ============================================================
 
 function _saveToDexieBackground(profile) {
-  // ننفذ بدون await — أي خطأ لا يوقف التدفق الرئيسي
   (async () => {
     try {
-      if (!db.isOpen()) return;
-      await db.users.put({ ...profile, sync_status: SYNC_STATUS.SYNCED });
+      if (db.isOpen())
+        await db.users.put({ ...profile, sync_status: SYNC_STATUS.SYNCED });
     } catch (e) {
-      console.warn('⚠️ AuthService: فشل حفظ ملف المستخدم في Dexie (غير حرج):', e.message);
+      console.warn('⚠️ AuthService: فشل حفظ Dexie (غير حرج):', e.message);
     }
   })();
 }
@@ -435,23 +415,19 @@ function _saveToDexieBackground(profile) {
 // 9. تحميل البيانات الأساسية في الخلفية
 // ============================================================
 
-async function _preloadEssentialData(profile) {
-  // بدون await — في الخلفية تماماً
+function _preloadEssentialData(profile) {
   (async () => {
     try {
-      if (!isOnline()) return; // لا نحمّل إذا كنا offline
-
+      if (!isOnline()) return;
       const tasks = [
         _preloadSystemSettings(),
         _preloadCompanies(),
         _preloadExpenseAccounts(),
       ];
-
       if (profile.role === ROLES.ADMIN || profile.role === ROLES.ADMIN_ASSISTANT) {
         tasks.push(_preloadUsers());
         tasks.push(_preloadBankAccounts());
       }
-
       await Promise.allSettled(tasks);
       console.log('✅ AuthService: اكتمل تحميل البيانات الأساسية');
     } catch (e) {
@@ -463,28 +439,23 @@ async function _preloadEssentialData(profile) {
 async function _preloadSystemSettings() {
   try {
     const { data, error } = await supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*');
-    if (!error && data && db.isOpen()) {
-      for (const s of data) { try { await db.system_settings.put(s); } catch { /* تجاهل */ } }
-    }
-  } catch { /* تجاهل */ }
+    if (!error && data && db.isOpen())
+      for (const s of data) { try { await db.system_settings.put(s); } catch { } }
+  } catch { }
 }
 
 async function _preloadCompanies() {
   try {
     const { data, error } = await supabaseClient.from(TABLES.COMPANIES).select('*').order('name');
-    if (!error && data && db.isOpen()) {
-      try { await db.companies.bulkPut(data); } catch { /* تجاهل */ }
-    }
-  } catch { /* تجاهل */ }
+    if (!error && data && db.isOpen()) { try { await db.companies.bulkPut(data); } catch { } }
+  } catch { }
 }
 
 async function _preloadExpenseAccounts() {
   try {
     const { data, error } = await supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name');
-    if (!error && data && db.isOpen()) {
-      try { await db.expense_accounts.bulkPut(data); } catch { /* تجاهل */ }
-    }
-  } catch { /* تجاهل */ }
+    if (!error && data && db.isOpen()) { try { await db.expense_accounts.bulkPut(data); } catch { } }
+  } catch { }
 }
 
 async function _preloadUsers() {
@@ -493,19 +464,17 @@ async function _preloadUsers() {
       .from(TABLES.USERS)
       .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash')
       .order('display_name');
-    if (!error && data && db.isOpen()) {
-      try { await db.users.bulkPut(data.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED }))); } catch { /* تجاهل */ }
-    }
-  } catch { /* تجاهل */ }
+    if (!error && data && db.isOpen())
+      try { await db.users.bulkPut(data.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED }))); } catch { }
+  } catch { }
 }
 
 async function _preloadBankAccounts() {
   try {
     const { data, error } = await supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name');
-    if (!error && data && db.isOpen()) {
-      try { await db.bank_accounts.bulkPut(data.map(b => ({ ...b, sync_status: SYNC_STATUS.SYNCED }))); } catch { /* تجاهل */ }
-    }
-  } catch { /* تجاهل */ }
+    if (!error && data && db.isOpen())
+      try { await db.bank_accounts.bulkPut(data.map(b => ({ ...b, sync_status: SYNC_STATUS.SYNCED }))); } catch { }
+  } catch { }
 }
 
 // ============================================================
@@ -539,7 +508,7 @@ function _translateAuthError(msg) {
 }
 
 // ============================================================
-// دوال الاستعلام العامة
+// الدوال العامة
 // ============================================================
 
 function getCurrentUser()    { return AuthState.currentUser; }
@@ -550,10 +519,7 @@ function isAgent()           { return AuthState.currentUser?.role === ROLES.AGEN
 function isAdminAssistant()  { return AuthState.currentUser?.role === ROLES.ADMIN_ASSISTANT; }
 
 function canAccessTab(tabId) {
-  const user = AuthState.currentUser;
-  if (!user) return false;
-  const allowed = getAllowedTabs();
-  return allowed.includes(tabId);
+  return getAllowedTabs().includes(tabId);
 }
 
 function getAllowedTabs() {
@@ -561,7 +527,7 @@ function getAllowedTabs() {
   if (!user) return [];
   if (user.role === ROLES.ADMIN) return [...ADMIN_TABS];
   if (user.role === ROLES.ADMIN_ASSISTANT) {
-    const tabs = user.allowed_tabs;
+    const tabs   = user.allowed_tabs;
     const parsed = Array.isArray(tabs) ? tabs
       : (typeof tabs === 'string' ? (() => { try { return JSON.parse(tabs); } catch { return []; } })() : []);
     return parsed.length ? parsed : [...AGENT_TABS];
@@ -603,4 +569,4 @@ const AuthService = {
 };
 
 window.AuthService = AuthService;
-console.log('✅ AuthService.js v2.0 — Online-First مع دعم Offline للدخول السريع');
+console.log('✅ AuthService.js v2.1 — Online-First مُصحَّح مع fallback ذكي');
