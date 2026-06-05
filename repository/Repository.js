@@ -1,32 +1,27 @@
 /**
- * repository/Repository.js
+ * repository/Repository.js — v3.0 (Online-First)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
- * طبقة CRUD الموحدة — Offline-First
+ * طبقة CRUD الموحدة
  *
- * الإصلاحات المُطبَّقة (v2):
- * ✅ 1. _applyFiltersToDexie: استخدام where() مع الفهرس بدلاً من and() الكامل
- * ✅ 2. _queryFromDexie: استخدام .offset().limit() الحقيقي بدلاً من .slice()
- * ✅ 3. حماية MAX_PAGE_SIZE لمنع جلب كميات ضخمة
- * ✅ 4. syncPendingOperations: bulkUpsert بدلاً من loop فردي
- * ✅ 5. count() offline: يستخدم where() عندما يكون الفلتر بسيطاً
- * ✅ 6. fetchFromCache: نفس تحسين _applyFiltersToDexie
- * ✅ 7. query: لا يُخزّن في Dexie كميات ضخمة (> 200 سجل) من Supabase
+ * مبدأ Online-First:
+ * - متصل  → Supabase مصدر الحقيقة الوحيد، Dexie يُحدَّث في الخلفية
+ * - غير متصل → Dexie كمخزن طوارئ فقط
+ *
+ * التغييرات v3:
+ * ✅ query(): يقرأ من Supabase مباشرة دون التحقق من الكاش أولاً
+ * ✅ getById(): Supabase أولاً، Dexie احتياطي عند offline فقط
+ * ✅ إزالة منطق isCacheValid من المسار الرئيسي
+ * ✅ Dexie يُكتب فقط في الخلفية بعد نجاح Supabase
  */
 
 'use strict';
 
-// ============================================================
-// ثابت الحماية من الجلب الزائد
-// ============================================================
-const MAX_PAGE_SIZE = 500; // الحد المطلق — لا يُجلب أكثر من هذا دفعةً واحدة
+const MAX_PAGE_SIZE = 500;
 
 // ============================================================
-// دوال مساعدة داخلية
+// دوال مساعدة
 // ============================================================
 
-/**
- * يبني كائن فلتر نظيف من معاملات الاستعلام
- */
 function _parseFilters(filters = {}) {
   return Object.entries(filters)
     .filter(([, val]) => val !== undefined && val !== null && val !== '')
@@ -41,9 +36,6 @@ function _parseFilters(filters = {}) {
     });
 }
 
-/**
- * يُطبّق فلاتر على استعلام Supabase
- */
 function _applyFiltersToSupabase(query, parsedFilters) {
   for (const { column, operator, value } of parsedFilters) {
     switch (operator) {
@@ -69,111 +61,77 @@ function _applyFiltersToSupabase(query, parsedFilters) {
   return query;
 }
 
-/**
- * ✅ إصلاح 1: _applyFiltersToDexie المُحسَّنة
- *
- * المشكلة القديمة: collection.and() يجلب كل السجلات في الذاكرة ثم يفلترها
- * الحل: استخدام where() مع الفهرس للفلتر الأول (eq/in/between/startsWith)
- * ثم .and() فقط للفلاتر الإضافية التي لا تملك فهارس
- *
- * يُعيد { collection, usedIndex } لتمكين التحسينات اللاحقة
- */
 function _applyFiltersToDexie(dexieTable, parsedFilters) {
-  if (!parsedFilters.length) {
-    return dexieTable.toCollection();
-  }
+  if (!parsedFilters.length) return dexieTable.toCollection();
 
-  // محاولة استخدام الفهرس للفلتر الأول المناسب
   const indexableOps = ['eq', 'in', 'between', 'gte', 'lte', 'gt', 'lt'];
   let collection = null;
   let remainingFilters = [...parsedFilters];
 
   for (let i = 0; i < parsedFilters.length; i++) {
     const { column, operator, value } = parsedFilters[i];
-
     if (!indexableOps.includes(operator)) continue;
-
     try {
-      // تجربة استخدام where() — إذا لم يكن العمود مفهرساً سيرمي استثناء
-      if (operator === 'eq') {
-        collection = dexieTable.where(column).equals(value);
-      } else if (operator === 'in') {
-        collection = dexieTable.where(column).anyOf(value);
-      } else if (operator === 'between') {
-        const [from, to] = value;
-        collection = dexieTable.where(column).between(from, to, true, true);
-      } else if (operator === 'gte') {
-        collection = dexieTable.where(column).aboveOrEqual(value);
-      } else if (operator === 'gt') {
-        collection = dexieTable.where(column).above(value);
-      } else if (operator === 'lte') {
-        collection = dexieTable.where(column).belowOrEqual(value);
-      } else if (operator === 'lt') {
-        collection = dexieTable.where(column).below(value);
-      }
+      if      (operator === 'eq')      collection = dexieTable.where(column).equals(value);
+      else if (operator === 'in')      collection = dexieTable.where(column).anyOf(value);
+      else if (operator === 'between') { const [f,t]=value; collection = dexieTable.where(column).between(f,t,true,true); }
+      else if (operator === 'gte')     collection = dexieTable.where(column).aboveOrEqual(value);
+      else if (operator === 'gt')      collection = dexieTable.where(column).above(value);
+      else if (operator === 'lte')     collection = dexieTable.where(column).belowOrEqual(value);
+      else if (operator === 'lt')      collection = dexieTable.where(column).below(value);
 
-      if (collection) {
-        // نجح استخدام الفهرس — أزل هذا الفلتر من البقية
-        remainingFilters = parsedFilters.filter((_, idx) => idx !== i);
-        break;
-      }
-    } catch {
-      // العمود غير مفهرس — تابع للتالي
-      collection = null;
-    }
+      if (collection) { remainingFilters = parsedFilters.filter((_,idx) => idx !== i); break; }
+    } catch { collection = null; }
   }
 
-  // إذا لم يُوجد فهرس مناسب، ابدأ بـ toCollection()
-  if (!collection) {
-    collection = dexieTable.toCollection();
-    remainingFilters = parsedFilters;
-  }
+  if (!collection) { collection = dexieTable.toCollection(); remainingFilters = parsedFilters; }
 
-  // طبّق الفلاتر المتبقية بـ .and() (تعمل على ما تبقى بعد الفهرس)
   for (const { column, operator, value } of remainingFilters) {
-    collection = collection.and((record) => {
-      const fieldVal = record[column];
+    collection = collection.and(record => {
+      const v = record[column];
       switch (operator) {
-        case 'eq'   : return fieldVal === value;
-        case 'neq'  : return fieldVal !== value;
-        case 'gt'   : return fieldVal > value;
-        case 'gte'  : return fieldVal >= value;
-        case 'lt'   : return fieldVal < value;
-        case 'lte'  : return fieldVal <= value;
-        case 'like' :
-        case 'ilike': return String(fieldVal || '').toLowerCase().includes(String(value).toLowerCase());
-        case 'in'   : return Array.isArray(value) && value.includes(fieldVal);
-        case 'is'   : return value === null ? fieldVal == null : fieldVal === value;
-        case 'between': {
-          const [from, to] = value;
-          return fieldVal >= from && fieldVal <= to;
-        }
-        case 'contains': {
-          if (Array.isArray(fieldVal)) {
-            return Array.isArray(value)
-              ? value.every(v => fieldVal.includes(v))
-              : fieldVal.includes(value);
-          }
-          return false;
-        }
-        default: return fieldVal === value;
+        case 'eq'      : return v === value;
+        case 'neq'     : return v !== value;
+        case 'gt'      : return v >  value;
+        case 'gte'     : return v >= value;
+        case 'lt'      : return v <  value;
+        case 'lte'     : return v <= value;
+        case 'like'    :
+        case 'ilike'   : return String(v||'').toLowerCase().includes(String(value).toLowerCase());
+        case 'in'      : return Array.isArray(value) && value.includes(v);
+        case 'is'      : return value === null ? v == null : v === value;
+        case 'between' : { const [f,t]=value; return v>=f && v<=t; }
+        case 'contains': return Array.isArray(v) && (Array.isArray(value) ? value.every(i=>v.includes(i)) : v.includes(value));
+        default        : return v === value;
       }
     });
   }
-
   return collection;
 }
 
+// كتابة Dexie في الخلفية (لا تنتظرها)
+function _writeToDexieBackground(tableName, records) {
+  (async () => {
+    try {
+      if (!db.isOpen()) return;
+      const dexieTable = db[tableName];
+      if (!dexieTable) return;
+      const withStatus = (Array.isArray(records) ? records : [records])
+        .map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }));
+      await dexieTable.bulkPut(withStatus);
+    } catch { /* تجاهل — Dexie ليست مصدر الحقيقة */ }
+  })();
+}
+
 // ============================================================
-// Repository — الكائن الرئيسي
+// Repository
 // ============================================================
 
 const repo = {
 
   // ==========================================================
-  // CREATE — إنشاء سجل جديد
+  // CREATE
   // ==========================================================
-
   async create(tableName, data, options = {}) {
     try {
       const record = {
@@ -183,340 +141,244 @@ const repo = {
         updated_at : data.updated_at || new Date().toISOString(),
       };
 
-      const dexieTable = db[tableName];
-      if (dexieTable) {
-        await dexieTable.put(record);
+      if (!isOnline() || options.skipQueue) {
+        // Offline: حفظ محلي + طابور
+        const pending = { ...record, sync_status: SYNC_STATUS.PENDING };
+        try { if (db.isOpen()) await db[tableName]?.put(pending); } catch { /* تجاهل */ }
+        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
+        return ok(pending);
+      }
+
+      const { data: saved, error } = await supabaseClient
+        .from(tableName)
+        .insert(record)
+        .select()
+        .single();
+
+      if (error) {
+        // فشل Supabase: حفظ محلي + طابور
+        console.warn(`⚠️ repo.create(${tableName}): Supabase فشل، أُضيف للطابور`);
+        const pending = { ...record, sync_status: SYNC_STATUS.PENDING };
+        try { if (db.isOpen()) await db[tableName]?.put(pending); } catch { }
+        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
+        return ok(pending);
       }
 
       await invalidateCacheByPrefix(tableName);
-
-      if (isOnline() && !options.skipQueue) {
-        const { data: saved, error } = await supabaseClient
-          .from(tableName)
-          .insert(record)
-          .select()
-          .single();
-
-        if (error) {
-          await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
-          console.warn(`⚠️  فشل الحفظ في Supabase (${tableName}), أُضيف للطابور:`, error.message);
-          return ok({ ...record, sync_status: SYNC_STATUS.PENDING });
-        }
-
-        if (dexieTable && saved) {
-          await dexieTable.put({ ...saved, sync_status: SYNC_STATUS.SYNCED });
-        }
-
-        return ok(saved || record);
-      }
-
-      const pendingRecord = { ...record, sync_status: SYNC_STATUS.PENDING };
-      if (dexieTable) await dexieTable.put(pendingRecord);
-      await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
-
-      return ok(pendingRecord);
+      _writeToDexieBackground(tableName, saved);
+      return ok(saved || record);
 
     } catch (e) {
       console.error(`❌ repo.create(${tableName}):`, e);
-      return err(`فشل إنشاء السجل في ${tableName}: ${e.message}`);
+      return err(`فشل إنشاء السجل: ${e.message}`);
     }
   },
 
   // ==========================================================
-  // UPDATE — تحديث سجل موجود
+  // UPDATE
   // ==========================================================
-
   async update(tableName, id, changes) {
     try {
-      const updatedChanges = {
-        ...changes,
-        updated_at: new Date().toISOString(),
-      };
+      const updatedChanges = { ...changes, updated_at: new Date().toISOString() };
 
-      const dexieTable = db[tableName];
-      if (dexieTable) {
-        await dexieTable.update(id, updatedChanges);
+      if (!isOnline()) {
+        try { if (db.isOpen()) await db[tableName]?.update(id, updatedChanges); } catch { }
+        await SyncQueue.add(SYNC_ACTIONS.UPDATE, tableName, id, updatedChanges);
+        return ok({ id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
+      }
+
+      const { data: saved, error } = await supabaseClient
+        .from(tableName)
+        .update(updatedChanges)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        try { if (db.isOpen()) await db[tableName]?.update(id, updatedChanges); } catch { }
+        await SyncQueue.add(SYNC_ACTIONS.UPDATE, tableName, id, updatedChanges);
+        return ok({ id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
       }
 
       await invalidateCacheByPrefix(tableName);
-
-      if (isOnline()) {
-        const { data: saved, error } = await supabaseClient
-          .from(tableName)
-          .update(updatedChanges)
-          .eq('id', id)
-          .select()
-          .single();
-
-        if (error) {
-          await SyncQueue.add(SYNC_ACTIONS.UPDATE, tableName, id, updatedChanges);
-          return ok({ id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
-        }
-
-        if (dexieTable && saved) {
-          await dexieTable.put({ ...saved, sync_status: SYNC_STATUS.SYNCED });
-        }
-
-        return ok(saved || { id, ...updatedChanges });
-      }
-
-      await SyncQueue.add(SYNC_ACTIONS.UPDATE, tableName, id, updatedChanges);
-      return ok({ id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
+      _writeToDexieBackground(tableName, saved);
+      return ok(saved || { id, ...updatedChanges });
 
     } catch (e) {
       console.error(`❌ repo.update(${tableName}, ${id}):`, e);
-      return err(`فشل تحديث السجل في ${tableName}: ${e.message}`);
+      return err(`فشل تحديث السجل: ${e.message}`);
     }
   },
 
   // ==========================================================
-  // DELETE — حذف سجل
+  // DELETE
   // ==========================================================
-
   async delete(tableName, id) {
     try {
-      const dexieTable = db[tableName];
-      if (dexieTable) {
-        await dexieTable.delete(id);
-      }
-
+      try { if (db.isOpen()) await db[tableName]?.delete(id); } catch { }
       await invalidateCacheByPrefix(tableName);
 
-      if (isOnline()) {
-        const { error } = await supabaseClient
-          .from(tableName)
-          .delete()
-          .eq('id', id);
-
-        if (error) {
-          await SyncQueue.add(SYNC_ACTIONS.DELETE, tableName, id, { id });
-          return ok(true);
-        }
-
+      if (!isOnline()) {
+        await SyncQueue.add(SYNC_ACTIONS.DELETE, tableName, id, { id });
         return ok(true);
       }
 
-      await SyncQueue.add(SYNC_ACTIONS.DELETE, tableName, id, { id });
+      const { error } = await supabaseClient.from(tableName).delete().eq('id', id);
+      if (error) {
+        await SyncQueue.add(SYNC_ACTIONS.DELETE, tableName, id, { id });
+      }
       return ok(true);
 
     } catch (e) {
       console.error(`❌ repo.delete(${tableName}, ${id}):`, e);
-      return err(`فشل حذف السجل من ${tableName}: ${e.message}`);
+      return err(`فشل حذف السجل: ${e.message}`);
     }
   },
 
   // ==========================================================
-  // GET BY ID — جلب سجل واحد
+  // GET BY ID — Online-First
   // ==========================================================
-
   async getById(tableName, id) {
     try {
-      const dexieTable = db[tableName];
-      if (dexieTable) {
-        const local = await dexieTable.get(id);
+      // متصل: Supabase أولاً
+      if (isOnline()) {
+        const { data, error } = await supabaseClient
+          .from(tableName).select('*').eq('id', id).single();
+
+        if (!error && data) {
+          _writeToDexieBackground(tableName, data);
+          return ok(data);
+        }
+        if (error?.code === 'PGRST116') return ok(null);
+        // فشل: سقوط إلى Dexie
+        console.warn(`⚠️ repo.getById(${tableName}): Supabase فشل، محاولة Dexie`);
+      }
+
+      // Offline أو فشل Supabase: Dexie
+      if (db.isOpen()) {
+        const local = await db[tableName]?.get(id);
         if (local) return ok(local);
       }
-
-      if (!isOnline()) return ok(null);
-
-      const { data, error } = await supabaseClient
-        .from(tableName)
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') return ok(null);
-        return err(error.message);
-      }
-
-      if (dexieTable && data) {
-        await dexieTable.put({ ...data, sync_status: SYNC_STATUS.SYNCED });
-      }
-
-      return ok(data);
+      return ok(null);
 
     } catch (e) {
       console.error(`❌ repo.getById(${tableName}, ${id}):`, e);
-      return err(`فشل جلب السجل من ${tableName}: ${e.message}`);
+      return err(e.message);
     }
   },
 
   // ==========================================================
-  // QUERY — استعلام مع فلاتر وترقيم صفحات
+  // QUERY — Online-First (الإصلاح الجوهري)
   // ==========================================================
-
   async query(tableName, filters = {}, options = {}) {
     const {
       select       = '*',
       orderBy      = 'created_at',
       ascending    = false,
       page         = 1,
-      fromCache    = false,
-      forceRefresh = false,
     } = options;
 
-    // ✅ إصلاح 3: حماية MAX_PAGE_SIZE
     const pageSize = Math.min(options.pageSize ?? PAGINATION_CONFIG.DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     const offset   = (page - 1) * pageSize;
-    const cacheKey = `${tableName}:${JSON.stringify(filters)}:${page}:${pageSize}:${orderBy}`;
 
+    // ─── Offline: Dexie مباشرة ───
+    if (!isOnline()) {
+      const localData = await this._queryFromDexie(tableName, filters, { orderBy, ascending, offset, pageSize });
+      return ok({ data: localData, count: localData.length, fromCache: true, offline: true });
+    }
+
+    // ─── Online: Supabase مباشرة (بدون تحقق من الكاش) ───
     try {
-      if (!forceRefresh && await isCacheValid(cacheKey)) {
-        const localData = await this._queryFromDexie(
-          tableName, filters, { orderBy, ascending, offset, pageSize }
-        );
-        if (localData.length > 0 || fromCache) {
-          return ok({ data: localData, count: localData.length, fromCache: true });
-        }
-      }
-
-      if (!isOnline()) {
-        const localData = await this._queryFromDexie(
-          tableName, filters, { orderBy, ascending, offset, pageSize }
-        );
-        return ok({ data: localData, count: localData.length, fromCache: true, offline: true });
-      }
-
       const parsedFilters = _parseFilters(filters);
 
-      let supabaseQuery = supabaseClient
+      let q = supabaseClient
         .from(tableName)
         .select(select, { count: 'exact' })
         .order(orderBy, { ascending })
         .range(offset, offset + pageSize - 1);
 
-      supabaseQuery = _applyFiltersToSupabase(supabaseQuery, parsedFilters);
+      q = _applyFiltersToSupabase(q, parsedFilters);
 
-      const { data, error, count } = await supabaseQuery;
+      const { data, error, count } = await q;
 
       if (error) {
-        console.warn(`⚠️  Supabase query error (${tableName}), falling back to local:`, error.message);
-        const localData = await this._queryFromDexie(
-          tableName, filters, { orderBy, ascending, offset, pageSize }
-        );
+        // فشل Supabase: سقوط إلى Dexie
+        console.warn(`⚠️ repo.query(${tableName}): Supabase فشل، سقوط إلى Dexie:`, error.message);
+        const localData = await this._queryFromDexie(tableName, filters, { orderBy, ascending, offset, pageSize });
         return ok({ data: localData, count: localData.length, fromCache: true });
       }
 
-      // ✅ إصلاح 7: لا تُخزّن في Dexie عند جلب صفحات كبيرة (> 200 سجل)
-      // لمنع إبطاء IndexedDB بكتابة كميات ضخمة
-      const dexieTable = db[tableName];
-      if (dexieTable && data && data.length > 0 && data.length <= 200) {
-        const records = data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }));
-        await dexieTable.bulkPut(records);
-        await setCacheMeta(cacheKey);
+      // ✅ كتابة Dexie في الخلفية فقط (لا تنتظرها)
+      if (data?.length && data.length <= 200) {
+        _writeToDexieBackground(tableName, data);
       }
 
       return ok({ data: data || [], count: count || 0, fromCache: false });
 
     } catch (e) {
       console.error(`❌ repo.query(${tableName}):`, e);
+      // Fallback نهائي إلى Dexie
       try {
-        const localData = await this._queryFromDexie(
-          tableName, filters, { orderBy, ascending, offset, pageSize }
-        );
+        const localData = await this._queryFromDexie(tableName, filters, { orderBy, ascending, offset, pageSize });
         return ok({ data: localData, count: localData.length, fromCache: true });
       } catch {
-        return err(`فشل الاستعلام من ${tableName}: ${e.message}`);
+        return err(`فشل الاستعلام: ${e.message}`);
       }
     }
   },
 
-  /**
-   * ✅ إصلاح 2: _queryFromDexie المُحسَّنة
-   *
-   * المشكلة القديمة:
-   * - toCollection().and() يجلب كل شيء في الذاكرة
-   * - .slice() بعد .toArray() يقطع بعد الجلب الكامل
-   *
-   * الحل:
-   * - _applyFiltersToDexie الجديدة تستخدم where() مع الفهرس
-   * - .offset().limit() يُطبَّق على Collection قبل toArray()
-   *   مما يتيح لـ Dexie التوقف عند الحد دون جلب كل السجلات
-   */
   async _queryFromDexie(tableName, filters, { orderBy, ascending, offset, pageSize }) {
-    const dexieTable = db[tableName];
-    if (!dexieTable) return [];
-
-    const parsedFilters = _parseFilters(filters);
-
-    // ✅ استخدام الدالة المُحسَّنة التي تختار الفهرس الصحيح
-    const collection = _applyFiltersToDexie(dexieTable, parsedFilters);
-
-    // جلب الكل مع الترتيب (Dexie لا يدعم ORDER BY على Collection مع offset مباشرةً)
-    // لكنه أسرع بكثير بعد تطبيق الفهرس الذي يقلص عدد السجلات المُجلَبة
-    let records = await collection.toArray();
-
-    // ترتيب في JavaScript (بعد تطبيق الفهرس الذي قلص الحجم)
-    records.sort((a, b) => {
-      const aVal = a[orderBy] ?? '';
-      const bVal = b[orderBy] ?? '';
-      if (aVal < bVal) return ascending ? -1 : 1;
-      if (aVal > bVal) return ascending ? 1 : -1;
-      return 0;
-    });
-
-    // ✅ ترقيم الصفحات على النتيجة المُرتَّبة (بعد الفرز)
-    // هذا أكثر صحةً من .offset().limit() على Collection غير مُرتَّبة
-    if (offset !== undefined && pageSize) {
-      records = records.slice(offset, offset + pageSize);
-    }
-
-    return records;
+    try {
+      const dexieTable = db[tableName];
+      if (!dexieTable || !db.isOpen()) return [];
+      const parsedFilters = _parseFilters(filters);
+      const collection = _applyFiltersToDexie(dexieTable, parsedFilters);
+      let records = await collection.toArray();
+      records.sort((a, b) => {
+        const av = a[orderBy] ?? '', bv = b[orderBy] ?? '';
+        if (av < bv) return ascending ? -1 :  1;
+        if (av > bv) return ascending ?  1 : -1;
+        return 0;
+      });
+      if (offset !== undefined && pageSize) records = records.slice(offset, offset + pageSize);
+      return records;
+    } catch { return []; }
   },
 
   // ==========================================================
-  // COUNT — عد السجلات
+  // COUNT — Online-First
   // ==========================================================
-
   async count(tableName, filters = {}) {
     try {
       if (!isOnline()) {
-        const dexieTable = db[tableName];
-        if (!dexieTable) return ok(0);
-        const parsedFilters = _parseFilters(filters);
-
-        // ✅ إصلاح 5: استخدام where() عندما يكون الفلتر بسيطاً
-        const collection = _applyFiltersToDexie(dexieTable, parsedFilters);
-        const c = await collection.count();
-        return ok(c);
+        if (!db.isOpen()) return ok(0);
+        const col = _applyFiltersToDexie(db[tableName], _parseFilters(filters));
+        return ok(await col.count());
       }
-
-      const parsedFilters = _parseFilters(filters);
-      let q = supabaseClient
-        .from(tableName)
-        .select('*', { count: 'exact', head: true });
-      q = _applyFiltersToSupabase(q, parsedFilters);
+      let q = supabaseClient.from(tableName).select('*', { count: 'exact', head: true });
+      q = _applyFiltersToSupabase(q, _parseFilters(filters));
       const { count, error } = await q;
       if (error) return err(error.message);
       return ok(count || 0);
-
     } catch (e) {
-      return err(`فشل عد السجلات في ${tableName}: ${e.message}`);
+      return err(e.message);
     }
   },
 
   // ==========================================================
-  // UPSERT — إنشاء أو تحديث
+  // UPSERT
   // ==========================================================
-
   async upsert(tableName, data, conflictColumns = ['id']) {
     try {
       const record = {
         ...data,
         id         : data.id || generateUUID(),
         updated_at : new Date().toISOString(),
+        created_at : data.created_at || new Date().toISOString(),
       };
-      if (!record.created_at) record.created_at = record.updated_at;
-
-      const dexieTable = db[tableName];
-      if (dexieTable) {
-        await dexieTable.put(record);
-      }
-
-      await invalidateCacheByPrefix(tableName);
 
       if (!isOnline()) {
+        try { if (db.isOpen()) await db[tableName]?.put(record); } catch { }
         await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
         return ok({ ...record, sync_status: SYNC_STATUS.PENDING });
       }
@@ -528,48 +390,41 @@ const repo = {
         .single();
 
       if (error) {
+        try { if (db.isOpen()) await db[tableName]?.put(record); } catch { }
         await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
         return ok({ ...record, sync_status: SYNC_STATUS.PENDING });
       }
 
-      if (dexieTable && saved) {
-        await dexieTable.put({ ...saved, sync_status: SYNC_STATUS.SYNCED });
-      }
-
+      await invalidateCacheByPrefix(tableName);
+      _writeToDexieBackground(tableName, saved);
       return ok(saved || record);
 
     } catch (e) {
-      return err(`فشل upsert في ${tableName}: ${e.message}`);
+      return err(`فشل upsert: ${e.message}`);
     }
   },
 
   // ==========================================================
-  // BATCH — دفعة عمليات ذرية
+  // BATCH
   // ==========================================================
-
   async batch(operations) {
     if (!operations?.length) return ok([]);
-
     try {
-      const tables = this._getTablesForBatch(operations);
+      // كتابة Dexie أولاً (للعرض الفوري)
+      const tables = [...new Set(operations.map(op => op.table))]
+        .map(n => db[n]).filter(Boolean);
 
-      await db.transaction('rw', tables, async () => {
-        for (const op of operations) {
-          const dexieTable = db[op.table];
-          if (!dexieTable) continue;
-
-          if (op.action === SYNC_ACTIONS.CREATE) {
-            await dexieTable.put({ ...op.data, sync_status: SYNC_STATUS.PENDING });
-          } else if (op.action === SYNC_ACTIONS.UPDATE) {
-            await dexieTable.update(op.id || op.data?.id, {
-              ...op.data,
-              updated_at: new Date().toISOString(),
-            });
-          } else if (op.action === SYNC_ACTIONS.DELETE) {
-            await dexieTable.delete(op.id || op.data?.id);
+      if (db.isOpen()) {
+        await db.transaction('rw', tables, async () => {
+          for (const op of operations) {
+            const t = db[op.table];
+            if (!t) continue;
+            if (op.action === SYNC_ACTIONS.CREATE) await t.put({ ...op.data, sync_status: SYNC_STATUS.PENDING });
+            else if (op.action === SYNC_ACTIONS.UPDATE) await t.update(op.id||op.data?.id, { ...op.data, updated_at: new Date().toISOString() });
+            else if (op.action === SYNC_ACTIONS.DELETE) await t.delete(op.id||op.data?.id);
           }
-        }
-      });
+        });
+      }
 
       await invalidateCacheByPrefix('');
 
@@ -582,157 +437,87 @@ const repo = {
       for (const op of operations) {
         let res;
         if (op.action === SYNC_ACTIONS.CREATE) {
-          const { data: d, error: e } = await supabaseClient
-            .from(op.table)
-            .insert(op.data)
-            .select()
-            .single();
+          const { data:d, error:e } = await supabaseClient.from(op.table).insert(op.data).select().single();
           res = e ? err(e.message) : ok(d);
+          if (!e && d) _writeToDexieBackground(op.table, d);
         } else if (op.action === SYNC_ACTIONS.UPDATE) {
-          const { data: d, error: e } = await supabaseClient
-            .from(op.table)
-            .update(op.data)
-            .eq('id', op.id || op.data?.id)
-            .select()
-            .single();
+          const { data:d, error:e } = await supabaseClient.from(op.table).update(op.data).eq('id', op.id||op.data?.id).select().single();
           res = e ? err(e.message) : ok(d);
+          if (!e && d) _writeToDexieBackground(op.table, d);
         } else if (op.action === SYNC_ACTIONS.DELETE) {
-          const { error: e } = await supabaseClient
-            .from(op.table)
-            .delete()
-            .eq('id', op.id || op.data?.id);
+          const { error:e } = await supabaseClient.from(op.table).delete().eq('id', op.id||op.data?.id);
           res = e ? err(e.message) : ok(true);
         }
         results.push(res);
       }
       return ok(results);
-
     } catch (e) {
       return err(e.message);
     }
   },
 
-  _getTablesForBatch(operations) {
-    const tableNames = [...new Set(operations.map(op => op.table))];
-    return tableNames.map(name => db[name]).filter(Boolean);
-  },
-
   // ==========================================================
-  // FETCH FROM CACHE — جلب من الكاش مباشرة
+  // FETCH FROM CACHE (Dexie مباشرة — للطوارئ)
   // ==========================================================
-
   async fetchFromCache(tableName, filters = {}) {
     try {
+      if (!db.isOpen()) return [];
       const dexieTable = db[tableName];
       if (!dexieTable) return [];
-      const parsedFilters = _parseFilters(filters);
-
-      // ✅ إصلاح 6: استخدام الدالة المُحسَّنة
-      const collection = _applyFiltersToDexie(dexieTable, parsedFilters);
-      return await collection.toArray();
-    } catch (e) {
-      console.warn(`تحذير: فشل جلب من الكاش (${tableName}):`, e.message);
-      return [];
-    }
+      const col = _applyFiltersToDexie(dexieTable, _parseFilters(filters));
+      return await col.toArray();
+    } catch { return []; }
   },
 
   // ==========================================================
-  // SAVE TO CACHE — تخزين بيانات في الكاش
+  // SAVE TO CACHE (للمزامنة)
   // ==========================================================
-
-  async saveToCache(tableName, records, cacheKey = null) {
+  async saveToCache(tableName, records) {
+    if (!records?.length || !db.isOpen()) return;
     try {
-      const dexieTable = db[tableName];
-      if (!dexieTable || !records?.length) return;
-
-      const withStatus = records.map(r => ({
-        ...r,
-        sync_status: r.sync_status || SYNC_STATUS.SYNCED,
-      }));
-
-      await dexieTable.bulkPut(withStatus);
-
-      if (cacheKey) {
-        await setCacheMeta(cacheKey);
-      }
-    } catch (e) {
-      console.warn(`تحذير: فشل حفظ الكاش لـ ${tableName}:`, e.message);
-    }
+      const withStatus = records.map(r => ({ ...r, sync_status: r.sync_status || SYNC_STATUS.SYNCED }));
+      await db[tableName]?.bulkPut(withStatus);
+    } catch { }
   },
 
   // ==========================================================
-  // SYNC PENDING — مزامنة السجلات المعلقة
+  // SYNC PENDING — bulkUpsert
   // ==========================================================
-
-  /**
-   * ✅ إصلاح 4: bulkUpsert بدلاً من loop فردي
-   *
-   * المشكلة القديمة: حلقة for تُرسل كل سجل منفصلاً → N طلبات شبكة
-   * الحل: تجميع السجلات في دفعات وإرسالها مرة واحدة
-   */
   async syncPendingOperations(tableName) {
     if (!isOnline()) return ok({ synced: 0, failed: 0, reason: 'offline' });
-
     try {
+      if (!db.isOpen()) return ok({ synced: 0, failed: 0 });
       const dexieTable = db[tableName];
       if (!dexieTable) return ok({ synced: 0, failed: 0 });
 
       const pending = await dexieTable
-        .where('sync_status')
-        .equals(SYNC_STATUS.PENDING)
-        .toArray();
+        .where('sync_status').equals(SYNC_STATUS.PENDING).toArray();
+      if (!pending.length) return ok({ synced: 0, failed: 0 });
 
-      if (pending.length === 0) return ok({ synced: 0, failed: 0 });
-
-      // فصل السجلات ذات المعرف الحقيقي عن المؤقتة
       const realRecords = pending.filter(r => !isTempId(r.id));
-      const tempRecords = pending.filter(r => isTempId(r.id));
+      if (!realRecords.length) return ok({ synced: 0, failed: pending.length });
 
-      let synced = 0;
-      let failed = tempRecords.length; // المؤقتة تُحسب فاشلة هنا (يتولاها SyncQueue)
+      let synced = 0, failed = 0;
+      const BATCH = 50;
 
-      if (realRecords.length === 0) {
-        return ok({ synced, failed });
-      }
-
-      // إرسال الدفعة كاملة لـ Supabase
-      const BATCH_SIZE = 50;
-      for (let i = 0; i < realRecords.length; i += BATCH_SIZE) {
-        const batch = realRecords.slice(i, i + BATCH_SIZE);
-        const cleanBatch = batch.map(r => {
-          const { sync_status, ...rest } = r;
-          return rest;
-        });
-
-        const { error } = await supabaseClient
-          .from(tableName)
-          .upsert(cleanBatch, { onConflict: 'id' });
-
+      for (let i = 0; i < realRecords.length; i += BATCH) {
+        const batch = realRecords.slice(i, i + BATCH);
+        const clean = batch.map(({ sync_status, ...rest }) => rest);
+        const { error } = await supabaseClient.from(tableName).upsert(clean, { onConflict: 'id' });
         if (!error) {
-          // تحديث حالة المزامنة دفعة واحدة في Dexie
-          await dexieTable.bulkPut(
-            batch.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }))
-          );
+          await dexieTable.bulkPut(batch.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED })));
           synced += batch.length;
         } else {
-          console.warn(`⚠️  فشل مزامنة دفعة من ${tableName}:`, error.message);
+          console.warn(`⚠️ syncPendingOperations(${tableName}):`, error.message);
           failed += batch.length;
         }
       }
-
       return ok({ synced, failed });
-
     } catch (e) {
-      return err(`فشل مزامنة العمليات المعلقة: ${e.message}`);
+      return err(e.message);
     }
   },
-
 };
 
-// ============================================================
-// تصدير للاستخدام في الخدمات والمكونات
-// ============================================================
-
 window.repo = repo;
-
-console.log('✅ Repository.js v2 محمّل — طبقة CRUD المُحسَّنة جاهزة');
+console.log('✅ Repository.js v3.0 — Online-First: Supabase مصدر الحقيقة الوحيد');
