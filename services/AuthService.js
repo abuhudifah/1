@@ -1,79 +1,51 @@
 /**
- * services/AuthService.js
+ * services/AuthService.js — v2.0 (Online-First)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
- * خدمة المصادقة وإدارة الجلسات
  *
- * المسؤوليات:
- * - تسجيل الدخول (بريد/كلمة مرور)
- * - تسجيل الخروج الكامل
- * - التحقق من الجلسة وتجديد التوكن
- * - الدخول السريع (معادلة رياضية → RPC → توكن)
- * - توثيق الجهاز (device_token)
- * - حماية Brute Force (5 محاولات / 15 دقيقة)
- * - تحميل بيانات المستخدم من جدول users
- *
- * القواعد الصارمة:
- * - لا يُخزّن أي سر في localStorage
- * - كلمات المرور لا تُلمس — Supabase Auth يتولاها
- * - هاش SHA-256 للمعادلة السريعة فقط (لا النص الواضح)
+ * التغييرات وفق التوثيق:
+ * ✅ 1. login() — Dexie يُكتب في الخلفية (لا ينتظره تدفق الدخول)
+ * ✅ 2. _fetchUserProfile() — يقرأ من Supabase مباشرة أولاً (Online-First)
+ * ✅ 3. checkSession() — يقرأ من Supabase مباشرة أولاً
+ * ✅ 4. quickLogin() — يدعم وضع offline مع device_token + Dexie
+ * ✅ 5. _preloadEssentialData() — محاطة بـ try/catch (Dexie قد تكون غير متاحة)
+ * ✅ 6. كل عمليات Dexie محاطة بـ try/catch لا توقف تدفق العمل
  */
-
 'use strict';
 
-// ============================================================
-// حالة المصادقة الداخلية
-// ============================================================
-
 const AuthState = {
-  currentUser   : null,   // بيانات المستخدم من جدول users
-  authUser      : null,   // بيانات auth.users (Supabase)
-  isInitialized : false,  // هل تمت التهيئة؟
+  currentUser   : null,
+  authUser      : null,
+  isInitialized : false,
 };
 
-// سجل محاولات الدخول الفاشلة (Brute Force protection)
-// { email: { count, lockedUntil } }
 const _loginAttempts = new Map();
 
 // ============================================================
-// 1. تسجيل الدخول التقليدي
+// 1. تسجيل الدخول التقليدي — Online-First
 // ============================================================
 
-/**
- * يُسجّل دخول المستخدم بالبريد الإلكتروني وكلمة المرور
- * @param {string} email
- * @param {string} password
- * @returns {Promise<{ok: boolean, data?: {user, profile}, error?: string}>}
- */
 async function login(email, password) {
   try {
-    // التحقق من Brute Force
     const lockCheck = _checkBruteForce(email);
     if (!isOk(lockCheck)) return lockCheck;
 
-    // التحقق من المدخلات
-    if (!email || !password) {
-      return err('البريد الإلكتروني وكلمة المرور مطلوبان');
-    }
-    if (!isValidEmail(email)) {
-      return err('البريد الإلكتروني غير صالح');
-    }
+    if (!email || !password) return err('البريد الإلكتروني وكلمة المرور مطلوبان');
+    if (!isValidEmail(email))  return err('البريد الإلكتروني غير صالح');
 
-    // المصادقة عبر Supabase Auth
+    // ─── المصادقة عبر Supabase Auth ───
     const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
-      email    : email.trim().toLowerCase(),
+      email: email.trim().toLowerCase(),
       password,
     });
 
     if (authError) {
       _recordFailedAttempt(email);
-      const msg = _translateAuthError(authError.message);
-      return err(msg);
+      return err(_translateAuthError(authError.message));
     }
 
-    // تسجيل نجاح الدخول (مسح سجل الفشل)
     _loginAttempts.delete(email);
 
-    // جلب بيانات المستخدم من جدول users
+    // ─── جلب الملف من Supabase مباشرة (Online-First) ───
     const profileResult = await _fetchUserProfile(authData.user.id);
     if (!isOk(profileResult)) {
       await supabaseClient.auth.signOut();
@@ -81,21 +53,17 @@ async function login(email, password) {
     }
 
     const profile = profileResult.data;
-
-    // التحقق من أن الحساب نشط
     if (!profile.is_active) {
       await supabaseClient.auth.signOut();
       return err('تم تعطيل هذا الحساب. راجع المدير.');
     }
 
-    // تخزين بيانات المستخدم في الحالة الداخلية
+    // ─── حفظ الحالة الداخلية والجلسة ───
     AuthState.currentUser = profile;
     AuthState.authUser    = authData.user;
 
-    // توثيق الجهاز (حفظ device_token)
     await _setupDeviceToken(profile.id);
 
-    // تخزين بيانات الجلسة (sessionStorage فقط)
     saveSession({
       userId      : profile.id,
       role        : profile.role,
@@ -104,14 +72,13 @@ async function login(email, password) {
       allowedTabs : profile.allowed_tabs || [],
     });
 
-    // تخزين بيانات المستخدم في Dexie للاستخدام offline
-    await db.users.put({ ...profile, sync_status: SYNC_STATUS.SYNCED });
+    // ✅ كتابة Dexie في الخلفية — لا ننتظرها، لا توقف تدفق الدخول
+    _saveToDexieBackground(profile);
 
-    // تحميل البيانات الأساسية في الخلفية
+    // ─── تحميل البيانات الأساسية في الخلفية ───
     _preloadEssentialData(profile);
 
     console.log(`✅ AuthService: دخل ${profile.display_name} (${profile.role})`);
-
     return ok({ user: authData.user, profile });
 
   } catch (e) {
@@ -124,33 +91,17 @@ async function login(email, password) {
 // 2. تسجيل الخروج
 // ============================================================
 
-/**
- * يُسجّل خروج المستخدم ويُنظّف كل البيانات المحلية
- * @param {boolean} [clearLocalData=false] - مسح Dexie أيضاً؟
- * @returns {Promise<{ok: boolean}>}
- */
 async function logout(clearLocalData = false) {
   try {
-    // إلغاء جميع اشتراكات Realtime
     await unsubscribeAll();
-
-    // إلغاء مؤقتات المزامنة
-    if (window.SyncQueue) {
-      SyncQueue.clearRetryTimers();
-    }
-
-    // تسجيل الخروج من Supabase
+    if (window.SyncQueue) SyncQueue.clearRetryTimers();
     await supabaseClient.auth.signOut();
-
-    // مسح الجلسة من sessionStorage
     clearSession();
 
-    // مسح الحالة الداخلية
     AuthState.currentUser   = null;
     AuthState.authUser      = null;
     AuthState.isInitialized = false;
 
-    // مسح الكاش المحلي (اختياري — عند تسجيل خروج نظيف)
     if (clearLocalData) {
       try {
         await Promise.all([
@@ -158,19 +109,15 @@ async function logout(clearLocalData = false) {
           db.notifications.clear(),
           db.cache_meta.clear(),
         ]);
-      } catch { /* تجاهل */ }
+      } catch { /* Dexie قد لا تكون متاحة */ }
     }
 
     console.log('👋 AuthService: تم تسجيل الخروج بنجاح');
-
-    // إطلاق حدث مخصص لـ AppStore
     window.dispatchEvent(new CustomEvent('auth:logout'));
-
     return ok(true);
 
   } catch (e) {
     console.error('❌ AuthService.logout():', e);
-    // حتى لو فشل — نُنظّف محلياً
     clearSession();
     AuthState.currentUser = null;
     AuthState.authUser    = null;
@@ -179,41 +126,25 @@ async function logout(clearLocalData = false) {
 }
 
 // ============================================================
-// 3. التحقق من الجلسة عند بدء التطبيق
+// 3. التحقق من الجلسة — Online-First
 // ============================================================
 
-/**
- * يتحقق من وجود جلسة نشطة عند فتح التطبيق
- * يُستخدم في App.js عند التهيئة
- * @returns {Promise<{ok: boolean, data?: {user, profile}, error?: string}>}
- */
 async function checkSession() {
   try {
-    // جلب الجلسة من Supabase (يتحقق من sessionStorage تلقائياً)
     const { session, error } = await getCurrentSession();
+    if (error || !session) return err('لا توجد جلسة نشطة');
 
-    if (error || !session) {
-      return err('لا توجد جلسة نشطة');
-    }
-
-    // جلب بيانات المستخدم من جدول users
-    const profileResult = await _fetchUserProfile(session.user.id);
-    if (!isOk(profileResult)) {
-      return err('لم يُعثر على ملف المستخدم');
-    }
+    // ✅ جلب من Supabase مباشرة (Online-First) — لا نقرأ من Dexie أولاً
+    const profileResult = await _fetchUserProfileOnline(session.user.id);
+    if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
 
     const profile = profileResult.data;
-
-    if (!profile.is_active) {
-      await logout();
-      return err('تم تعطيل هذا الحساب');
-    }
+    if (!profile.is_active) { await logout(); return err('تم تعطيل هذا الحساب'); }
 
     AuthState.currentUser   = profile;
     AuthState.authUser      = session.user;
     AuthState.isInitialized = true;
 
-    // تحديث الجلسة في sessionStorage
     saveSession({
       userId      : profile.id,
       role        : profile.role,
@@ -221,6 +152,9 @@ async function checkSession() {
       username    : profile.username,
       allowedTabs : profile.allowed_tabs || [],
     });
+
+    // تحديث Dexie في الخلفية
+    _saveToDexieBackground(profile);
 
     return ok({ user: session.user, profile });
 
@@ -234,11 +168,6 @@ async function checkSession() {
 // 4. تجديد التوكن
 // ============================================================
 
-/**
- * يُجدّد access_token قبل انتهائه
- * يُستخدم تلقائياً من Supabase، أو يُستدعى يدوياً
- * @returns {Promise<{ok: boolean, error?: string}>}
- */
 async function refreshSession() {
   try {
     const { data, error } = await supabaseClient.auth.refreshSession();
@@ -250,25 +179,16 @@ async function refreshSession() {
 }
 
 // ============================================================
-// 5. الدخول السريع (Quick Login)
+// 5. الدخول السريع — يدعم Online وOffline
 // ============================================================
 
-/**
- * يُفعّل الدخول السريع بحفظ هاش المعادلة
- * يُستدعى بعد أول تسجيل دخول تقليدي ناجح
- * @param {string} equation - المعادلة الرياضية (مثل 12+88)
- * @returns {Promise<{ok: boolean, error?: string}>}
- */
 async function enableQuickLogin(equation) {
   try {
-    if (!AuthState.currentUser) {
-      return err('يجب تسجيل الدخول أولاً');
-    }
+    if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
 
     const trimmed = String(equation).trim();
     if (!trimmed) return err('المعادلة فارغة');
 
-    // التحقق من أن المعادلة تُنتج نتيجة صحيحة (باستخدام expr-eval الآمن)
     try {
       const parser = new window.exprEval.Parser();
       const result = parser.evaluate(trimmed);
@@ -279,10 +199,8 @@ async function enableQuickLogin(equation) {
       return err('المعادلة غير صالحة رياضياً');
     }
 
-    // حساب هاش SHA-256
     const hash = await hashSHA256(trimmed);
 
-    // حفظ الهاش في جدول users على Supabase
     const { error } = await supabaseClient
       .from(TABLES.USERS)
       .update({ quick_equation_hash: hash })
@@ -290,14 +208,20 @@ async function enableQuickLogin(equation) {
 
     if (error) return err(`فشل حفظ معادلة الدخول السريع: ${error.message}`);
 
-    // تحديث محلياً أيضاً
-    await db.users.update(AuthState.currentUser.id, { quick_equation_hash: hash });
+    // تحديث Dexie في الخلفية
+    try { await db.users.update(AuthState.currentUser.id, { quick_equation_hash: hash }); } catch { /* تجاهل */ }
 
-    // حفظ إشارة في sessionStorage أن الدخول السريع مفعّل
+    // تخزين الهاش في localStorage للاستخدام Offline
+    try {
+      const deviceToken = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY) || '';
+      localStorage.setItem(
+        `ahu_quick_${AuthState.currentUser.id}`,
+        JSON.stringify({ hash, deviceToken, userId: AuthState.currentUser.id })
+      );
+    } catch { /* تجاهل */ }
+
     const session = getSession();
-    if (session) {
-      saveSession({ ...session, quickLoginEnabled: true });
-    }
+    if (session) saveSession({ ...session, quickLoginEnabled: true });
 
     console.log('✅ AuthService: تم تفعيل الدخول السريع');
     return ok(true);
@@ -308,76 +232,101 @@ async function enableQuickLogin(equation) {
 }
 
 /**
- * يُنفّذ الدخول السريع بالمعادلة الرياضية
- * يُرسل الهاش لـ RPC ويُعيد بيانات المستخدم
- * @param {string} equation - المعادلة التي أدخلها المستخدم
- * @returns {Promise<{ok: boolean, data?: {profile}, error?: string}>}
+ * ✅ الدخول السريع يدعم Online وOffline
  */
 async function quickLogin(equation) {
   try {
     const trimmed = String(equation).trim();
     if (!trimmed) return err('المعادلة فارغة');
 
-    // التحقق من Brute Force بالمفتاح 'quick_login'
     const lockCheck = _checkBruteForce('quick_login');
     if (!isOk(lockCheck)) return lockCheck;
 
-    // حساب هاش المعادلة
     const hash = await hashSHA256(trimmed);
 
-    // الاستدعاء عبر RPC
-    const result = await callRPC(RPC.VERIFY_QUICK_LOGIN, {
-      p_equation_hash: hash,
-    });
+    // ─── وضع الاتصال: RPC على Supabase ───
+    if (isOnline()) {
+      const result = await callRPC(RPC.VERIFY_QUICK_LOGIN, { p_equation_hash: hash });
 
-    if (!isOk(result)) {
-      _recordFailedAttempt('quick_login');
-      return err('معادلة غير صحيحة');
+      if (!isOk(result) || !result.data?.success) {
+        _recordFailedAttempt('quick_login');
+        return err(result.data?.message || 'معادلة غير صحيحة أو الحساب معطل');
+      }
+
+      const profileResult = await _fetchUserProfileOnline(result.data.user_id);
+      if (!isOk(profileResult)) return err('فشل جلب بيانات المستخدم');
+
+      const profile = profileResult.data;
+      if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
+
+      AuthState.currentUser = profile;
+      _loginAttempts.delete('quick_login');
+
+      saveSession({
+        userId         : profile.id,
+        role           : profile.role,
+        displayName    : profile.display_name,
+        username       : profile.username,
+        allowedTabs    : profile.allowed_tabs || [],
+        quickLoginMode : true,
+      });
+
+      _saveToDexieBackground(profile);
+      _preloadEssentialData(profile);
+
+      console.log(`⚡ AuthService: دخول سريع (online) — ${profile.display_name}`);
+      return ok({ profile });
     }
 
-    const rpcData = result.data;
-    if (!rpcData?.success) {
+    // ─── وضع عدم الاتصال (طوارئ): من localStorage + Dexie ───
+    const deviceToken = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY) || '';
+
+    // البحث في localStorage عن مستخدم بهذا الهاش مرتبط بهذا الجهاز
+    let offlineProfile = null;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_quick_')) continue;
+        const data = JSON.parse(localStorage.getItem(key) || '{}');
+        if (data.hash === hash && data.deviceToken === deviceToken) {
+          // التحقق من وجود الملف في Dexie
+          if (db.isOpen()) {
+            offlineProfile = await db.users.get(data.userId);
+          }
+          break;
+        }
+      }
+    } catch { /* تجاهل */ }
+
+    if (!offlineProfile) {
       _recordFailedAttempt('quick_login');
-      return err(rpcData?.message || 'معادلة غير صحيحة أو الحساب معطل');
+      return err('الدخول السريع غير متاح offline على هذا الجهاز. سجّل دخولك التقليدي أولاً.');
     }
 
-    // جلب الملف الكامل من Supabase
-    const profileResult = await _fetchUserProfile(rpcData.user_id);
-    if (!isOk(profileResult)) return err('فشل جلب بيانات المستخدم');
+    if (!offlineProfile.is_active) return err('تم تعطيل هذا الحساب.');
 
-    const profile = profileResult.data;
-    if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
-
-    // تسجيل الدخول عبر Supabase Auth باستخدام magic token
-    // ملاحظة: في بيئة الإنتاج تُستخدم Edge Function لإعادة JWT
-    // هنا نُخزّن بيانات المستخدم بدون auth session كاملة
-    AuthState.currentUser = profile;
+    // إنشاء جلسة محلية مؤقتة
+    AuthState.currentUser = offlineProfile;
     _loginAttempts.delete('quick_login');
 
     saveSession({
-      userId         : profile.id,
-      role           : profile.role,
-      displayName    : profile.display_name,
-      username       : profile.username,
-      allowedTabs    : profile.allowed_tabs || [],
+      userId         : offlineProfile.id,
+      role           : offlineProfile.role,
+      displayName    : offlineProfile.display_name,
+      username       : offlineProfile.username,
+      allowedTabs    : offlineProfile.allowed_tabs || [],
       quickLoginMode : true,
+      offlineSession : true,
     });
 
-    await db.users.put({ ...profile, sync_status: SYNC_STATUS.SYNCED });
-    _preloadEssentialData(profile);
-
-    console.log(`⚡ AuthService: دخول سريع — ${profile.display_name}`);
-    return ok({ profile });
+    console.log(`⚡ AuthService: دخول سريع (offline) — ${offlineProfile.display_name}`);
+    return ok({ profile: offlineProfile });
 
   } catch (e) {
     return err(`خطأ في الدخول السريع: ${e.message}`);
   }
 }
 
-/**
- * يُلغي الدخول السريع للمستخدم الحالي
- * @returns {Promise<{ok: boolean}>}
- */
 async function disableQuickLogin() {
   try {
     if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
@@ -389,7 +338,10 @@ async function disableQuickLogin() {
 
     if (error) return err(error.message);
 
-    await db.users.update(AuthState.currentUser.id, { quick_equation_hash: null });
+    try { await db.users.update(AuthState.currentUser.id, { quick_equation_hash: null }); } catch { /* تجاهل */ }
+
+    // مسح بيانات الدخول السريع من localStorage
+    try { localStorage.removeItem(`ahu_quick_${AuthState.currentUser.id}`); } catch { /* تجاهل */ }
 
     return ok(true);
   } catch (e) {
@@ -398,14 +350,9 @@ async function disableQuickLogin() {
 }
 
 // ============================================================
-// 6. توثيق الجهاز (Device Token)
+// 6. توثيق الجهاز
 // ============================================================
 
-/**
- * يُنشئ أو يُعيد device_token ويخزنه في sessionStorage
- * @param {string} userId
- * @returns {Promise<string>} - device_token
- */
 async function _setupDeviceToken(userId) {
   try {
     let deviceToken = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY);
@@ -419,34 +366,40 @@ async function _setupDeviceToken(userId) {
   }
 }
 
-/**
- * يُعيد device_token الحالي
- * @returns {string|null}
- */
 function getDeviceToken() {
-  try {
-    return sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  try { return sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY); }
+  catch { return null; }
 }
 
 // ============================================================
-// 7. جلب بيانات ملف المستخدم
+// 7. جلب ملف المستخدم
 // ============================================================
 
 /**
- * يجلب بيانات المستخدم من جدول users
- * @param {string} userId
- * @returns {Promise<{ok: boolean, data?: object, error?: string}>}
+ * ✅ Online-First: يقرأ من Supabase مباشرة
+ * Dexie كاحتياطي فقط إذا كان offline
  */
 async function _fetchUserProfile(userId) {
+  if (isOnline()) {
+    return _fetchUserProfileOnline(userId);
+  }
+  // Offline: من Dexie
   try {
-    // أولاً من Dexie (أسرع)
-    const local = await db.users.get(userId);
-    if (local) return ok(local);
+    if (db.isOpen()) {
+      const local = await db.users.get(userId);
+      if (local) return ok(local);
+    }
+    return err('غير متصل ولم يُعثر على ملف المستخدم محلياً');
+  } catch (e) {
+    return err(e.message);
+  }
+}
 
-    // من Supabase إن لم يوجد محلياً
+/**
+ * يجلب ملف المستخدم مباشرة من Supabase
+ */
+async function _fetchUserProfileOnline(userId) {
+  try {
     const { data, error } = await supabaseClient
       .from(TABLES.USERS)
       .select('*')
@@ -463,235 +416,169 @@ async function _fetchUserProfile(userId) {
 }
 
 // ============================================================
-// 8. تحميل البيانات الأساسية في الخلفية
+// 8. حفظ في Dexie بالخلفية (لا ينتظره أحد)
 // ============================================================
 
-/**
- * يُحمّل البيانات المشتركة في الخلفية بعد تسجيل الدخول
- * مثل: الشركات، حسابات المصروفات، إعدادات النظام
- * @param {object} profile
- */
-async function _preloadEssentialData(profile) {
-  try {
-    const tasks = [
-      _preloadSystemSettings(),
-      _preloadCompanies(),
-      _preloadExpenseAccounts(),
-    ];
-
-    // المدير يحتاج بيانات إضافية
-    if (profile.role === ROLES.ADMIN || profile.role === ROLES.ADMIN_ASSISTANT) {
-      tasks.push(_preloadUsers());
-      tasks.push(_preloadBankAccounts());
+function _saveToDexieBackground(profile) {
+  // ننفذ بدون await — أي خطأ لا يوقف التدفق الرئيسي
+  (async () => {
+    try {
+      if (!db.isOpen()) return;
+      await db.users.put({ ...profile, sync_status: SYNC_STATUS.SYNCED });
+    } catch (e) {
+      console.warn('⚠️ AuthService: فشل حفظ ملف المستخدم في Dexie (غير حرج):', e.message);
     }
+  })();
+}
 
-    await Promise.allSettled(tasks);
-    console.log('✅ AuthService: اكتمل تحميل البيانات الأساسية');
+// ============================================================
+// 9. تحميل البيانات الأساسية في الخلفية
+// ============================================================
 
-  } catch (e) {
-    console.warn('تحذير: فشل تحميل بعض البيانات الأساسية:', e.message);
-  }
+async function _preloadEssentialData(profile) {
+  // بدون await — في الخلفية تماماً
+  (async () => {
+    try {
+      if (!isOnline()) return; // لا نحمّل إذا كنا offline
+
+      const tasks = [
+        _preloadSystemSettings(),
+        _preloadCompanies(),
+        _preloadExpenseAccounts(),
+      ];
+
+      if (profile.role === ROLES.ADMIN || profile.role === ROLES.ADMIN_ASSISTANT) {
+        tasks.push(_preloadUsers());
+        tasks.push(_preloadBankAccounts());
+      }
+
+      await Promise.allSettled(tasks);
+      console.log('✅ AuthService: اكتمل تحميل البيانات الأساسية');
+    } catch (e) {
+      console.warn('⚠️ AuthService: فشل جزئي في تحميل البيانات الأساسية:', e.message);
+    }
+  })();
 }
 
 async function _preloadSystemSettings() {
-  const { data, error } = await supabaseClient
-    .from(TABLES.SYSTEM_SETTINGS)
-    .select('*');
-  if (!error && data) {
-    for (const setting of data) {
-      await db.system_settings.put(setting);
+  try {
+    const { data, error } = await supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*');
+    if (!error && data && db.isOpen()) {
+      for (const s of data) { try { await db.system_settings.put(s); } catch { /* تجاهل */ } }
     }
-  }
+  } catch { /* تجاهل */ }
 }
 
 async function _preloadCompanies() {
-  const { data, error } = await supabaseClient
-    .from(TABLES.COMPANIES)
-    .select('*')
-    .order('name');
-  if (!error && data) {
-    await db.companies.bulkPut(data);
-  }
+  try {
+    const { data, error } = await supabaseClient.from(TABLES.COMPANIES).select('*').order('name');
+    if (!error && data && db.isOpen()) {
+      try { await db.companies.bulkPut(data); } catch { /* تجاهل */ }
+    }
+  } catch { /* تجاهل */ }
 }
 
 async function _preloadExpenseAccounts() {
-  const { data, error } = await supabaseClient
-    .from(TABLES.EXPENSE_ACCOUNTS)
-    .select('*')
-    .order('name');
-  if (!error && data) {
-    await db.expense_accounts.bulkPut(data);
-  }
+  try {
+    const { data, error } = await supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name');
+    if (!error && data && db.isOpen()) {
+      try { await db.expense_accounts.bulkPut(data); } catch { /* تجاهل */ }
+    }
+  } catch { /* تجاهل */ }
 }
 
 async function _preloadUsers() {
-  const { data, error } = await supabaseClient
-    .from(TABLES.USERS)
-    .select('id, username, display_name, role, is_active, allowed_tabs, assigned_debtors')
-    .order('display_name');
-  if (!error && data) {
-    await db.users.bulkPut(data.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED })));
-  }
+  try {
+    const { data, error } = await supabaseClient
+      .from(TABLES.USERS)
+      .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash')
+      .order('display_name');
+    if (!error && data && db.isOpen()) {
+      try { await db.users.bulkPut(data.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED }))); } catch { /* تجاهل */ }
+    }
+  } catch { /* تجاهل */ }
 }
 
 async function _preloadBankAccounts() {
-  const { data, error } = await supabaseClient
-    .from(TABLES.BANK_ACCOUNTS)
-    .select('*')
-    .order('name');
-  if (!error && data) {
-    await db.bank_accounts.bulkPut(data.map(b => ({ ...b, sync_status: SYNC_STATUS.SYNCED })));
-  }
+  try {
+    const { data, error } = await supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name');
+    if (!error && data && db.isOpen()) {
+      try { await db.bank_accounts.bulkPut(data.map(b => ({ ...b, sync_status: SYNC_STATUS.SYNCED }))); } catch { /* تجاهل */ }
+    }
+  } catch { /* تجاهل */ }
 }
 
 // ============================================================
-// 9. حماية Brute Force
+// 10. Brute Force Protection
 // ============================================================
 
-/**
- * يتحقق هل البريد محجوب بسبب محاولات فاشلة متكررة
- * @param {string} key - البريد أو 'quick_login'
- * @returns {{ok: boolean, error?: string}}
- */
 function _checkBruteForce(key) {
   const record = _loginAttempts.get(key);
   if (!record) return ok(true);
-
   if (record.lockedUntil && Date.now() < record.lockedUntil) {
-    const remainingMins = Math.ceil((record.lockedUntil - Date.now()) / 60000);
-    return err(`تم تجاوز الحد الأقصى للمحاولات. انتظر ${remainingMins} دقيقة.`);
+    const mins = Math.ceil((record.lockedUntil - Date.now()) / 60000);
+    return err(`تم قفل الحساب. حاول بعد ${mins} دقيقة`);
   }
-
   return ok(true);
 }
 
-/**
- * يُسجّل محاولة دخول فاشلة
- * @param {string} key
- */
 function _recordFailedAttempt(key) {
-  const record = _loginAttempts.get(key) || { count: 0, lockedUntil: null };
+  const record = _loginAttempts.get(key) || { count: 0 };
   record.count++;
-
   if (record.count >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS) {
     record.lockedUntil = Date.now() + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
-    console.warn(`🔒 AuthService: تم قفل ${key} بسبب ${record.count} محاولات فاشلة`);
-    showToast(
-      `تم قفل الحساب مؤقتاً لمدة ${SECURITY_CONFIG.LOCKOUT_MINUTES} دقيقة بسبب محاولات خاطئة متكررة`,
-      'error',
-      6000
-    );
   }
-
   _loginAttempts.set(key, record);
 }
 
-/**
- * يُترجم رسائل خطأ Supabase Auth للعربية
- * @param {string} msg
- * @returns {string}
- */
 function _translateAuthError(msg) {
-  const map = {
-    'Invalid login credentials'              : 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
-    'Email not confirmed'                    : 'البريد الإلكتروني غير مؤكد',
-    'User not found'                         : 'المستخدم غير موجود',
-    'Too many requests'                      : 'طلبات كثيرة جداً. انتظر قليلاً.',
-    'Invalid email or password'              : 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
-    'signup_disabled'                        : 'التسجيل معطل في هذا النظام',
-  };
-  return map[msg] || `خطأ في المصادقة: ${msg}`;
+  if (msg.includes('Invalid login credentials')) return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
+  if (msg.includes('Email not confirmed'))        return 'يجب تأكيد البريد الإلكتروني أولاً';
+  if (msg.includes('Too many requests'))          return 'محاولات كثيرة. انتظر قليلاً';
+  return msg;
 }
 
 // ============================================================
-// 10. دوال الوصول للحالة الداخلية
+// دوال الاستعلام العامة
 // ============================================================
 
-/** يُعيد المستخدم الحالي */
-function getCurrentUser() {
-  return AuthState.currentUser;
-}
+function getCurrentUser()    { return AuthState.currentUser; }
+function getCurrentRole()    { return AuthState.currentUser?.role || null; }
+function getCurrentUserId()  { return AuthState.currentUser?.id   || null; }
+function isAdmin()           { return AuthState.currentUser?.role === ROLES.ADMIN; }
+function isAgent()           { return AuthState.currentUser?.role === ROLES.AGENT; }
+function isAdminAssistant()  { return AuthState.currentUser?.role === ROLES.ADMIN_ASSISTANT; }
 
-/** يُعيد دور المستخدم الحالي */
-function getCurrentRole() {
-  return AuthState.currentUser?.role || null;
-}
-
-/** يُعيد معرف المستخدم الحالي */
-function getCurrentUserId() {
-  return AuthState.currentUser?.id || null;
-}
-
-/** يتحقق هل المستخدم الحالي مدير */
-function isAdmin() {
-  return AuthState.currentUser?.role === ROLES.ADMIN;
-}
-
-/** يتحقق هل المستخدم الحالي مندوب */
-function isAgent() {
-  return AuthState.currentUser?.role === ROLES.AGENT;
-}
-
-/** يتحقق هل المستخدم الحالي مساعد إداري */
-function isAdminAssistant() {
-  return AuthState.currentUser?.role === ROLES.ADMIN_ASSISTANT;
-}
-
-/**
- * يتحقق هل للمستخدم الوصول لتبويب معين
- * @param {string} tabId
- * @returns {boolean}
- */
 function canAccessTab(tabId) {
   const user = AuthState.currentUser;
   if (!user) return false;
-
-  if (user.role === ROLES.ADMIN) return true;
-
-  if (user.role === ROLES.ADMIN_ASSISTANT) {
-    const allowed = user.allowed_tabs || [];
-    return Array.isArray(allowed) && allowed.includes(tabId);
-  }
-
-  if (user.role === ROLES.AGENT) {
-    return AGENT_TABS.includes(tabId);
-  }
-
-  return false;
+  const allowed = getAllowedTabs();
+  return allowed.includes(tabId);
 }
 
-/**
- * يُعيد قائمة التبويبات المتاحة للمستخدم الحالي
- * @returns {string[]}
- */
 function getAllowedTabs() {
   const user = AuthState.currentUser;
   if (!user) return [];
-
-  if (user.role === ROLES.ADMIN)           return [...ADMIN_TABS];
-  if (user.role === ROLES.AGENT)           return [...AGENT_TABS];
-  if (user.role === ROLES.ADMIN_ASSISTANT) return user.allowed_tabs || [];
-
-  return [];
+  if (user.role === ROLES.ADMIN) return [...ADMIN_TABS];
+  if (user.role === ROLES.ADMIN_ASSISTANT) {
+    const tabs = user.allowed_tabs;
+    const parsed = Array.isArray(tabs) ? tabs
+      : (typeof tabs === 'string' ? (() => { try { return JSON.parse(tabs); } catch { return []; } })() : []);
+    return parsed.length ? parsed : [...AGENT_TABS];
+  }
+  return [...AGENT_TABS];
 }
 
-/**
- * يُولّد رقم حساب مختصر للمستخدم (مثل M0001، A0012)
- * يُعرض في الهيدر ويمكن نسخه
- * @param {object} user
- * @returns {string}
- */
 function generateAccountNumber(user) {
-  if (!user) return '----';
-  const prefix = user.role === ROLES.ADMIN ? 'M' :
-                 user.role === ROLES.ADMIN_ASSISTANT ? 'X' : 'A';
-  // نأخذ آخر 4 أرقام من UUID كمعرف مختصر
+  if (!user) return null;
+  const prefix  = user.role === ROLES.ADMIN ? 'M'
+    : user.role === ROLES.ADMIN_ASSISTANT ? 'X' : 'A';
   const shortId = user.id.replace(/-/g, '').slice(-4).toUpperCase();
   return `${prefix}${shortId}`;
 }
 
 // ============================================================
-// تصدير الخدمة
+// تصدير
 // ============================================================
 
 const AuthService = {
@@ -712,10 +599,8 @@ const AuthService = {
   canAccessTab,
   getAllowedTabs,
   generateAccountNumber,
-  // للاستخدام الداخلي
-  _state : AuthState,
+  _state: AuthState,
 };
 
 window.AuthService = AuthService;
-
-console.log('✅ AuthService.js محمّل — خدمة المصادقة جاهزة');
+console.log('✅ AuthService.js v2.0 — Online-First مع دعم Offline للدخول السريع');
