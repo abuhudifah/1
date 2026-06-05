@@ -1,17 +1,35 @@
 /**
- * repository/Repository.js — v3.0 (Online-First)
+ * repository/Repository.js — v3.1 (FIXED)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
- * طبقة CRUD الموحدة
  *
- * مبدأ Online-First:
- * - متصل  → Supabase مصدر الحقيقة الوحيد، Dexie يُحدَّث في الخلفية
- * - غير متصل → Dexie كمخزن طوارئ فقط
+ * الإصلاحات:
+ * ✅ FIX-4: دعم Primary Keys مختلفة عن 'id'
+ *    كان update() و delete() و getById() تفترض دائماً أن PK هو 'id'.
+ *    هذا يُفشل العمليات على جداول مثل:
+ *      - account_balances  (PK = account_id)
+ *      - system_settings   (PK = key)
+ *      - cache_meta        (PK = key)
+ *    الآن: جميع الدوال تقبل pkColumn اختيارياً (افتراضي 'id' للتوافق).
  *
- * التغييرات v3:
- * ✅ query(): يقرأ من Supabase مباشرة دون التحقق من الكاش أولاً
- * ✅ getById(): Supabase أولاً، Dexie احتياطي عند offline فقط
- * ✅ إزالة منطق isCacheValid من المسار الرئيسي
- * ✅ Dexie يُكتب فقط في الخلفية بعد نجاح Supabase
+ *    جدول PKs المعروفة في النظام:
+ *    ┌─────────────────────┬──────────────┐
+ *    │ الجدول              │ Primary Key  │
+ *    ├─────────────────────┼──────────────┤
+ *    │ transactions        │ id           │
+ *    │ users               │ id           │
+ *    │ bank_accounts       │ id           │
+ *    │ companies           │ id           │
+ *    │ expense_accounts    │ id           │
+ *    │ debtors             │ id           │
+ *    │ failed_deposits     │ id           │
+ *    │ notifications       │ id           │
+ *    │ audit_logs          │ id           │
+ *    │ account_ledger      │ id           │
+ *    │ daily_closings      │ id           │
+ *    │ account_balances    │ account_id ← │
+ *    │ system_settings     │ key        ← │
+ *    │ cache_meta          │ key        ← │
+ *    └─────────────────────┴──────────────┘
  */
 
 'use strict';
@@ -19,7 +37,26 @@
 const MAX_PAGE_SIZE = 500;
 
 // ============================================================
-// دوال مساعدة
+// FIX-4: خريطة PKs للجداول التي لا تستخدم 'id'
+// ============================================================
+const TABLE_PRIMARY_KEYS = Object.freeze({
+  account_balances : 'account_id',
+  system_settings  : 'key',
+  cache_meta       : 'key',
+  // باقي الجداول تستخدم 'id' (الافتراضي)
+});
+
+/**
+ * يُعيد اسم عمود المفتاح الأساسي لجدول معين
+ * @param {string} tableName
+ * @returns {string}
+ */
+function _getPKColumn(tableName) {
+  return TABLE_PRIMARY_KEYS[tableName] || 'id';
+}
+
+// ============================================================
+// دوال مساعدة للفلاتر
 // ============================================================
 
 function _parseFilters(filters = {}) {
@@ -109,11 +146,12 @@ function _applyFiltersToDexie(dexieTable, parsedFilters) {
   return collection;
 }
 
-// كتابة Dexie في الخلفية (لا تنتظرها)
+// كتابة Dexie في الخلفية
 function _writeToDexieBackground(tableName, records) {
   (async () => {
     try {
-      if (!db.isOpen()) return;
+      // FIX-3: التحقق من وجود db
+      if (typeof db === 'undefined' || !db.isOpen()) return;
       const dexieTable = db[tableName];
       if (!dexieTable) return;
       const withStatus = (Array.isArray(records) ? records : [records])
@@ -134,18 +172,27 @@ const repo = {
   // ==========================================================
   async create(tableName, data, options = {}) {
     try {
+      const pkColumn = _getPKColumn(tableName);
+      const pkValue  = data[pkColumn] || (pkColumn === 'id' ? generateUUID() : data[pkColumn]);
+
       const record = {
         ...data,
-        id         : data.id || generateUUID(),
+        [pkColumn] : pkValue,
         created_at : data.created_at || new Date().toISOString(),
         updated_at : data.updated_at || new Date().toISOString(),
       };
 
+      // للتوافق مع الكود القديم الذي يتوقع record.id
+      if (pkColumn !== 'id' && !record.id) {
+        record.id = pkValue;
+      }
+
       if (!isOnline() || options.skipQueue) {
-        // Offline: حفظ محلي + طابور
         const pending = { ...record, sync_status: SYNC_STATUS.PENDING };
-        try { if (db.isOpen()) await db[tableName]?.put(pending); } catch { /* تجاهل */ }
-        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
+        try {
+          if (typeof db !== 'undefined' && db.isOpen()) await db[tableName]?.put(pending);
+        } catch { /* تجاهل */ }
+        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, pkValue, record);
         return ok(pending);
       }
 
@@ -156,11 +203,12 @@ const repo = {
         .single();
 
       if (error) {
-        // فشل Supabase: حفظ محلي + طابور
         console.warn(`⚠️ repo.create(${tableName}): Supabase فشل، أُضيف للطابور`);
         const pending = { ...record, sync_status: SYNC_STATUS.PENDING };
-        try { if (db.isOpen()) await db[tableName]?.put(pending); } catch { }
-        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
+        try {
+          if (typeof db !== 'undefined' && db.isOpen()) await db[tableName]?.put(pending);
+        } catch { }
+        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, pkValue, record);
         return ok(pending);
       }
 
@@ -175,34 +223,45 @@ const repo = {
   },
 
   // ==========================================================
-  // UPDATE
+  // UPDATE — FIX-4: يستخدم _getPKColumn
   // ==========================================================
   async update(tableName, id, changes) {
     try {
+      // FIX-4: تحديد عمود PK الصحيح
+      const pkColumn      = _getPKColumn(tableName);
       const updatedChanges = { ...changes, updated_at: new Date().toISOString() };
 
       if (!isOnline()) {
-        try { if (db.isOpen()) await db[tableName]?.update(id, updatedChanges); } catch { }
+        try {
+          if (typeof db !== 'undefined' && db.isOpen()) {
+            await db[tableName]?.update(id, updatedChanges);
+          }
+        } catch { }
         await SyncQueue.add(SYNC_ACTIONS.UPDATE, tableName, id, updatedChanges);
-        return ok({ id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
+        return ok({ [pkColumn]: id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
       }
 
+      // FIX-4: استخدام pkColumn الصحيح بدلاً من 'id' الثابت
       const { data: saved, error } = await supabaseClient
         .from(tableName)
         .update(updatedChanges)
-        .eq('id', id)
+        .eq(pkColumn, id)    // ← الإصلاح الجوهري
         .select()
         .single();
 
       if (error) {
-        try { if (db.isOpen()) await db[tableName]?.update(id, updatedChanges); } catch { }
+        try {
+          if (typeof db !== 'undefined' && db.isOpen()) {
+            await db[tableName]?.update(id, updatedChanges);
+          }
+        } catch { }
         await SyncQueue.add(SYNC_ACTIONS.UPDATE, tableName, id, updatedChanges);
-        return ok({ id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
+        return ok({ [pkColumn]: id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
       }
 
       await invalidateCacheByPrefix(tableName);
       _writeToDexieBackground(tableName, saved);
-      return ok(saved || { id, ...updatedChanges });
+      return ok(saved || { [pkColumn]: id, ...updatedChanges });
 
     } catch (e) {
       console.error(`❌ repo.update(${tableName}, ${id}):`, e);
@@ -211,21 +270,33 @@ const repo = {
   },
 
   // ==========================================================
-  // DELETE
+  // DELETE — FIX-4: يستخدم _getPKColumn
   // ==========================================================
   async delete(tableName, id) {
     try {
-      try { if (db.isOpen()) await db[tableName]?.delete(id); } catch { }
+      // FIX-4: تحديد عمود PK الصحيح
+      const pkColumn = _getPKColumn(tableName);
+
+      try {
+        if (typeof db !== 'undefined' && db.isOpen()) {
+          await db[tableName]?.delete(id);
+        }
+      } catch { }
       await invalidateCacheByPrefix(tableName);
 
       if (!isOnline()) {
-        await SyncQueue.add(SYNC_ACTIONS.DELETE, tableName, id, { id });
+        await SyncQueue.add(SYNC_ACTIONS.DELETE, tableName, id, { [pkColumn]: id });
         return ok(true);
       }
 
-      const { error } = await supabaseClient.from(tableName).delete().eq('id', id);
+      // FIX-4: استخدام pkColumn الصحيح
+      const { error } = await supabaseClient
+        .from(tableName)
+        .delete()
+        .eq(pkColumn, id);   // ← الإصلاح الجوهري
+
       if (error) {
-        await SyncQueue.add(SYNC_ACTIONS.DELETE, tableName, id, { id });
+        await SyncQueue.add(SYNC_ACTIONS.DELETE, tableName, id, { [pkColumn]: id });
       }
       return ok(true);
 
@@ -236,26 +307,31 @@ const repo = {
   },
 
   // ==========================================================
-  // GET BY ID — Online-First
+  // GET BY ID — FIX-4: يستخدم _getPKColumn
   // ==========================================================
   async getById(tableName, id) {
     try {
-      // متصل: Supabase أولاً
+      // FIX-4: تحديد عمود PK الصحيح
+      const pkColumn = _getPKColumn(tableName);
+
       if (isOnline()) {
+        // FIX-4: استخدام pkColumn الصحيح
         const { data, error } = await supabaseClient
-          .from(tableName).select('*').eq('id', id).single();
+          .from(tableName)
+          .select('*')
+          .eq(pkColumn, id)  // ← الإصلاح الجوهري
+          .single();
 
         if (!error && data) {
           _writeToDexieBackground(tableName, data);
           return ok(data);
         }
         if (error?.code === 'PGRST116') return ok(null);
-        // فشل: سقوط إلى Dexie
         console.warn(`⚠️ repo.getById(${tableName}): Supabase فشل، محاولة Dexie`);
       }
 
-      // Offline أو فشل Supabase: Dexie
-      if (db.isOpen()) {
+      // Offline أو فشل Supabase
+      if (typeof db !== 'undefined' && db.isOpen()) {
         const local = await db[tableName]?.get(id);
         if (local) return ok(local);
       }
@@ -268,7 +344,7 @@ const repo = {
   },
 
   // ==========================================================
-  // QUERY — Online-First (الإصلاح الجوهري)
+  // QUERY
   // ==========================================================
   async query(tableName, filters = {}, options = {}) {
     const {
@@ -281,13 +357,11 @@ const repo = {
     const pageSize = Math.min(options.pageSize ?? PAGINATION_CONFIG.DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     const offset   = (page - 1) * pageSize;
 
-    // ─── Offline: Dexie مباشرة ───
     if (!isOnline()) {
       const localData = await this._queryFromDexie(tableName, filters, { orderBy, ascending, offset, pageSize });
       return ok({ data: localData, count: localData.length, fromCache: true, offline: true });
     }
 
-    // ─── Online: Supabase مباشرة (بدون تحقق من الكاش) ───
     try {
       const parsedFilters = _parseFilters(filters);
 
@@ -302,13 +376,11 @@ const repo = {
       const { data, error, count } = await q;
 
       if (error) {
-        // فشل Supabase: سقوط إلى Dexie
         console.warn(`⚠️ repo.query(${tableName}): Supabase فشل، سقوط إلى Dexie:`, error.message);
         const localData = await this._queryFromDexie(tableName, filters, { orderBy, ascending, offset, pageSize });
         return ok({ data: localData, count: localData.length, fromCache: true });
       }
 
-      // ✅ كتابة Dexie في الخلفية فقط (لا تنتظرها)
       if (data?.length && data.length <= 200) {
         _writeToDexieBackground(tableName, data);
       }
@@ -317,7 +389,6 @@ const repo = {
 
     } catch (e) {
       console.error(`❌ repo.query(${tableName}):`, e);
-      // Fallback نهائي إلى Dexie
       try {
         const localData = await this._queryFromDexie(tableName, filters, { orderBy, ascending, offset, pageSize });
         return ok({ data: localData, count: localData.length, fromCache: true });
@@ -329,8 +400,10 @@ const repo = {
 
   async _queryFromDexie(tableName, filters, { orderBy, ascending, offset, pageSize }) {
     try {
+      // FIX-3: التحقق من وجود db
+      if (typeof db === 'undefined' || !db.isOpen()) return [];
       const dexieTable = db[tableName];
-      if (!dexieTable || !db.isOpen()) return [];
+      if (!dexieTable) return [];
       const parsedFilters = _parseFilters(filters);
       const collection = _applyFiltersToDexie(dexieTable, parsedFilters);
       let records = await collection.toArray();
@@ -346,12 +419,13 @@ const repo = {
   },
 
   // ==========================================================
-  // COUNT — Online-First
+  // COUNT
   // ==========================================================
   async count(tableName, filters = {}) {
     try {
       if (!isOnline()) {
-        if (!db.isOpen()) return ok(0);
+        // FIX-3: التحقق من وجود db
+        if (typeof db === 'undefined' || !db.isOpen()) return ok(0);
         const col = _applyFiltersToDexie(db[tableName], _parseFilters(filters));
         return ok(await col.count());
       }
@@ -366,32 +440,44 @@ const repo = {
   },
 
   // ==========================================================
-  // UPSERT
+  // UPSERT — FIX-4: يستخدم _getPKColumn
   // ==========================================================
-  async upsert(tableName, data, conflictColumns = ['id']) {
+  async upsert(tableName, data, conflictColumns = null) {
     try {
+      const pkColumn = _getPKColumn(tableName);
+      // FIX-4: استخدام pkColumn كعمود تعارض افتراضي إذا لم يُحدَّد
+      const resolvedConflictColumns = conflictColumns || [pkColumn];
+
       const record = {
         ...data,
-        id         : data.id || generateUUID(),
         updated_at : new Date().toISOString(),
         created_at : data.created_at || new Date().toISOString(),
       };
 
+      // ضمان وجود قيمة PK
+      if (!record[pkColumn] && pkColumn === 'id') {
+        record[pkColumn] = generateUUID();
+      }
+
       if (!isOnline()) {
-        try { if (db.isOpen()) await db[tableName]?.put(record); } catch { }
-        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
+        try {
+          if (typeof db !== 'undefined' && db.isOpen()) await db[tableName]?.put(record);
+        } catch { }
+        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record[pkColumn], record);
         return ok({ ...record, sync_status: SYNC_STATUS.PENDING });
       }
 
       const { data: saved, error } = await supabaseClient
         .from(tableName)
-        .upsert(record, { onConflict: conflictColumns.join(',') })
+        .upsert(record, { onConflict: resolvedConflictColumns.join(',') })
         .select()
         .single();
 
       if (error) {
-        try { if (db.isOpen()) await db[tableName]?.put(record); } catch { }
-        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record.id, record);
+        try {
+          if (typeof db !== 'undefined' && db.isOpen()) await db[tableName]?.put(record);
+        } catch { }
+        await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record[pkColumn], record);
         return ok({ ...record, sync_status: SYNC_STATUS.PENDING });
       }
 
@@ -410,18 +496,24 @@ const repo = {
   async batch(operations) {
     if (!operations?.length) return ok([]);
     try {
-      // كتابة Dexie أولاً (للعرض الفوري)
-      const tables = [...new Set(operations.map(op => op.table))]
-        .map(n => db[n]).filter(Boolean);
+      // FIX-3: التحقق من وجود db قبل المعاملة
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        const tables = [...new Set(operations.map(op => op.table))]
+          .map(n => db[n]).filter(Boolean);
 
-      if (db.isOpen()) {
         await db.transaction('rw', tables, async () => {
           for (const op of operations) {
             const t = db[op.table];
             if (!t) continue;
-            if (op.action === SYNC_ACTIONS.CREATE) await t.put({ ...op.data, sync_status: SYNC_STATUS.PENDING });
-            else if (op.action === SYNC_ACTIONS.UPDATE) await t.update(op.id||op.data?.id, { ...op.data, updated_at: new Date().toISOString() });
-            else if (op.action === SYNC_ACTIONS.DELETE) await t.delete(op.id||op.data?.id);
+            const pkCol = _getPKColumn(op.table);
+            const pkVal = op.data?.[pkCol] || op.id;
+            if (op.action === SYNC_ACTIONS.CREATE) {
+              await t.put({ ...op.data, sync_status: SYNC_STATUS.PENDING });
+            } else if (op.action === SYNC_ACTIONS.UPDATE) {
+              await t.update(pkVal, { ...op.data, updated_at: new Date().toISOString() });
+            } else if (op.action === SYNC_ACTIONS.DELETE) {
+              await t.delete(pkVal);
+            }
           }
         });
       }
@@ -435,17 +527,21 @@ const repo = {
 
       const results = [];
       for (const op of operations) {
+        const pkCol = _getPKColumn(op.table);
+        const pkVal = op.id || op.data?.[pkCol];
         let res;
         if (op.action === SYNC_ACTIONS.CREATE) {
           const { data:d, error:e } = await supabaseClient.from(op.table).insert(op.data).select().single();
           res = e ? err(e.message) : ok(d);
           if (!e && d) _writeToDexieBackground(op.table, d);
         } else if (op.action === SYNC_ACTIONS.UPDATE) {
-          const { data:d, error:e } = await supabaseClient.from(op.table).update(op.data).eq('id', op.id||op.data?.id).select().single();
+          // FIX-4: استخدام pkCol الصحيح
+          const { data:d, error:e } = await supabaseClient.from(op.table).update(op.data).eq(pkCol, pkVal).select().single();
           res = e ? err(e.message) : ok(d);
           if (!e && d) _writeToDexieBackground(op.table, d);
         } else if (op.action === SYNC_ACTIONS.DELETE) {
-          const { error:e } = await supabaseClient.from(op.table).delete().eq('id', op.id||op.data?.id);
+          // FIX-4: استخدام pkCol الصحيح
+          const { error:e } = await supabaseClient.from(op.table).delete().eq(pkCol, pkVal);
           res = e ? err(e.message) : ok(true);
         }
         results.push(res);
@@ -457,11 +553,12 @@ const repo = {
   },
 
   // ==========================================================
-  // FETCH FROM CACHE (Dexie مباشرة — للطوارئ)
+  // FETCH FROM CACHE
   // ==========================================================
   async fetchFromCache(tableName, filters = {}) {
     try {
-      if (!db.isOpen()) return [];
+      // FIX-3: التحقق من وجود db
+      if (typeof db === 'undefined' || !db.isOpen()) return [];
       const dexieTable = db[tableName];
       if (!dexieTable) return [];
       const col = _applyFiltersToDexie(dexieTable, _parseFilters(filters));
@@ -470,10 +567,12 @@ const repo = {
   },
 
   // ==========================================================
-  // SAVE TO CACHE (للمزامنة)
+  // SAVE TO CACHE
   // ==========================================================
   async saveToCache(tableName, records) {
-    if (!records?.length || !db.isOpen()) return;
+    if (!records?.length) return;
+    // FIX-3: التحقق من وجود db
+    if (typeof db === 'undefined' || !db.isOpen()) return;
     try {
       const withStatus = records.map(r => ({ ...r, sync_status: r.sync_status || SYNC_STATUS.SYNCED }));
       await db[tableName]?.bulkPut(withStatus);
@@ -481,12 +580,13 @@ const repo = {
   },
 
   // ==========================================================
-  // SYNC PENDING — bulkUpsert
+  // SYNC PENDING
   // ==========================================================
   async syncPendingOperations(tableName) {
     if (!isOnline()) return ok({ synced: 0, failed: 0, reason: 'offline' });
     try {
-      if (!db.isOpen()) return ok({ synced: 0, failed: 0 });
+      // FIX-3: التحقق من وجود db
+      if (typeof db === 'undefined' || !db.isOpen()) return ok({ synced: 0, failed: 0 });
       const dexieTable = db[tableName];
       if (!dexieTable) return ok({ synced: 0, failed: 0 });
 
@@ -494,7 +594,8 @@ const repo = {
         .where('sync_status').equals(SYNC_STATUS.PENDING).toArray();
       if (!pending.length) return ok({ synced: 0, failed: 0 });
 
-      const realRecords = pending.filter(r => !isTempId(r.id));
+      const pkColumn = _getPKColumn(tableName);
+      const realRecords = pending.filter(r => !isTempId(r[pkColumn] || r.id));
       if (!realRecords.length) return ok({ synced: 0, failed: pending.length });
 
       let synced = 0, failed = 0;
@@ -503,7 +604,11 @@ const repo = {
       for (let i = 0; i < realRecords.length; i += BATCH) {
         const batch = realRecords.slice(i, i + BATCH);
         const clean = batch.map(({ sync_status, ...rest }) => rest);
-        const { error } = await supabaseClient.from(tableName).upsert(clean, { onConflict: 'id' });
+        // FIX-4: استخدام pkColumn الصحيح في onConflict
+        const { error } = await supabaseClient
+          .from(tableName)
+          .upsert(clean, { onConflict: pkColumn });
+
         if (!error) {
           await dexieTable.bulkPut(batch.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED })));
           synced += batch.length;
@@ -519,5 +624,8 @@ const repo = {
   },
 };
 
+// تصدير خريطة PKs للاستخدام في ملفات أخرى
+window.TABLE_PRIMARY_KEYS = TABLE_PRIMARY_KEYS;
 window.repo = repo;
-console.log('✅ Repository.js v3.0 — Online-First: Supabase مصدر الحقيقة الوحيد');
+
+console.log('✅ Repository.js v3.1 — FIX-4: دعم PKs المختلفة (account_id, key, ...) | FIX-3: حماية typeof db');
