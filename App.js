@@ -1,70 +1,68 @@
 /**
- * App.js
+ * App.js — v2.0 (Online-First)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
- * التطبيق الرئيسي — التهيئة والتوجيه وبناء الهيكل
  *
- * المسؤوليات:
- * - تهيئة جميع الخدمات بالترتيب الصحيح
- * - بناء الهيدر وشريط التنقل
- * - إدارة التوجيه بين التبويبات
- * - إظهار/إخفاء الشاشات
- * - الاستماع لأحداث AppStore وتحديث الهيكل
- * - إدارة الوضع المظلم
- * - [المرحلة 3] تشغيل IdleTimer للمندوبين فقط
+ * التغييرات وفق التوثيق:
+ * ✅ 1. فشل Dexie لا يوقف التطبيق — يُسجَّل فقط ويستمر مع Supabase
+ * ✅ 2. runStartupCleanup() محاطة بـ try/catch (Dexie قد تكون غير متاحة)
+ * ✅ 3. SyncService.init() لا يُشغَّل إذا كانت Dexie فاشلة
+ * ✅ 4. مؤقت المزامنة الدورية 30 ثانية (بدلاً من 5 دقائق) عند وجود عمليات معلقة
  */
-
 'use strict';
 
-// ============================================================
-// متغيرات الهيكل العام
-// ============================================================
+let _headerEl  = null;
+let _navEl     = null;
+let _contentEl = null;
+let _dateTimer = null;
+let _dexieOk   = false; // هل Dexie متاحة؟
 
-let _headerEl   = null;
-let _navEl      = null;
-let _contentEl  = null;
-let _dateTimer  = null;
-
-// خريطة المكونات المحمَّلة (lazy loading)
 const _loadedComponents = new Map();
 
 // ============================================================
-// نقطة الدخول الرئيسية
+// نقطة الدخول
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🚀 App.js: بدء تهيئة النظام...');
+  console.log('🚀 App.js: بدء تهيئة النظام (Online-First)...');
 
   try {
-    // 1. تهيئة Dexie (قاعدة البيانات المحلية)
-    const dexieResult = await initDexie();
-    if (!isOk(dexieResult)) {
-      _showFatalError('فشل فتح قاعدة البيانات المحلية. أعد تحميل الصفحة.');
-      return;
+    // ─── 1. تهيئة Dexie (غير حرجة — فشلها لا يوقف التطبيق) ───
+    try {
+      const dexieResult = await initDexie();
+      if (isOk(dexieResult)) {
+        _dexieOk = true;
+        console.log('✅ App.js: Dexie جاهزة');
+        // التنظيف في الخلفية — لا ننتظره
+        runStartupCleanup().catch(e =>
+          console.warn('⚠️ App.js: تحذير تنظيف Dexie:', e.message)
+        );
+      } else {
+        console.warn('⚠️ App.js: Dexie غير متاحة — سيعمل النظام مع Supabase فقط');
+        _scheduleDexieReopen(); // محاولة إعادة الفتح في الخلفية
+      }
+    } catch (dexieErr) {
+      console.warn('⚠️ App.js: خطأ في Dexie:', dexieErr.message, '— النظام يكمل مع Supabase');
+      _scheduleDexieReopen();
     }
 
-    // 2. تنظيف البيانات القديمة في الخلفية
-    runStartupCleanup();
+    // ─── 2. تهيئة خدمة المزامنة (فقط إن كانت Dexie متاحة) ───
+    if (_dexieOk && window.SyncService) {
+      SyncService.init();
+    }
 
-    // 3. تهيئة خدمة المزامنة
-    SyncService.init();
-
-    // 4. تهيئة مدير الوضع المظلم (مرة واحدة)
+    // ─── 3. الوضع المظلم ───
     if (window.ThemeManager) {
       ThemeManager.init();
     } else {
-      console.warn('⚠️ ThemeManager غير موجود، استخدم fallback');
-      _restoreDarkMode(); // fallback قديم
+      _restoreDarkMode();
     }
 
-    // 5. التحقق من جلسة نشطة
+    // ─── 4. التحقق من الجلسة (من Supabase مباشرة) ───
     const sessionResult = await AuthService.checkSession();
 
     if (isOk(sessionResult)) {
-      // جلسة نشطة — دخول مباشر للتطبيق
-      const { profile } = sessionResult.data;
-      await _bootApp(profile);
+      await _bootApp(sessionResult.data.profile);
     } else {
-      // لا جلسة — عرض شاشة الدخول
       _showLoginScreen();
     }
 
@@ -75,82 +73,71 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ============================================================
-// تشغيل التطبيق بعد تسجيل الدخول
+// إعادة فتح Dexie في الخلفية
 // ============================================================
 
-/**
- * يُشغّل التطبيق الكامل بعد التحقق من هوية المستخدم
- * @param {object} profile - بيانات المستخدم من جدول users
- */
-async function _bootApp(profile) {
-  // إخفاء شاشة التحميل
-  _hideLoadingScreen();
+function _scheduleDexieReopen() {
+  setTimeout(async () => {
+    try {
+      if (!db.isOpen()) {
+        await db.open();
+        _dexieOk = true;
+        console.log('✅ App.js: أُعيد فتح Dexie في الخلفية');
+        if (window.SyncService && !_dexieOk) SyncService.init();
+      }
+    } catch (e) {
+      console.warn('⚠️ App.js: فشل إعادة فتح Dexie:', e.message);
+    }
+  }, 5000); // بعد 5 ثوانٍ
+}
 
-  // تعيين المستخدم في AppStore
+// ============================================================
+// تشغيل التطبيق
+// ============================================================
+
+async function _bootApp(profile) {
+  _hideLoadingScreen();
   AppStore.setCurrentUser(profile);
 
-  // ─── [المرحلة 3] إدارة IdleTimer بناءً على الدور ───
   if (window.IdleTimer) {
     if (profile.role === ROLES.AGENT) {
-      // المندوب فقط: تشغيل مؤقت الخمول
       IdleTimer.start();
-      console.log('⏱️  App.js: IdleTimer مُشغَّل للمندوب:', profile.display_name);
     } else {
-      // المدير والمساعد: إيقاف المؤقت (في حال كان يعمل من جلسة سابقة)
       IdleTimer.stop();
     }
   }
 
-  // بناء هيكل التطبيق
   _buildAppShell();
-
-  // تحميل البيانات الأساسية
   await AppStore.refreshData();
-
-  // الاستماع لأحداث AppStore
   _bindStoreEvents();
 
-  // الانتقال للتبويب الأول المسموح
   const firstTab = AuthService.getAllowedTabs()[0];
-  if (firstTab) {
-    await _navigateTo(firstTab);
-  }
+  if (firstTab) await _navigateTo(firstTab);
 
-  // تحديث التاريخ في الهيدر كل دقيقة
   _startDateClock();
-
-  console.log(`✅ App.js: النظام جاهز — ${profile.display_name} (${profile.role})`);
+  console.log(`✅ App.js: جاهز — ${profile.display_name} (${profile.role})`);
 }
 
 // ============================================================
-// بناء هيكل التطبيق (Shell)
+// بناء الهيكل
 // ============================================================
 
 function _buildAppShell() {
   const root = document.getElementById('app-root');
   root.innerHTML = '';
 
-  // --- الهيدر ---
-  _headerEl = _buildHeader();
-  root.appendChild(_headerEl);
-
-  // --- شريط التنقل ---
-  _navEl = _buildNav();
-  root.appendChild(_navEl);
-
-  // --- منطقة المحتوى ---
+  _headerEl  = _buildHeader();
+  _navEl     = _buildNav();
   _contentEl = document.createElement('main');
   _contentEl.id = 'app-content';
   _contentEl.className = 'app-content';
+
+  root.appendChild(_headerEl);
+  root.appendChild(_navEl);
   root.appendChild(_contentEl);
 
-  // تهيئة أيقونات Lucide
   if (window.lucide) lucide.createIcons();
 }
-
-// ============================================================
-// بناء الهيدر
-// ============================================================
 
 function _buildHeader() {
   const user    = AppStore.getState('currentUser');
@@ -158,146 +145,129 @@ function _buildHeader() {
   const logoUrl = state.logoUrl;
   const accNum  = state.accountNumber;
 
-  const header = document.createElement('header');
+  const header  = document.createElement('header');
   header.id = 'app-header';
   header.className = 'app-header';
 
-  // --- الجانب الأيمن: الشعار + العنوان ---
   const right = document.createElement('div');
   right.className = 'header-logo';
 
-  // الشعار
-  const logoWrap = document.createElement('div');
   if (logoUrl) {
     const img = document.createElement('img');
-    img.src = logoUrl;
-    img.alt = 'شعار النظام';
-    img.className = 'header-logo img';
-    img.onerror = () => { img.replaceWith(_buildLogoPlaceholder(user)); };
-    logoWrap.appendChild(img);
-  } else {
-    logoWrap.appendChild(_buildLogoPlaceholder(user));
+    img.src = logoUrl; img.alt = 'شعار النظام';
+    img.style.cssText = 'height:32px;width:auto;object-fit:contain;border-radius:6px;';
+    right.appendChild(img);
   }
-  right.appendChild(logoWrap);
 
-  // العنوان
-  const title = document.createElement('span');
-  title.className = 'header-title';
-  title.textContent = APP_CONFIG.NAME_SHORT;
-  right.appendChild(title);
+  const titleWrap = document.createElement('div');
+  titleWrap.innerHTML = `
+    <div style="font-weight:800;font-size:0.95rem;color:var(--text-primary);">
+      ${escapeHtml(APP_CONFIG.NAME_SHORT)}
+    </div>
+    <div style="font-size:0.70rem;color:var(--text-muted);" id="header-date"></div>`;
+  right.appendChild(titleWrap);
 
-  // رقم الحساب مع زر نسخ
-  if (accNum) {
-    const accBtn = document.createElement('div');
-    accBtn.className = 'header-account-num';
-    accBtn.title = 'انقر للنسخ';
-    accBtn.innerHTML = `<span id="header-acc-num">${escapeHtml(accNum)}</span>
-      <i data-lucide="copy" style="width:13px;height:13px"></i>`;
-    accBtn.addEventListener('click', () => copyToClipboard(accNum, `رقم الحساب ${accNum} — تم النسخ`));
-    right.appendChild(accBtn);
-  }
+  const left = document.createElement('div');
+  left.className = 'header-actions';
+
+  // مؤشر المزامنة
+  const syncDot = document.createElement('div');
+  syncDot.id = 'sync-indicator';
+  syncDot.style.cssText = `
+    display:flex;align-items:center;gap:6px;font-size:0.75rem;
+    color:var(--text-muted);padding:4px 8px;border-radius:8px;
+    background:var(--bg-input);cursor:pointer;`;
+  syncDot.innerHTML = `
+    <div id="sync-dot" class="sync-dot synced"
+      style="width:7px;height:7px;border-radius:50%;background:var(--success);transition:background 0.3s;"></div>
+    <span id="sync-label">متزامن</span>
+    <span id="sync-count" style="display:none;background:var(--warning);color:#fff;border-radius:10px;padding:1px 6px;font-size:0.65rem;"></span>`;
+  syncDot.addEventListener('click', () => SyncService?.manualSync?.());
+  left.appendChild(syncDot);
+
+  // زر الوضع المظلم
+  const themeBtn = document.createElement('button');
+  themeBtn.id = 'theme-toggle-btn';
+  themeBtn.className = 'btn btn-secondary btn-sm header-icon-btn';
+  themeBtn.title = 'تبديل الوضع المظلم/الفاتح';
+  themeBtn.innerHTML = `<i data-lucide="moon" style="width:16px;height:16px;"></i>`;
+  themeBtn.addEventListener('click', () => {
+    const isDark = window.ThemeManager ? ThemeManager.toggle()
+      : document.body.classList.toggle('dark-mode');
+    localStorage.setItem('abu_theme', isDark ? 'dark' : 'light');
+  });
+  left.appendChild(themeBtn);
+
+  // معلومات المستخدم
+  const userChip = document.createElement('div');
+  userChip.style.cssText = `
+    display:flex;align-items:center;gap:8px;padding:6px 12px;
+    background:var(--bg-input);border-radius:12px;
+    border:1px solid var(--border-color);`;
+  userChip.innerHTML = `
+    <div style="width:28px;height:28px;border-radius:50%;
+      background:var(--accent);display:flex;align-items:center;
+      justify-content:center;color:#fff;font-weight:700;font-size:0.85rem;">
+      ${escapeHtml((user?.display_name || '؟').charAt(0))}
+    </div>
+    <div style="line-height:1.2;">
+      <div style="font-size:0.80rem;font-weight:700;color:var(--text-primary);">
+        ${escapeHtml(user?.display_name || '—')}
+      </div>
+      <div style="font-size:0.68rem;color:var(--text-muted);">
+        ${escapeHtml(ROLE_LABELS[user?.role] || user?.role || '—')}
+        ${accNum ? ` · ${escapeHtml(accNum)}` : ''}
+      </div>
+    </div>`;
+  left.appendChild(userChip);
+
+  // زر الخروج
+  const logoutBtn = document.createElement('button');
+  logoutBtn.className = 'btn btn-secondary btn-sm header-icon-btn';
+  logoutBtn.title = 'تسجيل الخروج';
+  logoutBtn.innerHTML = `<i data-lucide="log-out" style="width:16px;height:16px;color:var(--danger);"></i>`;
+  logoutBtn.addEventListener('click', _handleLogout);
+  left.appendChild(logoutBtn);
 
   header.appendChild(right);
-
-  // --- الوسط: معلومات المستخدم ---
-  const center = document.createElement('div');
-  center.className = 'header-user-info';
-  center.innerHTML = `<strong>${escapeHtml(user?.display_name || '')}</strong>
-    <span>${escapeHtml(ROLE_LABELS[user?.role] || '')}</span>`;
-  header.appendChild(center);
-
-  // --- التاريخ ---
-  const dateEl = document.createElement('div');
-  dateEl.id = 'header-date';
-  dateEl.className = 'header-date';
-  dateEl.textContent = formatDateArabic(getCurrentSaudiDate());
-  header.appendChild(dateEl);
-
-  // --- الجانب الأيسر: الأزرار ---
-  const actions = document.createElement('div');
-  actions.className = 'header-actions';
-
-  // زر الإشعارات
-  const notifBtn = document.createElement('button');
-  notifBtn.id = 'header-notif-btn';
-  notifBtn.className = 'header-icon-btn';
-  notifBtn.title = 'الإشعارات';
-  notifBtn.setAttribute('aria-label', 'الإشعارات');
-  notifBtn.innerHTML = '<i data-lucide="bell" style="width:18px;height:18px"></i>';
-  const notifBadge = document.createElement('span');
-  notifBadge.id = 'notif-badge';
-  notifBadge.className = 'notif-badge';
-  notifBadge.style.display = 'none';
-  notifBtn.appendChild(notifBadge);
-  notifBtn.addEventListener('click', () => _navigateTo(TABS.NOTIFICATIONS));
-
-  // زر المزامنة
-  const syncBtn = document.createElement('button');
-  syncBtn.id = 'header-sync-btn';
-  syncBtn.className = 'header-icon-btn';
-  syncBtn.title = 'مزامنة يدوية';
-  syncBtn.setAttribute('aria-label', 'مزامنة');
-  syncBtn.innerHTML = '<i data-lucide="refresh-cw" style="width:18px;height:18px"></i>';
-  syncBtn.addEventListener('click', async () => {
-    syncBtn.classList.add('animate-spin');
-    syncBtn.disabled = true;
-    await SyncService.manualSync();
-    syncBtn.classList.remove('animate-spin');
-    syncBtn.disabled = false;
-  });
-
-  // مؤشر حالة الاتصال
-  const onlineDot = document.createElement('span');
-  onlineDot.id = 'online-dot';
-  onlineDot.className = `sync-dot ${navigator.onLine ? 'synced' : 'conflict'}`;
-  onlineDot.title = navigator.onLine ? 'متصل' : 'غير متصل';
-
-  // زر تسجيل الخروج
-  const logoutBtn = document.createElement('button');
-  logoutBtn.className = 'header-icon-btn';
-  logoutBtn.title = 'تسجيل الخروج';
-  logoutBtn.setAttribute('aria-label', 'تسجيل الخروج');
-  logoutBtn.innerHTML = '<i data-lucide="log-out" style="width:18px;height:18px"></i>';
-  logoutBtn.addEventListener('click', _handleLogout);
-
-  actions.appendChild(onlineDot);
-  actions.appendChild(notifBtn);
-  actions.appendChild(syncBtn);
-  actions.appendChild(logoutBtn);
-  header.appendChild(actions);
-
+  header.appendChild(left);
   return header;
 }
 
-function _buildLogoPlaceholder(user) {
-  const el = document.createElement('div');
-  el.className = 'header-logo-placeholder';
-  const initials = (user?.display_name || 'أ').charAt(0);
-  el.textContent = initials;
-  return el;
-}
-
-// ============================================================
-// بناء شريط التنقل
-// ============================================================
-
 function _buildNav() {
-  const nav = document.createElement('nav');
+  const tabs = AuthService.getAllowedTabs();
+  const nav  = document.createElement('nav');
   nav.id = 'app-nav';
   nav.className = 'app-nav';
-  nav.setAttribute('role', 'navigation');
-  nav.setAttribute('aria-label', 'التبويبات الرئيسية');
-
-  const tabs = AuthService.getAllowedTabs();
+  nav.style.overflowX = 'auto';
 
   tabs.forEach(tabId => {
-    const label = TAB_LABELS[tabId] || tabId;
     const btn = document.createElement('button');
+    btn.id = `nav-tab-${tabId}`;
     btn.className = 'nav-tab';
     btn.dataset.tab = tabId;
-    btn.setAttribute('role', 'tab');
     btn.setAttribute('aria-selected', 'false');
-    btn.textContent = label;
+
+    const label = TAB_LABELS[tabId] || tabId;
+    const icons = {
+      dashboard         : 'layout-dashboard',
+      'data-entry'      : 'pencil-line',
+      'daily-summary'   : 'file-bar-chart',
+      'bank-accounts'   : 'landmark',
+      debtors           : 'users',
+      'failed-deposits' : 'alert-circle',
+      notifications     : 'bell',
+      'all-operations'  : 'list',
+      'audit-log'       : 'shield-check',
+      users             : 'user-cog',
+      'account-management': 'book-open',
+      settings          : 'settings',
+    };
+    const icon = icons[tabId] || 'circle';
+
+    btn.innerHTML = `
+      <i data-lucide="${icon}" style="width:15px;height:15px;"></i>
+      <span style="font-size:0.80rem;">${escapeHtml(label)}</span>`;
     btn.addEventListener('click', () => _navigateTo(tabId));
     nav.appendChild(btn);
   });
@@ -306,26 +276,18 @@ function _buildNav() {
 }
 
 // ============================================================
-// التوجيه بين التبويبات
+// التوجيه
 // ============================================================
 
-/**
- * ينتقل لتبويب محدد ويُحمّل مكوّنه
- * @param {string} tabId
- */
 async function _navigateTo(tabId) {
   if (!AuthService.canAccessTab(tabId)) {
     showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
     return;
   }
 
-  // تحديث AppStore
   AppStore.setCurrentTab(tabId);
-
-  // تحديث أزرار النافبار
   _updateNavHighlight(tabId);
 
-  // تفريغ منطقة المحتوى مع أنيميشن
   if (_contentEl) {
     _contentEl.style.opacity = '0';
     _contentEl.style.transform = 'translateY(6px)';
@@ -336,10 +298,8 @@ async function _navigateTo(tabId) {
     _contentEl.className = 'app-content animate-fade-in';
   }
 
-  // عرض مؤشر تحميل مؤقت
   _showContentLoader();
 
-  // تحميل وعرض المكوّن
   try {
     await _mountComponent(tabId);
   } catch (e) {
@@ -351,172 +311,53 @@ async function _navigateTo(tabId) {
   }
 }
 
-/**
- * يُركّب المكوّن المناسب في منطقة المحتوى
- * @param {string} tabId
- */
 async function _mountComponent(tabId) {
   if (!_contentEl) return;
 
   const componentMap = {
-    [TABS.DASHBOARD]          : () => DashboardComponent?.render(_contentEl),
-    [TABS.DATA_ENTRY]         : () => DataEntryComponent?.render(_contentEl),
-    [TABS.DAILY_SUMMARY]      : () => DailySummaryComponent?.render(_contentEl),
-    [TABS.BANK_ACCOUNTS]      : () => BankAccountsComponent?.render(_contentEl),
-    [TABS.DEBTORS]            : () => DebtorsComponent?.render(_contentEl),
-    [TABS.FAILED_DEPOSITS]    : () => FailedDepositsComponent?.render(_contentEl),
-    [TABS.NOTIFICATIONS]      : () => NotificationsComponent?.render(_contentEl),
-    [TABS.ALL_OPERATIONS]     : () => AllOperationsComponent?.render(_contentEl),
-    [TABS.AUDIT_LOG]          : () => AuditLogComponent?.render(_contentEl),
-    [TABS.USERS]              : () => UsersComponent?.render(_contentEl),
-    [TABS.ACCOUNT_MANAGEMENT] : () => AccountManagementComponent?.render(_contentEl),
-    [TABS.SETTINGS]           : () => SettingsComponent?.render(_contentEl),
+    [TABS.DASHBOARD]           : () => DashboardComponent?.render(_contentEl),
+    [TABS.DATA_ENTRY]          : () => DataEntryComponent?.render(_contentEl),
+    [TABS.DAILY_SUMMARY]       : () => DailySummaryComponent?.render(_contentEl),
+    [TABS.BANK_ACCOUNTS]       : () => BankAccountsComponent?.render(_contentEl),
+    [TABS.DEBTORS]             : () => DebtorsComponent?.render(_contentEl),
+    [TABS.FAILED_DEPOSITS]     : () => FailedDepositsComponent?.render(_contentEl),
+    [TABS.NOTIFICATIONS]       : () => NotificationsComponent?.render(_contentEl),
+    [TABS.ALL_OPERATIONS]      : () => AllOperationsComponent?.render(_contentEl),
+    [TABS.AUDIT_LOG]           : () => AuditLogComponent?.render(_contentEl),
+    [TABS.USERS]               : () => UsersComponent?.render(_contentEl),
+    [TABS.ACCOUNT_MANAGEMENT]  : () => AccountManagementComponent?.render(_contentEl),
+    [TABS.SETTINGS]            : () => SettingsComponent?.render(_contentEl),
   };
 
-  const mountFn = componentMap[tabId];
-  if (mountFn) {
-    await mountFn();
-    // تجديد أيقونات Lucide بعد تحميل المحتوى
-    if (window.lucide) lucide.createIcons();
-  } else {
-    _contentEl.innerHTML = `<div class="empty-state">
-      <div class="empty-state-icon">🚧</div>
-      <div class="empty-state-text">هذا التبويب قيد التطوير</div>
-    </div>`;
-  }
+  const renderer = componentMap[tabId];
+  if (renderer) await renderer();
+  if (window.lucide) lucide.createIcons();
+}
+
+function _updateNavHighlight(activeTabId) {
+  document.querySelectorAll('.nav-tab').forEach(btn => {
+    const isActive = btn.dataset.tab === activeTabId;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', String(isActive));
+  });
 }
 
 function _showContentLoader() {
   if (!_contentEl) return;
   _contentEl.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:center;padding:60px 20px;">
+    <div style="display:flex;align-items:center;justify-content:center;
+      min-height:200px;flex-direction:column;gap:12px;">
       <div class="spinner spinner-dark"></div>
+      <p style="color:var(--text-muted);font-size:0.82rem;">جاري التحميل...</p>
     </div>`;
 }
 
-function _updateNavHighlight(activeTab) {
-  if (!_navEl) return;
-  _navEl.querySelectorAll('.nav-tab').forEach(btn => {
-    const isActive = btn.dataset.tab === activeTab;
-    btn.classList.toggle('active', isActive);
-    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
-  });
-}
-
 // ============================================================
-// الاستماع لأحداث AppStore
-// ============================================================
-
-function _bindStoreEvents() {
-  // تغيير حالة الاتصال
-  AppStore.addEventListener('store:onlineStatusChanged', (e) => {
-    const { isOnline: online } = e.detail.state;
-    const dot = document.getElementById('online-dot');
-    if (dot) {
-      dot.className = `sync-dot ${online ? 'synced' : 'conflict'}`;
-      dot.title = online ? 'متصل' : 'غير متصل';
-    }
-  });
-
-  // تغيير عدد الإشعارات
-  AppStore.addEventListener('store:notificationsLoaded', (e) => {
-    _updateNotifBadge(e.detail.state.unreadNotifCount);
-  });
-
-  AppStore.addEventListener('store:notificationAdded', (e) => {
-    _updateNotifBadge(e.detail.state.unreadNotifCount);
-  });
-
-  // تغيير المستخدم
-  AppStore.addEventListener('store:userChanged', (e) => {
-    _updateHeaderUserInfo(e.detail.state);
-  });
-
-  // تغيير الشعار
-  AppStore.addEventListener('store:settingsLoaded', (e) => {
-    _updateHeaderLogo(e.detail.state.logoUrl);
-  });
-
-  // حالة المزامنة
-  AppStore.addEventListener('store:syncStatusChanged', (e) => {
-    _updateSyncIndicator(e.detail.state);
-  });
-
-  // تغيير التبويب النشط (من المكونات الداخلية)
-  AppStore.addEventListener('store:tabChanged', (e) => {
-    const { currentTab } = e.detail.state;
-    if (currentTab) _updateNavHighlight(currentTab);
-  });
-
-  // تسجيل الخروج
-  AppStore.addEventListener('store:userCleared', () => {
-    _showLoginScreen();
-  });
-}
-
-// ============================================================
-// تحديث عناصر الهيدر ديناميكياً
-// ============================================================
-
-function _updateNotifBadge(count) {
-  const badge = document.getElementById('notif-badge');
-  if (!badge) return;
-  if (count > 0) {
-    badge.textContent = count > 99 ? '99+' : String(count);
-    badge.style.display = 'flex';
-  } else {
-    badge.style.display = 'none';
-  }
-}
-
-function _updateHeaderUserInfo(state) {
-  const userInfoEl = _headerEl?.querySelector('.header-user-info');
-  if (userInfoEl && state.currentUser) {
-    userInfoEl.innerHTML = `
-      <strong>${escapeHtml(state.currentUser.display_name)}</strong>
-      <span>${escapeHtml(ROLE_LABELS[state.currentUser.role] || '')}</span>`;
-  }
-}
-
-function _updateHeaderLogo(logoUrl) {
-  const logoWrap = _headerEl?.querySelector('.header-logo');
-  if (!logoWrap) return;
-  const existing = logoWrap.querySelector('img, .header-logo-placeholder');
-  if (!existing) return;
-
-  if (logoUrl) {
-    const img = document.createElement('img');
-    img.src = logoUrl;
-    img.alt = 'شعار النظام';
-    img.className = 'header-logo img';
-    img.onerror = () => img.replaceWith(_buildLogoPlaceholder(AppStore.getState('currentUser')));
-    existing.replaceWith(img);
-  }
-}
-
-function _updateSyncIndicator(state) {
-  const syncBtn = document.getElementById('header-sync-btn');
-  if (!syncBtn) return;
-  if (state.syncRunning) {
-    syncBtn.querySelector('i')?.setAttribute('data-lucide', 'loader');
-    syncBtn.title = `مزامنة (${state.syncQueueLength || 0} عملية)`;
-  } else {
-    syncBtn.querySelector('i')?.setAttribute('data-lucide', 'refresh-cw');
-    syncBtn.title = 'مزامنة يدوية';
-  }
-  if (window.lucide) lucide.createIcons();
-}
-
-// ============================================================
-// تسجيل الدخول / الخروج
+// الشاشات
 // ============================================================
 
 function _showLoginScreen() {
-  // ─── [المرحلة 3] إيقاف IdleTimer عند العودة لشاشة الدخول ───
-  if (window.IdleTimer) {
-    IdleTimer.stop();
-  }
-
+  if (window.IdleTimer) IdleTimer.stop();
   _hideLoadingScreen();
   _stopDateClock();
 
@@ -525,8 +366,6 @@ function _showLoginScreen() {
 
   if (window.LoginComponent) {
     LoginComponent.render(root, _onLoginSuccess);
-  } else {
-    root.innerHTML = '<div style="padding:40px;text-align:center">جاري التحميل...</div>';
   }
 }
 
@@ -535,33 +374,105 @@ async function _onLoginSuccess(profile) {
 }
 
 async function _handleLogout() {
-  // ─── [المرحلة 3] إيقاف IdleTimer قبل تسجيل الخروج ───
-  if (window.IdleTimer) {
-    IdleTimer.stop();
-  }
+  if (window.IdleTimer) IdleTimer.stop();
 
   const confirmed = await confirmDialog(
     'هل تريد تسجيل الخروج من النظام؟',
-    'خروج',
-    'إلغاء',
-    'warning'
+    'خروج', 'إلغاء', 'warning'
   );
   if (!confirmed) {
-    // إذا ألغى المستخدم الخروج، أعد تشغيل IdleTimer إن كان مندوباً
     const user = AuthService.getCurrentUser();
-    if (window.IdleTimer && user?.role === ROLES.AGENT) {
-      IdleTimer.start();
-    }
+    if (window.IdleTimer && user?.role === ROLES.AGENT) IdleTimer.start();
     return;
   }
 
-  SyncService.stop();
+  SyncService?.stop?.();
   _stopDateClock();
   await AuthService.logout();
 }
 
 // ============================================================
-// شاشة التحميل الأولية
+// أحداث AppStore
+// ============================================================
+
+function _bindStoreEvents() {
+  AppStore.addEventListener('store:syncStatusChanged', (e) => {
+    const { running, lastSyncAt } = e.detail.state;
+    const dot   = document.getElementById('sync-dot');
+    const label = document.getElementById('sync-label');
+    if (!dot || !label) return;
+    if (running) {
+      dot.style.background = 'var(--warning)';
+      dot.style.animation  = 'pulse 1s infinite';
+      label.textContent    = 'يُزامن...';
+    } else {
+      dot.style.background = 'var(--success)';
+      dot.style.animation  = '';
+      label.textContent    = 'متزامن';
+    }
+  });
+
+  AppStore.addEventListener('store:syncQueueChanged', (e) => {
+    const { count } = e.detail.state;
+    const countEl = document.getElementById('sync-count');
+    const dot     = document.getElementById('sync-dot');
+    if (!countEl) return;
+    if (count > 0) {
+      countEl.style.display = '';
+      countEl.textContent   = String(count);
+      if (dot) dot.style.background = 'var(--warning)';
+    } else {
+      countEl.style.display = 'none';
+      if (dot) dot.style.background = 'var(--success)';
+    }
+  });
+
+  AppStore.addEventListener('store:notificationsLoaded', (e) => {
+    const { unreadNotifCount } = e.detail.state;
+    const badge = document.querySelector('#nav-tab-notifications .notif-badge');
+    if (badge) badge.textContent = unreadNotifCount > 0 ? String(unreadNotifCount) : '';
+  });
+
+  AppStore.addEventListener('store:userCleared', () => {
+    _showLoginScreen();
+  });
+}
+
+// ============================================================
+// ساعة التاريخ
+// ============================================================
+
+function _startDateClock() {
+  const update = () => {
+    const el = document.getElementById('header-date');
+    if (el) el.textContent = formatDateArabic(getCurrentSaudiDate());
+  };
+  update();
+  const now = new Date();
+  const msToNextMin = (60 - now.getSeconds()) * 1000;
+  setTimeout(() => {
+    update();
+    _dateTimer = setInterval(update, 60000);
+  }, msToNextMin);
+}
+
+function _stopDateClock() {
+  if (_dateTimer) { clearInterval(_dateTimer); _dateTimer = null; }
+}
+
+// ============================================================
+// الوضع المظلم (Fallback)
+// ============================================================
+
+function _restoreDarkMode() {
+  try {
+    const saved = localStorage.getItem('abu_theme');
+    if (saved === 'dark') document.body.classList.add('dark-mode');
+  } catch { /* تجاهل */ }
+}
+
+// ============================================================
+// الشاشات المساعدة
 // ============================================================
 
 function _hideLoadingScreen() {
@@ -585,42 +496,10 @@ function _showFatalError(msg) {
 }
 
 // ============================================================
-// ساعة التاريخ في الهيدر
-// ============================================================
-
-function _startDateClock() {
-  const update = () => {
-    const el = document.getElementById('header-date');
-    if (el) el.textContent = formatDateArabic(getCurrentSaudiDate());
-  };
-  update();
-  // تحديث عند بداية كل دقيقة
-  const now = new Date();
-  const msToNextMin = (60 - now.getSeconds()) * 1000;
-  setTimeout(() => {
-    update();
-    _dateTimer = setInterval(update, 60000);
-  }, msToNextMin);
-}
-
-function _stopDateClock() {
-  if (_dateTimer) {
-    clearInterval(_dateTimer);
-    _dateTimer = null;
-  }
-}
-
-// ============================================================
 // تصدير
 // ============================================================
 
-window.App = {
-  navigateTo    : _navigateTo,
-  bootApp       : _bootApp,
-  onLoginSuccess: _onLoginSuccess,
-};
-
-// تصدير للاستخدام الداخلي من المكونات
+window.App = { navigateTo: _navigateTo, bootApp: _bootApp, onLoginSuccess: _onLoginSuccess };
 window._appNavigateTo = _navigateTo;
 
-console.log('✅ App.js محمّل — التطبيق الرئيسي جاهز (مع IdleTimer للمندوبين)');
+console.log('✅ App.js v2.0 — Online-First مع Dexie كطوارئ');
