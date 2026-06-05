@@ -185,7 +185,7 @@ const AllOperationsComponent = {
 
     // للمدير: محاولة جلب بيانات من transactions_detailed عبر Supabase
     let detailedMap = {};
-    if (navigator.onLine && AuthService.isAdmin()) {
+    if (isOnline() && AuthService.isAdmin()) {
       try {
         const ids = data.map(t=>t.id);
         const { data: detailed } = await supabaseClient
