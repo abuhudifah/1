@@ -1,119 +1,63 @@
 /**
- * store/AppStore.js
+ * store/AppStore.js — v3.0 (Online-First)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
- * إدارة الحالة المركزية (EventTarget)
  *
- * يعتمد على نمط EventTarget — بدون مكتبات خارجية
- * كل تغيير في الحالة يُطلق حدثاً يستمع إليه المكوّن المعني
- * مما يتجنب إعادة رسم الواجهة بالكامل عند كل تحديث
- *
- * الحالة المركزية:
- * - currentUser / role / allowedTabs
- * - currentTab (التبويب النشط)
- * - isOnline / syncQueueLength / syncRunning
- * - transactions (اليوم الحالي)
- * - notifications (غير المقروءة)
- * - bankAccounts / debtors / companies / expenseAccounts
- * - systemSettings (الشعار، الإعدادات)
- * - kpiData (لوحة المعلومات)
- * - selectedAgentId (عند إدخال بيانات بالنيابة)
+ * التغييرات v3:
+ * ✅ refreshData() تقرأ من Supabase مباشرة (Online-First)
+ * ✅ _loadCompanies/_loadBankAccounts/_loadSystemSettings/_loadUsers/_loadDebtors
+ *    كلها تستعلم Supabase أولاً وتسقط إلى Dexie عند offline فقط
+ * ✅ _loadNotifications تقرأ من Supabase أولاً عند الاتصال
+ * ✅ كتابة Dexie تتم في الخلفية بعد نجاح Supabase
  */
-
 'use strict';
 
 // ============================================================
 // الحالة المركزية الابتدائية
 // ============================================================
-
 const _initialState = {
-  // المصادقة
-  currentUser     : null,
-  role            : null,
-  allowedTabs     : [],
-  accountNumber   : null,
-
-  // التنقل
-  currentTab      : null,
-  previousTab     : null,
-
-  // الاتصال والمزامنة
-  isOnline        : navigator.onLine,
-  syncQueueLength : 0,
-  syncRunning     : false,
-  lastSyncAt      : null,
-  conflictsCount  : 0,
-
-  // العمليات (التاريخ المحدد حالياً في كل تبويب)
-  selectedDate    : getCurrentSaudiDate(),
-  selectedAgentId : null,           // المدير يختار مندوباً للإدخال نيابةً
-  transactions    : [],             // عمليات اليوم المحدد
+  currentUser        : null,
+  role               : null,
+  allowedTabs        : [],
+  accountNumber      : null,
+  currentTab         : null,
+  previousTab        : null,
+  isOnline           : navigator.onLine,
+  syncQueueLength    : 0,
+  syncRunning        : false,
+  lastSyncAt         : null,
+  conflictsCount     : 0,
+  selectedDate       : getCurrentSaudiDate(),
+  selectedAgentId    : null,
+  transactions       : [],
   transactionsLoading: false,
-
-  // الإشعارات
-  notifications       : [],
-  unreadNotifCount    : 0,
-
-  // البيانات الأساسية (تُحمَّل مرة واحدة)
-  bankAccounts        : [],
-  debtors             : [],
-  companies           : [],
-  expenseAccounts     : [],
-  users               : [],         // للمدير فقط
-
-  // إعدادات النظام
-  systemSettings      : new Map(),
-  logoUrl             : null,
-
-  // لوحة المعلومات (KPI)
-  kpiData             : null,
-  kpiLoading          : false,
+  notifications      : [],
+  unreadNotifCount   : 0,
+  bankAccounts       : [],
+  debtors            : [],
+  companies          : [],
+  expenseAccounts    : [],
+  users              : [],
+  systemSettings     : new Map(),
+  logoUrl            : null,
+  kpiData            : null,
+  kpiLoading         : false,
 };
 
-// نسخة العمل (deep copy من الابتدائية)
 let _state = { ..._initialState };
-
-// ============================================================
-// AppStore — الكائن الرئيسي
-// ============================================================
-
 const AppStore = new EventTarget();
 
 // ============================================================
-// الدوال الأساسية: setState وgetState
+// setState / getState
 // ============================================================
-
-/**
- * يُحدّث الحالة ويُطلق حدث التغيير
- * @param {object|Function} updater - كائن تحديث أو دالة (prevState => newState)
- * @param {string} [eventName='store:stateChanged'] - اسم الحدث المُطلَق
- */
 function setState(updater, eventName = 'store:stateChanged') {
   const prev = { ..._state };
-
-  if (typeof updater === 'function') {
-    _state = { ..._state, ...updater(prev) };
-  } else {
-    _state = { ..._state, ...updater };
-  }
-
-  // إطلاق الحدث مع الحالة الجديدة والقديمة
-  AppStore.dispatchEvent(new CustomEvent(eventName, {
-    detail: { state: _state, prev, changed: updater },
-  }));
-
-  // حدث عام لأي مستمع
+  _state = { ..._state, ...(typeof updater === 'function' ? updater(prev) : updater) };
+  AppStore.dispatchEvent(new CustomEvent(eventName, { detail: { state: _state, prev } }));
   if (eventName !== 'store:stateChanged') {
-    AppStore.dispatchEvent(new CustomEvent('store:stateChanged', {
-      detail: { state: _state, prev },
-    }));
+    AppStore.dispatchEvent(new CustomEvent('store:stateChanged', { detail: { state: _state, prev } }));
   }
 }
 
-/**
- * يُعيد نسخة من الحالة الحالية (أو قيمة مفتاح محدد)
- * @param {string} [key] - اختياري: مفتاح محدد
- * @returns {*}
- */
 function getState(key = null) {
   if (key) return _state[key];
   return { ..._state };
@@ -122,11 +66,6 @@ function getState(key = null) {
 // ============================================================
 // المصادقة
 // ============================================================
-
-/**
- * يُعيّن بيانات المستخدم بعد تسجيل الدخول
- * @param {object} profile
- */
 function setCurrentUser(profile) {
   if (!profile) return;
   setState({
@@ -138,109 +77,39 @@ function setCurrentUser(profile) {
   }, 'store:userChanged');
 }
 
-/**
- * يُصفّر بيانات المستخدم عند تسجيل الخروج
- */
 function clearCurrentUser() {
   _state = { ..._initialState, isOnline: navigator.onLine };
   AppStore.dispatchEvent(new CustomEvent('store:userCleared'));
-  AppStore.dispatchEvent(new CustomEvent('store:stateChanged', {
-    detail: { state: _state },
-  }));
+  AppStore.dispatchEvent(new CustomEvent('store:stateChanged', { detail: { state: _state } }));
 }
 
 // ============================================================
 // التبويبات
 // ============================================================
-
-/**
- * يُبدّل التبويب النشط
- * @param {string} tabId
- * @returns {boolean} - هل التبديل مسموح؟
- */
 function setCurrentTab(tabId) {
-  if (!AuthService.canAccessTab(tabId)) {
-    showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
-    return false;
-  }
-
-  setState({
-    previousTab : _state.currentTab,
-    currentTab  : tabId,
-  }, 'store:tabChanged');
-
+  if (!AuthService.canAccessTab(tabId)) { showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error'); return false; }
+  setState({ previousTab: _state.currentTab, currentTab: tabId }, 'store:tabChanged');
   return true;
 }
 
 // ============================================================
 // العمليات المالية
 // ============================================================
+function addTransaction(tx)           { setState({ transactions: [tx, ..._state.transactions] }, 'store:transactionAdded'); }
+function updateTransaction(id, chg)   { setState({ transactions: _state.transactions.map(tx => tx.id === id ? { ...tx, ...chg } : tx) }, 'store:transactionUpdated'); }
+function deleteTransaction(id)        { setState({ transactions: _state.transactions.filter(tx => tx.id !== id) }, 'store:transactionDeleted'); }
+function markTransactionReversed(id)  { updateTransaction(id, { is_reversed: true }); }
 
-/**
- * يُضيف معاملة جديدة لقائمة اليوم الحالي في الحالة
- * (بدون إعادة جلب من قاعدة البيانات)
- * @param {object} transaction
- */
-function addTransaction(transaction) {
-  const updated = [transaction, ..._state.transactions];
-  setState({ transactions: updated }, 'store:transactionAdded');
-}
-
-/**
- * يُحدّث معاملة موجودة في الحالة المحلية
- * @param {string} id
- * @param {object} changes
- */
-function updateTransaction(id, changes) {
-  const updated = _state.transactions.map(tx =>
-    tx.id === id ? { ...tx, ...changes } : tx
-  );
-  setState({ transactions: updated }, 'store:transactionUpdated');
-}
-
-/**
- * يحذف معاملة من الحالة المحلية
- * @param {string} id
- */
-function deleteTransaction(id) {
-  const updated = _state.transactions.filter(tx => tx.id !== id);
-  setState({ transactions: updated }, 'store:transactionDeleted');
-}
-
-/**
- * يُبدّل العلامة is_reversed لمعاملة (بعد عكسها)
- * @param {string} id
- */
-function markTransactionReversed(id) {
-  updateTransaction(id, { is_reversed: true });
-}
-
-// ============================================================
-// تحميل / تحديث البيانات
-// ============================================================
-
-/**
- * يجلب عمليات التاريخ والمندوب المحدد
- * @param {string} [date] - افتراضي: اليوم
- * @param {string} [agentId] - افتراضي: المستخدم الحالي
- * @returns {Promise<void>}
- */
 async function refreshTransactions(date = null, agentId = null) {
   const targetDate  = date    || _state.selectedDate;
   const targetAgent = agentId || _state.selectedAgentId || AuthService.getCurrentUserId();
-
   setState({ transactionsLoading: true });
-
   try {
     const filters = { date: targetDate };
     if (targetAgent) filters.agent_id = targetAgent;
-
     const result = await repo.query(TABLES.TRANSACTIONS, filters, {
-      orderBy  : 'created_at',
-      ascending: false,
-      pageSize : 200, // عرض جميع عمليات اليوم
+      orderBy: 'created_at', ascending: false, pageSize: 200,
     });
-
     if (isOk(result)) {
       setState({
         transactions       : result.data.data || [],
@@ -255,27 +124,12 @@ async function refreshTransactions(date = null, agentId = null) {
   }
 }
 
-/**
- * يُحدّث بيانات التاريخ المحدد
- * @param {string} date - YYYY-MM-DD
- */
-function setSelectedDate(date) {
-  setState({ selectedDate: date }, 'store:dateChanged');
-  refreshTransactions(date, _state.selectedAgentId);
-}
+function setSelectedDate(date)    { setState({ selectedDate: date }, 'store:dateChanged'); refreshTransactions(date, _state.selectedAgentId); }
+function setSelectedAgent(agentId){ setState({ selectedAgentId: agentId }, 'store:agentChanged'); }
 
-/**
- * يُحدّث المندوب المختار (للمدير عند الإدخال نيابةً)
- * @param {string|null} agentId
- */
-function setSelectedAgent(agentId) {
-  setState({ selectedAgentId: agentId }, 'store:agentChanged');
-}
-
-/**
- * يجلب ويُحدّث البيانات الأساسية (bankAccounts, debtors, companies...)
- * @returns {Promise<void>}
- */
+// ============================================================
+// refreshData — Online-First
+// ============================================================
 async function refreshData() {
   try {
     const user = AuthService.getCurrentUser();
@@ -298,256 +152,252 @@ async function refreshData() {
     }
 
     await Promise.allSettled(tasks);
-
   } catch (e) {
     console.error('❌ AppStore.refreshData():', e);
   }
 }
 
 // ============================================================
-// تحميل كل نوع بيانات
-// ============================================================
-
-async function _loadCompanies() {
-  const companies = await getLocalCompanies();
-  setState({ companies }, 'store:companiesLoaded');
-}
-
-async function _loadExpenseAccounts() {
-  const expenseAccounts = await getLocalExpenseAccounts();
-  setState({ expenseAccounts }, 'store:expenseAccountsLoaded');
-}
-
-async function _loadSystemSettings() {
-  const settings = await getLocalSettings();
-  const logoSetting = settings.get('logo');
-  const logoUrl = logoSetting?.value
-    ? logoSetting.value
-    : (logoSetting?.type === 'upload' ? logoSetting?.value : null);
-
-  setState({ systemSettings: settings, logoUrl }, 'store:settingsLoaded');
-}
-
-// ============================================================
-// دالة مساعدة: تحليل JSON بأمان
+// دوال تحميل البيانات — Online-First
 // ============================================================
 
 /**
- * يُحلّل قيمة JSON بأمان بدون إلقاء استثناء
- * ✅ الإصلاح: بديل آمن لـ JSON.parse() المجردة في _loadNotifications
- * @param {*} value - القيمة المُراد تحليلها
- * @param {*} fallback - القيمة الافتراضية عند الفشل
- * @returns {*}
+ * جلب من Supabase أولاً، Dexie احتياطي عند offline
+ * كتابة Dexie في الخلفية بعد نجاح Supabase
  */
-function _safeJsonParse(value, fallback = []) {
-  if (Array.isArray(value)) return value;
-  if (value === null || value === undefined) return fallback;
-  if (typeof value !== 'string') return fallback;
-  try {
-    const parsed = JSON.parse(value);
-    return parsed ?? fallback;
-  } catch {
-    console.warn('⚠️  AppStore._safeJsonParse: بيانات JSON فاسدة:', value);
-    return fallback;
+async function _fetchFromSupabaseWithFallback(tableName, supabaseQuery, dexieFallback) {
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabaseQuery();
+      if (!error && data) {
+        // كتابة Dexie في الخلفية
+        (async () => {
+          try {
+            if (db.isOpen()) await db[tableName]?.bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED })));
+          } catch { }
+        })();
+        return data;
+      }
+      console.warn(`⚠️ AppStore._fetch(${tableName}): Supabase فشل، سقوط إلى Dexie`);
+    } catch (e) {
+      console.warn(`⚠️ AppStore._fetch(${tableName}): استثناء، سقوط إلى Dexie:`, e.message);
+    }
   }
+  // Offline أو فشل Supabase → Dexie
+  return await dexieFallback();
+}
+
+async function _loadCompanies() {
+  const data = await _fetchFromSupabaseWithFallback(
+    TABLES.COMPANIES,
+    () => supabaseClient.from(TABLES.COMPANIES).select('*').order('name'),
+    () => db.isOpen() ? db.companies.toArray().catch(() => []) : []
+  );
+  setState({ companies: data || [] }, 'store:companiesLoaded');
+}
+
+async function _loadExpenseAccounts() {
+  const data = await _fetchFromSupabaseWithFallback(
+    TABLES.EXPENSE_ACCOUNTS,
+    () => supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name'),
+    () => db.isOpen() ? db.expense_accounts.toArray().catch(() => []) : []
+  );
+  setState({ expenseAccounts: data || [] }, 'store:expenseAccountsLoaded');
+}
+
+async function _loadSystemSettings() {
+  const data = await _fetchFromSupabaseWithFallback(
+    TABLES.SYSTEM_SETTINGS,
+    () => supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*'),
+    () => db.isOpen() ? db.system_settings.toArray().catch(() => []) : []
+  );
+  const settingsMap = new Map();
+  (data || []).forEach(s => settingsMap.set(s.key, s.value));
+
+  const logoEntry = settingsMap.get('logo');
+  const logoUrl   = typeof logoEntry === 'object' ? logoEntry?.value : logoEntry || null;
+
+  setState({ systemSettings: settingsMap, logoUrl }, 'store:settingsLoaded');
+}
+
+async function _loadBankAccounts() {
+  const data = await _fetchFromSupabaseWithFallback(
+    TABLES.BANK_ACCOUNTS,
+    () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name'),
+    () => db.isOpen() ? db.bank_accounts.toArray().catch(() => []) : []
+  );
+  setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
+}
+
+async function _loadDebtors() {
+  const data = await _fetchFromSupabaseWithFallback(
+    TABLES.DEBTORS,
+    () => supabaseClient.from(TABLES.DEBTORS).select('*').order('name'),
+    () => db.isOpen() ? db.debtors.toArray().catch(() => []) : []
+  );
+  setState({ debtors: data || [] }, 'store:debtorsLoaded');
+}
+
+async function _loadUsers() {
+  const data = await _fetchFromSupabaseWithFallback(
+    TABLES.USERS,
+    () => supabaseClient.from(TABLES.USERS)
+      .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash')
+      .eq('is_active', true)
+      .order('display_name'),
+    () => db.isOpen()
+      ? db.users.where('is_active').equals(1).toArray().catch(() => [])
+      : []
+  );
+  setState({ users: data || [] }, 'store:usersLoaded');
 }
 
 async function _loadNotifications(user) {
   try {
-    const allNotifs = await db.notifications
-      .orderBy('created_at')
-      .reverse()
-      .limit(50)
-      .toArray();
+    let allNotifs = [];
 
-    // فلترة بحسب target
+    if (isOnline()) {
+      try {
+        const { data, error } = await supabaseClient
+          .from(TABLES.NOTIFICATIONS)
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (!error && data) {
+          allNotifs = data;
+          // كتابة Dexie في الخلفية
+          (async () => {
+            try { if (db.isOpen()) await db.notifications.bulkPut(data); } catch { }
+          })();
+        }
+      } catch { /* سقوط إلى Dexie */ }
+    }
+
+    if (!allNotifs.length && db.isOpen()) {
+      allNotifs = await db.notifications.orderBy('created_at').reverse().limit(50).toArray().catch(() => []);
+    }
+
     const visible = allNotifs.filter(n => {
-      if (n.target === '"all"' || n.target === 'all') return true;
+      if (n.target === 'all' || n.target === '"all"') return true;
       if (Array.isArray(n.target) && n.target.includes(user.id)) return true;
       if (typeof n.target === 'string') {
-        try {
-          const parsed = JSON.parse(n.target);
-          if (parsed === 'all') return true;
-          if (Array.isArray(parsed) && parsed.includes(user.id)) return true;
-        } catch { /* تجاهل */ }
+        try { const p = JSON.parse(n.target); return p === 'all' || (Array.isArray(p) && p.includes(user.id)); } catch { }
       }
       return false;
     });
 
-    // فلترة المُخفية
-    // ✅ الإصلاح: استبدال JSON.parse() المجردة بـ _safeJsonParse()
-    // لمنع الانهيار عند وجود بيانات فاسدة في hidden_by أو read_by
-    const notHidden = visible.filter(n => {
-      const hidden = _safeJsonParse(n.hidden_by, []);
-      return !hidden.includes(user.id);
-    });
+    const notHidden = visible.filter(n => !_safeJsonParse(n.hidden_by, []).includes(user.id));
+    const unread    = notHidden.filter(n => !_safeJsonParse(n.read_by,   []).includes(user.id));
 
-    const unread = notHidden.filter(n => {
-      const read = _safeJsonParse(n.read_by, []);
-      return !read.includes(user.id);
-    });
-
-    setState({
-      notifications     : notHidden,
-      unreadNotifCount  : unread.length,
-    }, 'store:notificationsLoaded');
-
+    setState({ notifications: notHidden, unreadNotifCount: unread.length }, 'store:notificationsLoaded');
   } catch (e) {
     console.error('❌ AppStore._loadNotifications():', e);
-    // عدم انهيار الحالة — إبقاء الإشعارات فارغة
-    setState({
-      notifications    : [],
-      unreadNotifCount : 0,
-    }, 'store:notificationsLoaded');
+    setState({ notifications: [], unreadNotifCount: 0 }, 'store:notificationsLoaded');
   }
 }
 
-async function _loadBankAccounts() {
-  const bankAccounts = await getLocalBankAccounts();
-  setState({ bankAccounts }, 'store:bankAccountsLoaded');
-}
-
-async function _loadDebtors() {
-  try {
-    const debtors = await db.debtors.toArray();
-    setState({ debtors }, 'store:debtorsLoaded');
-  } catch { /* تجاهل */ }
-}
-
-async function _loadUsers() {
-  try {
-    const users = await db.users
-      .where('is_active')
-      .equals(1)
-      .toArray();
-    setState({ users }, 'store:usersLoaded');
-  } catch { /* تجاهل */ }
-}
-
+// المندوب: يجلب بنوكه من خلال معاملاته اليومية
 async function _loadAgentBankAccounts(agentId) {
   try {
-    const today = getCurrentSaudiDate();
-    const deposits = await db.transactions
-      .where('[date+agent_id]')
-      .equals([today, agentId])
-      .filter(tx => tx.type === TRANSACTION_TYPES.DEPOSIT && tx.bank_account_id)
-      .toArray();
+    let bankIds = [];
 
-    const bankIds = [...new Set(deposits.map(d => d.bank_account_id))];
-    const bankAccounts = await db.bank_accounts
-      .where('id')
-      .anyOf(bankIds)
-      .toArray();
+    if (isOnline()) {
+      const today = getCurrentSaudiDate();
+      const { data } = await supabaseClient
+        .from(TABLES.TRANSACTIONS)
+        .select('bank_account_id')
+        .eq('agent_id', agentId)
+        .eq('type', 'deposit')
+        .eq('date', today)
+        .not('bank_account_id', 'is', null);
+      bankIds = [...new Set((data || []).map(d => d.bank_account_id))];
+    } else if (db.isOpen()) {
+      const today = getCurrentSaudiDate();
+      const txs   = await db.transactions.where('[date+agent_id]').equals([today, agentId]).filter(tx => tx.bank_account_id).toArray().catch(() => []);
+      bankIds = [...new Set(txs.map(d => d.bank_account_id))];
+    }
 
-    setState({ bankAccounts }, 'store:bankAccountsLoaded');
+    if (bankIds.length) {
+      const data = await _fetchFromSupabaseWithFallback(
+        TABLES.BANK_ACCOUNTS,
+        () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').in('id', bankIds),
+        () => db.isOpen() ? db.bank_accounts.where('id').anyOf(bankIds).toArray().catch(() => []) : []
+      );
+      setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
+    }
   } catch { /* تجاهل */ }
 }
 
 async function _loadAgentDebtors(agentId) {
   try {
-    const debtors = await db.debtors
-      .filter(d => {
+    let data = [];
+    if (isOnline()) {
+      // Supabase: يجلب المديونين المعينين لهذا المندوب
+      const { data: res } = await supabaseClient
+        .from(TABLES.DEBTORS)
+        .select('*')
+        .contains('assigned_agents', [agentId])
+        .order('name');
+      data = res || [];
+      if (data.length && db.isOpen()) {
+        (async () => {
+          try { await db.debtors.bulkPut(data.map(d => ({ ...d, sync_status: SYNC_STATUS.SYNCED }))); } catch { }
+        })();
+      }
+    } else if (db.isOpen()) {
+      const all = await db.debtors.toArray().catch(() => []);
+      data = all.filter(d => {
         try {
-          const agents = Array.isArray(d.assigned_agents)
-            ? d.assigned_agents
-            : JSON.parse(d.assigned_agents || '[]');
+          const agents = Array.isArray(d.assigned_agents) ? d.assigned_agents : JSON.parse(d.assigned_agents || '[]');
           return agents.includes(agentId);
         } catch { return false; }
-      })
-      .toArray();
-
-    setState({ debtors }, 'store:debtorsLoaded');
+      });
+    }
+    setState({ debtors: data }, 'store:debtorsLoaded');
   } catch { /* تجاهل */ }
+}
+
+// ============================================================
+// دالة مساعدة: JSON آمن
+// ============================================================
+function _safeJsonParse(value, fallback = []) {
+  if (Array.isArray(value)) return value;
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return fallback;
+  try { return JSON.parse(value) ?? fallback; } catch { return fallback; }
 }
 
 // ============================================================
 // الاتصال والمزامنة
 // ============================================================
-
-/**
- * يُحدّث حالة الاتصال بالإنترنت
- * @param {boolean} online
- */
-function setOnlineStatus(online) {
-  setState({ isOnline: online }, 'store:onlineStatusChanged');
-}
-
-/**
- * يُحدّث عدد العمليات المعلقة في الطابور
- * @param {number} count
- */
-function updateSyncQueueLength(count) {
-  setState({ syncQueueLength: count }, 'store:syncQueueChanged');
-}
-
-/**
- * يُحدّث حالة تشغيل المزامنة
- * @param {boolean} running
- * @param {string} [lastSyncAt]
- */
+function setOnlineStatus(online)           { setState({ isOnline: online }, 'store:onlineStatusChanged'); }
+function updateSyncQueueLength(count)      { setState({ syncQueueLength: count }, 'store:syncQueueChanged'); }
 function setSyncRunning(running, lastSyncAt = null) {
-  setState({
-    syncRunning : running,
-    lastSyncAt  : lastSyncAt || _state.lastSyncAt,
-  }, 'store:syncStatusChanged');
+  setState({ syncRunning: running, lastSyncAt: lastSyncAt || _state.lastSyncAt }, 'store:syncStatusChanged');
 }
 
 // ============================================================
 // الإشعارات
 // ============================================================
-
-/**
- * يُضيف إشعاراً للقائمة ويزيد العداد
- * @param {object} notification
- */
 function addNotification(notification) {
-  const updated = [notification, ..._state.notifications];
-  setState({
-    notifications    : updated,
-    unreadNotifCount : _state.unreadNotifCount + 1,
-  }, 'store:notificationAdded');
+  setState({ notifications: [notification, ..._state.notifications], unreadNotifCount: _state.unreadNotifCount + 1 }, 'store:notificationAdded');
 }
-
-/**
- * يُحدّث عداد الإشعارات غير المقروءة
- */
 function decrementUnreadCount() {
-  setState({
-    unreadNotifCount: Math.max(0, _state.unreadNotifCount - 1),
-  }, 'store:notifCountChanged');
+  setState({ unreadNotifCount: Math.max(0, _state.unreadNotifCount - 1) }, 'store:notifCountChanged');
 }
 
 // ============================================================
-// KPI ولوحة المعلومات
+// KPI
 // ============================================================
-
-/**
- * يُحدّث بيانات KPI في لوحة المعلومات
- * @param {object} data
- */
-function setKpiData(data) {
-  setState({ kpiData: data, kpiLoading: false }, 'store:kpiUpdated');
-}
-
-function setKpiLoading(loading) {
-  setState({ kpiLoading: loading });
-}
+function setKpiData(data)      { setState({ kpiData: data, kpiLoading: false }, 'store:kpiUpdated'); }
+function setKpiLoading(loading){ setState({ kpiLoading: loading }); }
 
 // ============================================================
-// الاستماع للأحداث الخارجية (من SyncService والخدمات)
+// الاستماع للأحداث الخارجية
 // ============================================================
-
-window.addEventListener('store:setOnlineStatus', (e) => {
-  setOnlineStatus(e.detail.online);
-});
-
-window.addEventListener('store:updateSyncQueueLength', (e) => {
-  updateSyncQueueLength(e.detail.count);
-});
-
-window.addEventListener('store:syncRunning', (e) => {
-  setSyncRunning(e.detail.running, e.detail.lastSyncAt);
-});
+window.addEventListener('store:setOnlineStatus',      (e) => setOnlineStatus(e.detail.online));
+window.addEventListener('store:updateSyncQueueLength',(e) => updateSyncQueueLength(e.detail.count));
+window.addEventListener('store:syncRunning',          (e) => setSyncRunning(e.detail.running, e.detail.lastSyncAt));
 
 window.addEventListener('store:notificationsUpdated', () => {
   const user = AuthService.getCurrentUser();
@@ -557,65 +407,39 @@ window.addEventListener('store:notificationsUpdated', () => {
 window.addEventListener('store:conflictsUpdated', (e) => {
   setState({ conflictsCount: e.detail.count }, 'store:conflictsChanged');
 });
-
 window.addEventListener('store:conflictAdded', () => {
   setState({ conflictsCount: _state.conflictsCount + 1 }, 'store:conflictsChanged');
 });
 
 window.addEventListener('store:tempIdReplaced', (e) => {
   const { tempId, realId } = e.detail;
-  // تحديث المعاملات في الحالة المحلية
-  const updated = _state.transactions.map(tx =>
-    tx.id === tempId ? { ...tx, id: realId, sync_status: SYNC_STATUS.SYNCED } : tx
-  );
-  setState({ transactions: updated });
+  setState({ transactions: _state.transactions.map(tx => tx.id === tempId ? { ...tx, id: realId, sync_status: SYNC_STATUS.SYNCED } : tx) });
 });
 
 window.addEventListener('accounting:transactionCreated', (e) => {
-  const { transaction } = e.detail;
-  if (transaction.date === _state.selectedDate) {
-    if (_state.selectedAgentId === null ||
-        _state.selectedAgentId === transaction.agent_id) {
-      addTransaction(transaction);
-    }
+  const { transaction: tx } = e.detail;
+  if (tx.date === _state.selectedDate && (!_state.selectedAgentId || _state.selectedAgentId === tx.agent_id)) {
+    addTransaction(tx);
   }
 });
 
-window.addEventListener('accounting:transactionReversed', (e) => {
-  markTransactionReversed(e.detail.transactionId);
-});
-
-window.addEventListener('auth:logout', () => {
-  clearCurrentUser();
-});
+window.addEventListener('accounting:transactionReversed', (e) => markTransactionReversed(e.detail.transactionId));
+window.addEventListener('auth:logout', () => clearCurrentUser());
 
 // ============================================================
-// تصدير المتجر
+// تصدير
 // ============================================================
-
 Object.assign(AppStore, {
-  setState,
-  getState,
-  setCurrentUser,
-  clearCurrentUser,
+  setState, getState,
+  setCurrentUser, clearCurrentUser,
   setCurrentTab,
-  addTransaction,
-  updateTransaction,
-  deleteTransaction,
-  markTransactionReversed,
-  refreshTransactions,
-  setSelectedDate,
-  setSelectedAgent,
+  addTransaction, updateTransaction, deleteTransaction, markTransactionReversed,
+  refreshTransactions, setSelectedDate, setSelectedAgent,
   refreshData,
-  setOnlineStatus,
-  updateSyncQueueLength,
-  setSyncRunning,
-  addNotification,
-  decrementUnreadCount,
-  setKpiData,
-  setKpiLoading,
+  setOnlineStatus, updateSyncQueueLength, setSyncRunning,
+  addNotification, decrementUnreadCount,
+  setKpiData, setKpiLoading,
 });
 
 window.AppStore = AppStore;
-
-console.log('✅ AppStore.js محمّل — إدارة الحالة المركزية جاهزة');
+console.log('✅ AppStore.js v3.0 — Online-First: Supabase مصدر الحقيقة الوحيد');
