@@ -1,18 +1,14 @@
 /**
- * App.js — v2.1 (FIXED)
+ * App.js — v3.0
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * الإصلاحات:
- * ✅ FIX-2: إصلاح الشرط الخاطئ في _scheduleDexieReopen
- *           كان: _dexieOk = true; if (SyncService && !_dexieOk) ...
- *           الشرط دائماً false لأن _dexieOk تم تعيينها true للتو.
- *           الآن: إزالة الشرط الخاطئ — SyncService.init() تُستدعى مباشرة.
- *
- * ✅ FIX-3: إضافة حماية typeof db !== 'undefined' قبل كل استخدام لـ db في App.js
- *           إذا فشل تحميل Dexie.js من CDN، كان التطبيق يتعطل بـ ReferenceError.
- *           الآن: الفشل يُسجَّل فقط ويستمر مع Supabase.
+ * التغييرات في v3.0:
+ * ✅ هيدر عصري محسَّن: شعار حقيقي من الإعدادات، ارتفاع أكبر، تصميم احترافي
+ * ✅ إضافة QuickLoginBanner بعد _buildAppShell() مباشرة
+ * ✅ تحديث last_login عند كل دخول
+ * ✅ دعم تحديث الشعار في الهيدر فوراً عند حفظه من الإعدادات
+ * ✅ تحسين مؤشر المزامنة وأزرار الهيدر
  */
-
 'use strict';
 
 let _headerEl  = null;
@@ -21,9 +17,7 @@ let _contentEl = null;
 let _dateTimer = null;
 let _dexieOk   = false;
 
-// تتبع المكوّن الحالي لاستدعاء destroy() عند التنقل
 let _activeComponentId = null;
-
 const _loadedComponents = new Map();
 
 // ============================================================
@@ -31,48 +25,39 @@ const _loadedComponents = new Map();
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🚀 App.js: بدء تهيئة النظام (Online-First)...');
+  console.log('🚀 App.js v3.0: بدء تهيئة النظام...');
 
   try {
-    // ─── 1. تهيئة Dexie (غير حرجة) ───
+    // 1. Dexie
     try {
-      // FIX-3: التحقق من وجود db قبل استدعائه
       if (typeof db === 'undefined') {
-        console.warn('⚠️ App.js: db غير معرَّف — Dexie.js لم يُحمَّل من CDN. سيعمل النظام مع Supabase فقط');
+        console.warn('⚠️ App.js: db غير معرَّف — سيعمل النظام مع Supabase فقط');
         _scheduleDexieReopen();
       } else {
         const dexieResult = await initDexie();
         if (isOk(dexieResult)) {
           _dexieOk = true;
           console.log('✅ App.js: Dexie جاهزة');
-          runStartupCleanup().catch(e =>
-            console.warn('⚠️ App.js: تحذير تنظيف Dexie:', e.message)
-          );
+          runStartupCleanup().catch(e => console.warn('⚠️ تنظيف Dexie:', e.message));
         } else {
-          console.warn('⚠️ App.js: Dexie غير متاحة — سيعمل النظام مع Supabase فقط');
+          console.warn('⚠️ App.js: Dexie غير متاحة');
           _scheduleDexieReopen();
         }
       }
     } catch (dexieErr) {
-      console.warn('⚠️ App.js: خطأ في Dexie:', dexieErr.message, '— النظام يكمل مع Supabase');
+      console.warn('⚠️ App.js: خطأ Dexie:', dexieErr.message);
       _scheduleDexieReopen();
     }
 
-    // ─── 2. تهيئة خدمة المزامنة (فقط إن كانت Dexie متاحة) ───
-    if (_dexieOk && window.SyncService) {
-      SyncService.init();
-    }
+    // 2. مزامنة
+    if (_dexieOk && window.SyncService) SyncService.init();
 
-    // ─── 3. الوضع المظلم ───
-    if (window.ThemeManager) {
-      ThemeManager.init();
-    } else {
-      _restoreDarkMode();
-    }
+    // 3. الثيم
+    if (window.ThemeManager) ThemeManager.init();
+    else _restoreDarkMode();
 
-    // ─── 4. التحقق من الجلسة ───
+    // 4. التحقق من الجلسة
     const sessionResult = await AuthService.checkSession();
-
     if (isOk(sessionResult)) {
       await _bootApp(sessionResult.data.profile);
     } else {
@@ -80,59 +65,53 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
   } catch (e) {
-    console.error('❌ App.js: خطأ فادح في التهيئة:', e);
+    console.error('❌ App.js: خطأ فادح:', e);
     _showFatalError(`خطأ في تهيئة النظام: ${e.message}`);
   }
 });
 
 // ============================================================
-// FIX-3: إعادة فتح Dexie في الخلفية — مع حماية typeof
+// إعادة فتح Dexie في الخلفية
 // ============================================================
-
 function _scheduleDexieReopen() {
   setTimeout(async () => {
     try {
-      // FIX-3: التحقق من وجود db قبل استخدامه
-      if (typeof db === 'undefined') {
-        console.warn('⚠️ App.js: db لا يزال غير معرَّف — Dexie.js غير متاح');
-        return;
-      }
-
+      if (typeof db === 'undefined') return;
       if (!db.isOpen()) {
         await db.open();
         _dexieOk = true;
-        console.log('✅ App.js: أُعيد فتح Dexie في الخلفية');
-
-        // FIX-2: إزالة الشرط الخاطئ (!_dexieOk بعد تعيينها true)
-        // كان الكود الأصلي: if (window.SyncService && !_dexieOk) SyncService.init();
-        // وهو شرط دائماً false. الصحيح:
-        if (window.SyncService) {
-          SyncService.init();
-        }
+        if (window.SyncService) SyncService.init();
       }
     } catch (e) {
-      console.warn('⚠️ App.js: فشل إعادة فتح Dexie:', e.message);
+      console.warn('⚠️ فشل إعادة فتح Dexie:', e.message);
     }
   }, 5000);
 }
 
 // ============================================================
-// تشغيل التطبيق
+// تشغيل التطبيق — _bootApp
 // ============================================================
-
 async function _bootApp(profile) {
   _hideLoadingScreen();
   AppStore.setCurrentUser(profile);
 
   if (window.IdleTimer) {
-    if (profile.role === ROLES.AGENT) {
-      IdleTimer.start();
-    } else {
-      IdleTimer.stop();
-    }
+    profile.role === ROLES.AGENT ? IdleTimer.start() : IdleTimer.stop();
   }
 
+  // بناء الهيكل
   _buildAppShell();
+
+  // ── تحديث last_login في الخلفية ──
+  if (isOnline && isOnline()) {
+    supabaseClient
+      .from(TABLES.USERS)
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', profile.id)
+      .then(() => console.log('✅ last_login محدَّث'))
+      .catch(e => console.warn('⚠️ last_login:', e.message));
+  }
+
   await AppStore.refreshData();
   _bindStoreEvents();
 
@@ -140,13 +119,18 @@ async function _bootApp(profile) {
   if (firstTab) await _navigateTo(firstTab);
 
   _startDateClock();
-  console.log(`✅ App.js: جاهز — ${profile.display_name} (${profile.role})`);
+
+  // ── إشعار الدخول السريع (بعد بناء الواجهة) ──
+  if (window.QuickLoginBanner) {
+    setTimeout(() => QuickLoginBanner.maybeShow(profile), 900);
+  }
+
+  console.log(`✅ App.js v3.0: جاهز — ${profile.display_name} (${profile.role})`);
 }
 
 // ============================================================
-// بناء الهيكل
+// بناء هيكل التطبيق
 // ============================================================
-
 function _buildAppShell() {
   const root = document.getElementById('app-root');
   root.innerHTML = '';
@@ -154,7 +138,7 @@ function _buildAppShell() {
   _headerEl  = _buildHeader();
   _navEl     = _buildNav();
   _contentEl = document.createElement('main');
-  _contentEl.id = 'app-content';
+  _contentEl.id        = 'app-content';
   _contentEl.className = 'app-content';
 
   root.appendChild(_headerEl);
@@ -164,131 +148,451 @@ function _buildAppShell() {
   if (window.lucide) lucide.createIcons();
 }
 
+// ============================================================
+// الهيدر المُحسَّن — v3.0
+// ============================================================
 function _buildHeader() {
   const user    = AppStore.getState('currentUser');
   const state   = AppStore.getState();
   const logoUrl = state.logoUrl;
   const accNum  = state.accountNumber;
 
-  const header  = document.createElement('header');
-  header.id = 'app-header';
+  const header = document.createElement('header');
+  header.id        = 'app-header';
   header.className = 'app-header';
 
-  const right = document.createElement('div');
-  right.className = 'header-logo';
+  // ════════════════════════════════════════
+  // الجانب الأيمن: الشعار + اسم النظام + التاريخ
+  // ════════════════════════════════════════
+  const rightSection = document.createElement('div');
+  rightSection.className = 'header-right';
+
+  // منطقة الشعار
+  const logoArea = document.createElement('div');
+  logoArea.className = 'header-logo-area';
 
   if (logoUrl) {
-    const img = document.createElement('img');
-    img.src = logoUrl; img.alt = 'شعار النظام';
-    img.style.cssText = 'height:32px;width:auto;object-fit:contain;border-radius:6px;';
-    right.appendChild(img);
+    const logoImg = document.createElement('img');
+    logoImg.id          = 'header-logo-img';
+    logoImg.src         = logoUrl;
+    logoImg.alt         = 'شعار الشركة';
+    logoImg.className   = 'header-logo-img';
+    logoArea.appendChild(logoImg);
+  } else {
+    // شعار افتراضي — أيقونة النظام
+    const logoPlaceholder = document.createElement('div');
+    logoPlaceholder.id        = 'header-logo-placeholder';
+    logoPlaceholder.className = 'header-logo-placeholder';
+    logoPlaceholder.innerHTML = `
+      <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
+        <rect width="36" height="36" rx="10" fill="url(#logoGrad)"/>
+        <text x="18" y="25" text-anchor="middle" fill="white" font-size="18" font-weight="800"
+          font-family="system-ui,sans-serif">أ</text>
+        <defs>
+          <linearGradient id="logoGrad" x1="0" y1="0" x2="36" y2="36">
+            <stop offset="0%" stop-color="#6366f1"/>
+            <stop offset="100%" stop-color="#4f46e5"/>
+          </linearGradient>
+        </defs>
+      </svg>`;
+    logoArea.appendChild(logoPlaceholder);
   }
+  rightSection.appendChild(logoArea);
 
-  const titleWrap = document.createElement('div');
-  titleWrap.innerHTML = `
-    <div style="font-weight:800;font-size:0.95rem;color:var(--text-primary);">
-      ${escapeHtml(APP_CONFIG.NAME_SHORT)}
+  // اسم النظام + التاريخ
+  const titleArea = document.createElement('div');
+  titleArea.className = 'header-title-area';
+  titleArea.innerHTML = `
+    <div class="header-app-name">${escapeHtml(APP_CONFIG.NAME_SHORT || 'أبو حذيفة')}</div>
+    <div class="header-date-line" id="header-date"></div>`;
+  rightSection.appendChild(titleArea);
+
+  header.appendChild(rightSection);
+
+  // ════════════════════════════════════════
+  // الوسط: بيانات المستخدم (الاسم + الدور + رقم الحساب)
+  // ════════════════════════════════════════
+  const centerSection = document.createElement('div');
+  centerSection.className = 'header-center';
+
+  const roleIcons = { admin: '👑', admin_assistant: '🛡️', agent: '👤' };
+  const roleIcon  = roleIcons[user?.role] || '👤';
+  const roleLabel = ROLE_LABELS[user?.role] || user?.role || '';
+
+  centerSection.innerHTML = `
+    <div class="header-user-avatar">
+      ${escapeHtml((user?.display_name || '?').charAt(0).toUpperCase())}
     </div>
-    <div style="font-size:0.70rem;color:var(--text-muted);" id="header-date"></div>`;
-  right.appendChild(titleWrap);
-
-  const left = document.createElement('div');
-  left.className = 'header-actions';
-
-  // مؤشر المزامنة
-  const syncDot = document.createElement('div');
-  syncDot.id = 'sync-indicator';
-  syncDot.style.cssText = `
-    display:flex;align-items:center;gap:6px;font-size:0.75rem;
-    color:var(--text-muted);padding:4px 8px;border-radius:8px;
-    background:var(--bg-input);cursor:pointer;`;
-  syncDot.innerHTML = `
-    <div id="sync-dot" class="sync-dot synced"
-      style="width:7px;height:7px;border-radius:50%;background:var(--success);transition:background 0.3s;"></div>
-    <span id="sync-label">متزامن</span>
-    <span id="sync-count" style="display:none;background:var(--warning);color:#fff;border-radius:10px;padding:1px 6px;font-size:0.65rem;"></span>`;
-  syncDot.addEventListener('click', () => SyncService?.manualSync?.());
-  left.appendChild(syncDot);
-
-  // زر الوضع المظلم
-  const themeBtn = document.createElement('button');
-  themeBtn.id = 'theme-toggle-btn';
-  themeBtn.className = 'btn btn-secondary btn-sm header-icon-btn';
-  themeBtn.title = 'تبديل الوضع المظلم/الفاتح';
-  themeBtn.innerHTML = `<i data-lucide="moon" style="width:16px;height:16px;"></i>`;
-  themeBtn.addEventListener('click', () => {
-    const isDark = window.ThemeManager ? ThemeManager.toggle()
-      : document.body.classList.toggle('dark-mode');
-    localStorage.setItem('abu_theme', isDark ? 'dark' : 'light');
-  });
-  left.appendChild(themeBtn);
-
-  // معلومات المستخدم
-  const userChip = document.createElement('div');
-  userChip.style.cssText = `
-    display:flex;align-items:center;gap:8px;padding:6px 12px;
-    background:var(--bg-input);border-radius:12px;
-    border:1px solid var(--border-color);`;
-  userChip.innerHTML = `
-    <div style="width:28px;height:28px;border-radius:50%;
-      background:var(--accent);display:flex;align-items:center;
-      justify-content:center;color:#fff;font-weight:700;font-size:0.85rem;">
-      ${escapeHtml((user?.display_name || '؟').charAt(0))}
-    </div>
-    <div style="line-height:1.2;">
-      <div style="font-size:0.80rem;font-weight:700;color:var(--text-primary);">
-        ${escapeHtml(user?.display_name || '—')}
-      </div>
-      <div style="font-size:0.68rem;color:var(--text-muted);">
-        ${escapeHtml(ROLE_LABELS[user?.role] || user?.role || '—')}
-        ${accNum ? ` · ${escapeHtml(accNum)}` : ''}
+    <div class="header-user-info">
+      <div class="header-user-name">${escapeHtml(user?.display_name || '')}</div>
+      <div class="header-user-meta">
+        <span class="header-role-badge">${roleIcon} ${escapeHtml(roleLabel)}</span>
+        ${accNum ? `<span class="header-acc-num" title="رقم حسابك">${escapeHtml(accNum)}</span>` : ''}
       </div>
     </div>`;
-  left.appendChild(userChip);
+  header.appendChild(centerSection);
 
-  // زر الخروج
+  // ════════════════════════════════════════
+  // الجانب الأيسر: أدوات (مزامنة + ثيم + إشعارات + خروج)
+  // ════════════════════════════════════════
+  const leftSection = document.createElement('div');
+  leftSection.className = 'header-left';
+
+  // مؤشر المزامنة
+  const syncBtn = document.createElement('button');
+  syncBtn.id        = 'sync-indicator';
+  syncBtn.className = 'header-sync-btn';
+  syncBtn.title     = 'حالة المزامنة — انقر للمزامنة اليدوية';
+  syncBtn.innerHTML = `
+    <div id="sync-dot" class="sync-dot synced"></div>
+    <span id="sync-label" class="sync-label">متزامن</span>
+    <span id="sync-count" class="sync-count" style="display:none;"></span>`;
+  syncBtn.addEventListener('click', () => SyncService?.manualSync?.());
+  leftSection.appendChild(syncBtn);
+
+  // زر الثيم
+  const themeBtn = document.createElement('button');
+  themeBtn.id        = 'theme-toggle-btn';
+  themeBtn.className = 'header-icon-btn';
+  themeBtn.title     = 'تبديل الوضع المظلم/الفاتح';
+  themeBtn.innerHTML = `<i data-lucide="moon" style="width:17px;height:17px;"></i>`;
+  themeBtn.addEventListener('click', () => {
+    const isDark = window.ThemeManager
+      ? ThemeManager.toggle()
+      : document.body.classList.toggle('dark-mode');
+    localStorage.setItem('abu_theme', isDark ? 'dark' : 'light');
+    themeBtn.innerHTML = isDark
+      ? `<i data-lucide="sun"  style="width:17px;height:17px;"></i>`
+      : `<i data-lucide="moon" style="width:17px;height:17px;"></i>`;
+    if (window.lucide) lucide.createIcons();
+    showToast(isDark ? '🌙 الوضع المظلم' : '☀️ الوضع الفاتح', 'info', 1500);
+  });
+  leftSection.appendChild(themeBtn);
+
+  // زر الإشعارات
+  if (AuthService.canAccessTab(TABS.NOTIFICATIONS)) {
+    const notifBtn = document.createElement('button');
+    notifBtn.id        = 'notif-btn';
+    notifBtn.className = 'header-icon-btn';
+    notifBtn.title     = 'الإشعارات';
+    notifBtn.innerHTML = `
+      <i data-lucide="bell" style="width:17px;height:17px;"></i>
+      <span id="notif-badge" class="notif-badge" style="display:none;"></span>`;
+    notifBtn.addEventListener('click', () => _navigateTo(TABS.NOTIFICATIONS));
+    leftSection.appendChild(notifBtn);
+  }
+
+  // زر تسجيل الخروج
   const logoutBtn = document.createElement('button');
-  logoutBtn.className = 'btn btn-secondary btn-sm header-icon-btn';
-  logoutBtn.title = 'تسجيل الخروج';
-  logoutBtn.innerHTML = `<i data-lucide="log-out" style="width:16px;height:16px;color:var(--danger);"></i>`;
+  logoutBtn.className = 'header-icon-btn header-logout-btn';
+  logoutBtn.title     = 'تسجيل الخروج';
+  logoutBtn.innerHTML = `<i data-lucide="log-out" style="width:17px;height:17px;"></i>`;
   logoutBtn.addEventListener('click', _handleLogout);
-  left.appendChild(logoutBtn);
+  leftSection.appendChild(logoutBtn);
 
-  header.appendChild(right);
-  header.appendChild(left);
+  header.appendChild(leftSection);
+
+  // حقن CSS الهيدر
+  _injectHeaderStyles();
+
   return header;
 }
 
+// ============================================================
+// CSS الهيدر المُحسَّن
+// ============================================================
+function _injectHeaderStyles() {
+  if (document.getElementById('app-header-v3-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'app-header-v3-styles';
+  style.textContent = `
+    /* ── الهيدر الرئيسي ── */
+    #app-header.app-header {
+      position         : fixed;
+      top              : 0;
+      right            : 0;
+      left             : 0;
+      height           : 68px;
+      display          : flex;
+      align-items      : center;
+      justify-content  : space-between;
+      padding          : 0 20px;
+      gap              : 16px;
+      z-index          : 1000;
+      background       : var(--primary, #2563eb);
+      background       : linear-gradient(135deg, var(--primary, #2563eb) 0%, #4f46e5 100%);
+      box-shadow       : 0 2px 20px rgba(37,99,235,.35), 0 1px 0 rgba(255,255,255,.08) inset;
+      border-bottom    : 1px solid rgba(255,255,255,.10);
+    }
+
+    /* ── الجانب الأيمن ── */
+    .header-right {
+      display    : flex;
+      align-items: center;
+      gap        : 12px;
+      flex-shrink: 0;
+    }
+
+    .header-logo-area {
+      display    : flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .header-logo-img {
+      height       : 44px;
+      width        : auto;
+      max-width    : 120px;
+      object-fit   : contain;
+      border-radius: 8px;
+      filter       : drop-shadow(0 2px 6px rgba(0,0,0,.25));
+      transition   : transform .2s;
+    }
+    .header-logo-img:hover { transform: scale(1.04); }
+
+    .header-logo-placeholder {
+      width        : 44px;
+      height       : 44px;
+      border-radius: 12px;
+      display      : flex;
+      align-items  : center;
+      justify-content: center;
+      filter       : drop-shadow(0 2px 8px rgba(0,0,0,.20));
+    }
+
+    .header-title-area {
+      display       : flex;
+      flex-direction: column;
+      gap           : 1px;
+    }
+
+    .header-app-name {
+      font-size  : 1.05rem;
+      font-weight: 800;
+      color      : #fff;
+      line-height: 1.2;
+      letter-spacing: -.01em;
+    }
+
+    .header-date-line {
+      font-size : .72rem;
+      color     : rgba(255,255,255,.65);
+      white-space: nowrap;
+    }
+
+    /* ── الوسط: بيانات المستخدم ── */
+    .header-center {
+      display    : flex;
+      align-items: center;
+      gap        : 10px;
+      flex       : 1;
+      justify-content: center;
+    }
+
+    @media (max-width: 600px) {
+      .header-center { display: none; }
+    }
+
+    .header-user-avatar {
+      width          : 38px;
+      height         : 38px;
+      border-radius  : 50%;
+      background     : rgba(255,255,255,.18);
+      border         : 2px solid rgba(255,255,255,.35);
+      display        : flex;
+      align-items    : center;
+      justify-content: center;
+      font-size      : 1rem;
+      font-weight    : 800;
+      color          : #fff;
+      flex-shrink    : 0;
+      letter-spacing : -.02em;
+    }
+
+    .header-user-info {
+      display       : flex;
+      flex-direction: column;
+      gap           : 3px;
+    }
+
+    .header-user-name {
+      font-size  : .9rem;
+      font-weight: 700;
+      color      : #fff;
+      line-height: 1;
+    }
+
+    .header-user-meta {
+      display    : flex;
+      align-items: center;
+      gap        : 6px;
+    }
+
+    .header-role-badge {
+      font-size    : .71rem;
+      color        : rgba(255,255,255,.8);
+      background   : rgba(255,255,255,.12);
+      border       : 1px solid rgba(255,255,255,.18);
+      border-radius: 20px;
+      padding      : 1px 7px;
+      white-space  : nowrap;
+    }
+
+    .header-acc-num {
+      font-size    : .71rem;
+      color        : rgba(255,255,255,.7);
+      font-family  : monospace;
+      background   : rgba(0,0,0,.15);
+      border-radius: 4px;
+      padding      : 1px 6px;
+      cursor       : default;
+    }
+
+    /* ── الجانب الأيسر: أدوات ── */
+    .header-left {
+      display    : flex;
+      align-items: center;
+      gap        : 6px;
+      flex-shrink: 0;
+    }
+
+    .header-icon-btn {
+      width           : 40px;
+      height          : 40px;
+      border-radius   : 11px;
+      background      : rgba(255,255,255,.10);
+      border          : 1px solid rgba(255,255,255,.14);
+      color           : rgba(255,255,255,.85);
+      display         : flex;
+      align-items     : center;
+      justify-content : center;
+      cursor          : pointer;
+      transition      : all .15s;
+      position        : relative;
+    }
+    .header-icon-btn:hover {
+      background : rgba(255,255,255,.20);
+      color      : #fff;
+      transform  : translateY(-1px);
+      box-shadow : 0 4px 12px rgba(0,0,0,.15);
+    }
+    .header-logout-btn:hover {
+      background: rgba(239,68,68,.25) !important;
+      border-color: rgba(239,68,68,.4) !important;
+    }
+
+    .notif-badge {
+      position     : absolute;
+      top          : 5px;
+      left         : 5px;
+      min-width    : 17px;
+      height       : 17px;
+      border-radius: 9px;
+      background   : #ef4444;
+      color        : #fff;
+      font-size    : .62rem;
+      font-weight  : 700;
+      display      : flex;
+      align-items  : center;
+      justify-content: center;
+      border       : 2px solid var(--primary, #2563eb);
+      padding      : 0 3px;
+    }
+
+    /* ── مؤشر المزامنة ── */
+    .header-sync-btn {
+      display      : flex;
+      align-items  : center;
+      gap          : 5px;
+      padding      : 6px 10px;
+      border-radius: 10px;
+      background   : rgba(255,255,255,.10);
+      border       : 1px solid rgba(255,255,255,.14);
+      color        : rgba(255,255,255,.80);
+      cursor       : pointer;
+      font-size    : .74rem;
+      font-family  : inherit;
+      transition   : all .15s;
+      white-space  : nowrap;
+    }
+    .header-sync-btn:hover {
+      background: rgba(255,255,255,.18);
+      color     : #fff;
+    }
+
+    .sync-dot {
+      width        : 8px;
+      height       : 8px;
+      border-radius: 50%;
+      flex-shrink  : 0;
+      transition   : background .3s;
+    }
+    .sync-dot.synced  { background: #4ade80; }
+    .sync-dot.pending { background: #fbbf24; animation: syncPulse 1.2s ease-in-out infinite; }
+    .sync-dot.error   { background: #f87171; }
+
+    @keyframes syncPulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%     { opacity:.6; transform:scale(1.3); }
+    }
+
+    .sync-label { color: rgba(255,255,255,.80); font-size:.74rem; }
+    .sync-count {
+      background   : #fbbf24;
+      color        : #1e1b4b;
+      border-radius: 10px;
+      padding      : 1px 6px;
+      font-size    : .65rem;
+      font-weight  : 700;
+    }
+
+    /* ── تعديل ارتفاع Nav ── */
+    .app-nav {
+      top: 68px !important;
+    }
+
+    /* ── تعديل ارتفاع المحتوى ── */
+    .app-content {
+      margin-top: calc(68px + var(--nav-height, 52px)) !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// ============================================================
+// شريط التنقل
+// ============================================================
 function _buildNav() {
   const tabs = AuthService.getAllowedTabs();
   const nav  = document.createElement('nav');
-  nav.id = 'app-nav';
+  nav.id        = 'app-nav';
   nav.className = 'app-nav';
   nav.style.overflowX = 'auto';
 
+  const icons = {
+    dashboard           : 'layout-dashboard',
+    'data-entry'        : 'pencil-line',
+    'daily-summary'     : 'file-bar-chart',
+    'bank-accounts'     : 'landmark',
+    debtors             : 'users',
+    'failed-deposits'   : 'alert-circle',
+    notifications       : 'bell',
+    'all-operations'    : 'list',
+    'audit-log'         : 'shield-check',
+    users               : 'user-cog',
+    'account-management': 'book-open',
+    settings            : 'settings',
+  };
+
   tabs.forEach(tabId => {
     const btn = document.createElement('button');
-    btn.id = `nav-tab-${tabId}`;
+    btn.id        = `nav-tab-${tabId}`;
     btn.className = 'nav-tab';
     btn.dataset.tab = tabId;
     btn.setAttribute('aria-selected', 'false');
 
     const label = TAB_LABELS[tabId] || tabId;
-    const icons = {
-      dashboard         : 'layout-dashboard',
-      'data-entry'      : 'pencil-line',
-      'daily-summary'   : 'file-bar-chart',
-      'bank-accounts'   : 'landmark',
-      debtors           : 'users',
-      'failed-deposits' : 'alert-circle',
-      notifications     : 'bell',
-      'all-operations'  : 'list',
-      'audit-log'       : 'shield-check',
-      users             : 'user-cog',
-      'account-management': 'book-open',
-      settings          : 'settings',
-    };
-    const icon = icons[tabId] || 'circle';
+    const icon  = icons[tabId] || 'circle';
 
     btn.innerHTML = `
       <i data-lucide="${icon}" style="width:15px;height:15px;"></i>
@@ -301,79 +605,19 @@ function _buildNav() {
 }
 
 // ============================================================
-// التوجيه — مع استدعاء destroy() للمكوّن السابق
+// التنقل بين التبويبات
 // ============================================================
-
 async function _navigateTo(tabId) {
   if (!AuthService.canAccessTab(tabId)) {
     showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
     return;
   }
 
-  // FIX-5 (تسريب الذاكرة): استدعاء destroy() للمكوّن الحالي قبل التنقل
-  _destroyActiveComponent();
-
   AppStore.setCurrentTab(tabId);
   _updateNavHighlight(tabId);
-
-  if (_contentEl) {
-    _contentEl.style.opacity = '0';
-    _contentEl.style.transform = 'translateY(6px)';
-    await sleep(120);
-    _contentEl.innerHTML = '';
-    _contentEl.style.opacity = '';
-    _contentEl.style.transform = '';
-    _contentEl.className = 'app-content animate-fade-in';
-  }
-
+  _destroyActiveComponent();
+  _activeComponentId = tabId;
   _showContentLoader();
-
-  try {
-    await _mountComponent(tabId);
-    _activeComponentId = tabId;
-  } catch (e) {
-    console.error(`❌ App.js: خطأ في تحميل مكوّن ${tabId}:`, e);
-    _contentEl.innerHTML = `<div class="empty-state">
-      <div class="empty-state-icon">⚠️</div>
-      <div class="empty-state-text">حدث خطأ في تحميل هذا التبويب</div>
-    </div>`;
-  }
-}
-
-/**
- * FIX-5: استدعاء destroy() للمكوّن النشط إن كان يدعمها
- * يمنع تسريب الذاكرة من Realtime subscriptions
- */
-function _destroyActiveComponent() {
-  if (!_activeComponentId) return;
-  const componentMap = {
-    [TABS.DASHBOARD]          : 'DashboardComponent',
-    [TABS.DATA_ENTRY]         : 'DataEntryComponent',
-    [TABS.DAILY_SUMMARY]      : 'DailySummaryComponent',
-    [TABS.BANK_ACCOUNTS]      : 'BankAccountsComponent',
-    [TABS.DEBTORS]            : 'DebtorsComponent',
-    [TABS.FAILED_DEPOSITS]    : 'FailedDepositsComponent',
-    [TABS.NOTIFICATIONS]      : 'NotificationsComponent',
-    [TABS.ALL_OPERATIONS]     : 'AllOperationsComponent',
-    [TABS.AUDIT_LOG]          : 'AuditLogComponent',
-    [TABS.USERS]              : 'UsersComponent',
-    [TABS.ACCOUNT_MANAGEMENT] : 'AccountManagementComponent',
-    [TABS.SETTINGS]           : 'SettingsComponent',
-  };
-  const componentName = componentMap[_activeComponentId];
-  if (componentName && window[componentName]?.destroy) {
-    try {
-      window[componentName].destroy();
-      console.log(`🧹 App.js: destroy() استُدعيت على ${componentName}`);
-    } catch (e) {
-      console.warn(`⚠️ App.js: خطأ في destroy() لـ ${componentName}:`, e.message);
-    }
-  }
-  _activeComponentId = null;
-}
-
-async function _mountComponent(tabId) {
-  if (!_contentEl) return;
 
   const componentMap = {
     [TABS.DASHBOARD]           : () => DashboardComponent?.render(_contentEl),
@@ -414,15 +658,131 @@ function _showContentLoader() {
 }
 
 // ============================================================
+// تنظيف المكوّن النشط
+// ============================================================
+function _destroyActiveComponent() {
+  if (!_activeComponentId) return;
+
+  const componentMap = {
+    [TABS.DASHBOARD]           : 'DashboardComponent',
+    [TABS.DATA_ENTRY]          : 'DataEntryComponent',
+    [TABS.DAILY_SUMMARY]       : 'DailySummaryComponent',
+    [TABS.BANK_ACCOUNTS]       : 'BankAccountsComponent',
+    [TABS.DEBTORS]             : 'DebtorsComponent',
+    [TABS.FAILED_DEPOSITS]     : 'FailedDepositsComponent',
+    [TABS.NOTIFICATIONS]       : 'NotificationsComponent',
+    [TABS.ALL_OPERATIONS]      : 'AllOperationsComponent',
+    [TABS.AUDIT_LOG]           : 'AuditLogComponent',
+    [TABS.USERS]               : 'UsersComponent',
+    [TABS.ACCOUNT_MANAGEMENT]  : 'AccountManagementComponent',
+    [TABS.SETTINGS]            : 'SettingsComponent',
+  };
+
+  const name = componentMap[_activeComponentId];
+  if (name && window[name]?.destroy) {
+    try { window[name].destroy(); } catch (e) {
+      console.warn(`⚠️ destroy() لـ ${name}:`, e.message);
+    }
+  }
+  _activeComponentId = null;
+}
+
+// ============================================================
+// ربط أحداث AppStore
+// ============================================================
+function _bindStoreEvents() {
+  AppStore.addEventListener('store:settingsLoaded', () => {
+    _updateHeaderLogo();
+  });
+
+  AppStore.addEventListener('store:syncStatusChanged', (e) => {
+    const { syncRunning, syncQueueLength } = e.detail.state;
+    const dot   = document.getElementById('sync-dot');
+    const label = document.getElementById('sync-label');
+    const count = document.getElementById('sync-count');
+    if (!dot) return;
+
+    if (syncRunning) {
+      dot.className   = 'sync-dot pending';
+      if (label) label.textContent = 'مزامنة...';
+    } else if (syncQueueLength > 0) {
+      dot.className   = 'sync-dot pending';
+      if (label) label.textContent = 'معلق';
+      if (count) { count.textContent = String(syncQueueLength); count.style.display = 'flex'; }
+    } else {
+      dot.className   = 'sync-dot synced';
+      if (label) label.textContent = 'متزامن';
+      if (count) count.style.display = 'none';
+    }
+  });
+
+  AppStore.addEventListener('store:syncQueueChanged', (e) => {
+    const { syncQueueLength } = e.detail.state;
+    const count = document.getElementById('sync-count');
+    if (count) {
+      count.style.display = syncQueueLength > 0 ? 'flex' : 'none';
+      count.textContent   = String(syncQueueLength);
+    }
+  });
+
+  AppStore.addEventListener('store:notifCountChanged', (e) => {
+    const unreadNotifCount = e.detail.state.unreadNotifCount;
+    const badge = document.getElementById('notif-badge');
+    if (badge) {
+      badge.style.display = unreadNotifCount > 0 ? 'flex' : 'none';
+      badge.textContent   = unreadNotifCount > 9 ? '9+' : String(unreadNotifCount);
+    }
+  });
+
+  AppStore.addEventListener('store:userCleared', () => {
+    _showLoginScreen();
+  });
+}
+
+// ============================================================
+// تحديث الشعار في الهيدر (يُستدعى عند تغيير الإعدادات)
+// ============================================================
+function _updateHeaderLogo() {
+  const logoUrl   = AppStore.getState('logoUrl');
+  const logoArea  = document.querySelector('.header-logo-area');
+  if (!logoArea) return;
+
+  logoArea.innerHTML = '';
+
+  if (logoUrl) {
+    const img = document.createElement('img');
+    img.id        = 'header-logo-img';
+    img.src       = logoUrl;
+    img.alt       = 'شعار الشركة';
+    img.className = 'header-logo-img';
+    logoArea.appendChild(img);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.id        = 'header-logo-placeholder';
+    placeholder.className = 'header-logo-placeholder';
+    placeholder.innerHTML = `
+      <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
+        <rect width="36" height="36" rx="10" fill="url(#lg2)"/>
+        <text x="18" y="25" text-anchor="middle" fill="white" font-size="18" font-weight="800"
+          font-family="system-ui,sans-serif">أ</text>
+        <defs>
+          <linearGradient id="lg2" x1="0" y1="0" x2="36" y2="36">
+            <stop offset="0%" stop-color="#6366f1"/>
+            <stop offset="100%" stop-color="#4f46e5"/>
+          </linearGradient>
+        </defs>
+      </svg>`;
+    logoArea.appendChild(placeholder);
+  }
+}
+
+// ============================================================
 // الشاشات
 // ============================================================
-
 function _showLoginScreen() {
   if (window.IdleTimer) IdleTimer.stop();
   _hideLoadingScreen();
   _stopDateClock();
-
-  // FIX-5: تنظيف المكوّن النشط عند الخروج
   _destroyActiveComponent();
 
   const root = document.getElementById('app-root');
@@ -450,72 +810,28 @@ async function _handleLogout() {
     return;
   }
 
-  // FIX-5: تنظيف المكوّن النشط قبل الخروج
   _destroyActiveComponent();
-
   SyncService?.stop?.();
-  _stopDateClock();
-  await AuthService.logout();
-}
 
-// ============================================================
-// أحداث AppStore
-// ============================================================
-
-function _bindStoreEvents() {
-  AppStore.addEventListener('store:syncStatusChanged', (e) => {
-    const { running, lastSyncAt } = e.detail.state;
-    const dot   = document.getElementById('sync-dot');
-    const label = document.getElementById('sync-label');
-    if (!dot || !label) return;
-    if (running) {
-      dot.style.background = 'var(--warning)';
-      dot.style.animation  = 'pulse 1s infinite';
-      label.textContent    = 'يُزامن...';
-    } else {
-      dot.style.background = 'var(--success)';
-      dot.style.animation  = '';
-      label.textContent    = 'متزامن';
-    }
-  });
-
-  AppStore.addEventListener('store:syncQueueChanged', (e) => {
-    const { count } = e.detail.state;
-    const countEl = document.getElementById('sync-count');
-    const dot     = document.getElementById('sync-dot');
-    if (!countEl) return;
-    if (count > 0) {
-      countEl.style.display = '';
-      countEl.textContent   = String(count);
-      if (dot) dot.style.background = 'var(--warning)';
-    } else {
-      countEl.style.display = 'none';
-      if (dot) dot.style.background = 'var(--success)';
-    }
-  });
-
-  AppStore.addEventListener('store:notificationsLoaded', (e) => {
-    const { unreadNotifCount } = e.detail.state;
-    const badge = document.querySelector('#nav-tab-notifications .notif-badge');
-    if (badge) badge.textContent = unreadNotifCount > 0 ? String(unreadNotifCount) : '';
-  });
-
-  AppStore.addEventListener('store:userCleared', () => {
+  const result = await AuthService.logout();
+  if (isOk(result)) {
+    _stopDateClock();
     _showLoginScreen();
-  });
+  } else {
+    showToast(`خطأ في تسجيل الخروج: ${result.error}`, 'error');
+  }
 }
 
 // ============================================================
 // ساعة التاريخ
 // ============================================================
-
 function _startDateClock() {
   const update = () => {
     const el = document.getElementById('header-date');
     if (el) el.textContent = formatDateArabic(getCurrentSaudiDate());
   };
   update();
-  const now = new Date();
+  const now         = new Date();
   const msToNextMin = (60 - now.getSeconds()) * 1000;
   setTimeout(() => {
     update();
@@ -530,18 +846,16 @@ function _stopDateClock() {
 // ============================================================
 // الوضع المظلم (Fallback)
 // ============================================================
-
 function _restoreDarkMode() {
   try {
     const saved = localStorage.getItem('abu_theme');
     if (saved === 'dark') document.body.classList.add('dark-mode');
-  } catch { /* تجاهل */ }
+  } catch {}
 }
 
 // ============================================================
 // الشاشات المساعدة
 // ============================================================
-
 function _hideLoadingScreen() {
   const loading = document.getElementById('app-loading');
   if (loading) {
@@ -555,9 +869,9 @@ function _showFatalError(msg) {
   const root = document.getElementById('app-root');
   root.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-                min-height:100vh;gap:16px;padding:20px;background:var(--bg-page)">
-      <div style="font-size:3rem">⚠️</div>
-      <h2 style="color:var(--danger);text-align:center">${escapeHtml(msg)}</h2>
+      min-height:100vh;gap:16px;padding:20px;background:var(--bg-page)">
+      <div style="font-size:3rem;">⚠️</div>
+      <h2 style="color:var(--danger);text-align:center;">${escapeHtml(msg)}</h2>
       <button onclick="location.reload()" class="btn btn-primary">إعادة تحميل الصفحة</button>
     </div>`;
 }
@@ -565,8 +879,8 @@ function _showFatalError(msg) {
 // ============================================================
 // تصدير
 // ============================================================
+window.App             = { navigateTo: _navigateTo, bootApp: _bootApp, onLoginSuccess: _onLoginSuccess };
+window._appNavigateTo  = _navigateTo;
+window._updateHeaderLogo = _updateHeaderLogo;
 
-window.App = { navigateTo: _navigateTo, bootApp: _bootApp, onLoginSuccess: _onLoginSuccess };
-window._appNavigateTo = _navigateTo;
-
-console.log('✅ App.js v2.1 — FIX-2: شرط _dexieOk | FIX-3: حماية typeof db | FIX-5: destroy() عند التنقل');
+console.log('✅ App.js v3.0 — هيدر محسَّن + QuickLoginBanner + last_login');
