@@ -345,44 +345,48 @@ const UsersComponent = {
         showToast('تم تعديل المستخدم بنجاح', 'success');
 
       } else {
-        /* ── إنشاء مستخدم جديد ── */
-        if (!isOnline()) {
-          errEl.textContent = 'يجب الاتصال بالإنترنت لإنشاء مستخدم جديد';
-          return;
-        }
+  /* ── إنشاء مستخدم جديد ── */
+  if (!isOnline()) {
+    errEl.textContent = 'يجب الاتصال بالإنترنت لإنشاء مستخدم جديد';
+    return;
+  }
 
-        const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
-          email: username, password,
-        });
+  const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
+    email: username, password,
+  });
 
-        if (authErr) { errEl.textContent = authErr.message; return; }
-        if (!authData?.user?.id) { errEl.textContent = 'فشل إنشاء الحساب — لم يُعاد معرف المستخدم'; return; }
+  if (authErr) { errEl.textContent = authErr.message; return; }
+  if (!authData?.user?.id) { errEl.textContent = 'فشل إنشاء الحساب — لم يُعاد معرف المستخدم'; return; }
 
-        const profile = {
-          id           : authData.user.id,
-          username,
-          display_name : name,
-          role,
-          allowed_tabs,
-          is_active    : true,
-        };
+  const profile = {
+    id           : authData.user.id,
+    username,
+    display_name : name,
+    role,
+    allowed_tabs,
+    // is_active لم يعد مطلوباً هنا لأن الدالة RPC تضبطه تلقائياً
+  };
 
-        /* ✅ إصلاح 3: إذا فشل repo.create → حذف حساب Auth لمنع التناسق */
-        const result = await repo.create(TABLES.USERS, profile);
-        if (!isOk(result)) {
-          /* حذف حساب Auth الذي أُنشئ للتو لتجنب حساب بلا سجل */
-          try {
-            await callRPC('delete_auth_user', { p_user_id: authData.user.id });
-          } catch (cleanupErr) {
-            console.error('⚠️  فشل تنظيف حساب Auth بعد خطأ إنشاء السجل:', cleanupErr);
-          }
-          errEl.textContent = `فشل إنشاء سجل المستخدم: ${result.error}`;
-          return;
-        }
+  /*
+   * ✅ إصلاح RLS: استخدام callRPC بدلاً من repo.create المباشر
+   * signUp يغير auth.uid() إلى المستخدم الجديد، مما يجعل is_admin()
+   * ترجع false لأن المستخدم الجديد لا يزال بلا صف في users.
+   * دالة create_user_profile تستخدم SECURITY DEFINER فتعمل بغض النظر.
+   */
+  const result = await callRPC('create_user_profile', { p_profile: profile });
+  if (!isOk(result)) {
+    /* حذف حساب Auth الذي أُنشئ للتو لتجنب حساب بلا سجل */
+    try {
+      await callRPC('delete_auth_user', { p_user_id: authData.user.id });
+    } catch (cleanupErr) {
+      console.error('⚠️  فشل تنظيف حساب Auth بعد خطأ إنشاء السجل:', cleanupErr);
+    }
+    errEl.textContent = `فشل إنشاء سجل المستخدم: ${result.error}`;
+    return;
+  }
 
-        showToast('تم إنشاء المستخدم بنجاح', 'success');
-      }
-
+  showToast('تم إنشاء المستخدم بنجاح', 'success');
+}
       this._closeForm();
       await this._load();
 
