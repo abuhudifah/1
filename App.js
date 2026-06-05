@@ -1,20 +1,28 @@
 /**
- * App.js — v2.0 (Online-First)
+ * App.js — v2.1 (FIXED)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * التغييرات وفق التوثيق:
- * ✅ 1. فشل Dexie لا يوقف التطبيق — يُسجَّل فقط ويستمر مع Supabase
- * ✅ 2. runStartupCleanup() محاطة بـ try/catch (Dexie قد تكون غير متاحة)
- * ✅ 3. SyncService.init() لا يُشغَّل إذا كانت Dexie فاشلة
- * ✅ 4. مؤقت المزامنة الدورية 30 ثانية (بدلاً من 5 دقائق) عند وجود عمليات معلقة
+ * الإصلاحات:
+ * ✅ FIX-2: إصلاح الشرط الخاطئ في _scheduleDexieReopen
+ *           كان: _dexieOk = true; if (SyncService && !_dexieOk) ...
+ *           الشرط دائماً false لأن _dexieOk تم تعيينها true للتو.
+ *           الآن: إزالة الشرط الخاطئ — SyncService.init() تُستدعى مباشرة.
+ *
+ * ✅ FIX-3: إضافة حماية typeof db !== 'undefined' قبل كل استخدام لـ db في App.js
+ *           إذا فشل تحميل Dexie.js من CDN، كان التطبيق يتعطل بـ ReferenceError.
+ *           الآن: الفشل يُسجَّل فقط ويستمر مع Supabase.
  */
+
 'use strict';
 
 let _headerEl  = null;
 let _navEl     = null;
 let _contentEl = null;
 let _dateTimer = null;
-let _dexieOk   = false; // هل Dexie متاحة؟
+let _dexieOk   = false;
+
+// تتبع المكوّن الحالي لاستدعاء destroy() عند التنقل
+let _activeComponentId = null;
 
 const _loadedComponents = new Map();
 
@@ -26,19 +34,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('🚀 App.js: بدء تهيئة النظام (Online-First)...');
 
   try {
-    // ─── 1. تهيئة Dexie (غير حرجة — فشلها لا يوقف التطبيق) ───
+    // ─── 1. تهيئة Dexie (غير حرجة) ───
     try {
-      const dexieResult = await initDexie();
-      if (isOk(dexieResult)) {
-        _dexieOk = true;
-        console.log('✅ App.js: Dexie جاهزة');
-        // التنظيف في الخلفية — لا ننتظره
-        runStartupCleanup().catch(e =>
-          console.warn('⚠️ App.js: تحذير تنظيف Dexie:', e.message)
-        );
+      // FIX-3: التحقق من وجود db قبل استدعائه
+      if (typeof db === 'undefined') {
+        console.warn('⚠️ App.js: db غير معرَّف — Dexie.js لم يُحمَّل من CDN. سيعمل النظام مع Supabase فقط');
+        _scheduleDexieReopen();
       } else {
-        console.warn('⚠️ App.js: Dexie غير متاحة — سيعمل النظام مع Supabase فقط');
-        _scheduleDexieReopen(); // محاولة إعادة الفتح في الخلفية
+        const dexieResult = await initDexie();
+        if (isOk(dexieResult)) {
+          _dexieOk = true;
+          console.log('✅ App.js: Dexie جاهزة');
+          runStartupCleanup().catch(e =>
+            console.warn('⚠️ App.js: تحذير تنظيف Dexie:', e.message)
+          );
+        } else {
+          console.warn('⚠️ App.js: Dexie غير متاحة — سيعمل النظام مع Supabase فقط');
+          _scheduleDexieReopen();
+        }
       }
     } catch (dexieErr) {
       console.warn('⚠️ App.js: خطأ في Dexie:', dexieErr.message, '— النظام يكمل مع Supabase');
@@ -57,7 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       _restoreDarkMode();
     }
 
-    // ─── 4. التحقق من الجلسة (من Supabase مباشرة) ───
+    // ─── 4. التحقق من الجلسة ───
     const sessionResult = await AuthService.checkSession();
 
     if (isOk(sessionResult)) {
@@ -73,22 +86,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ============================================================
-// إعادة فتح Dexie في الخلفية
+// FIX-3: إعادة فتح Dexie في الخلفية — مع حماية typeof
 // ============================================================
 
 function _scheduleDexieReopen() {
   setTimeout(async () => {
     try {
+      // FIX-3: التحقق من وجود db قبل استخدامه
+      if (typeof db === 'undefined') {
+        console.warn('⚠️ App.js: db لا يزال غير معرَّف — Dexie.js غير متاح');
+        return;
+      }
+
       if (!db.isOpen()) {
         await db.open();
         _dexieOk = true;
         console.log('✅ App.js: أُعيد فتح Dexie في الخلفية');
-        if (window.SyncService && !_dexieOk) SyncService.init();
+
+        // FIX-2: إزالة الشرط الخاطئ (!_dexieOk بعد تعيينها true)
+        // كان الكود الأصلي: if (window.SyncService && !_dexieOk) SyncService.init();
+        // وهو شرط دائماً false. الصحيح:
+        if (window.SyncService) {
+          SyncService.init();
+        }
       }
     } catch (e) {
       console.warn('⚠️ App.js: فشل إعادة فتح Dexie:', e.message);
     }
-  }, 5000); // بعد 5 ثوانٍ
+  }, 5000);
 }
 
 // ============================================================
@@ -276,7 +301,7 @@ function _buildNav() {
 }
 
 // ============================================================
-// التوجيه
+// التوجيه — مع استدعاء destroy() للمكوّن السابق
 // ============================================================
 
 async function _navigateTo(tabId) {
@@ -284,6 +309,9 @@ async function _navigateTo(tabId) {
     showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
     return;
   }
+
+  // FIX-5 (تسريب الذاكرة): استدعاء destroy() للمكوّن الحالي قبل التنقل
+  _destroyActiveComponent();
 
   AppStore.setCurrentTab(tabId);
   _updateNavHighlight(tabId);
@@ -302,6 +330,7 @@ async function _navigateTo(tabId) {
 
   try {
     await _mountComponent(tabId);
+    _activeComponentId = tabId;
   } catch (e) {
     console.error(`❌ App.js: خطأ في تحميل مكوّن ${tabId}:`, e);
     _contentEl.innerHTML = `<div class="empty-state">
@@ -309,6 +338,38 @@ async function _navigateTo(tabId) {
       <div class="empty-state-text">حدث خطأ في تحميل هذا التبويب</div>
     </div>`;
   }
+}
+
+/**
+ * FIX-5: استدعاء destroy() للمكوّن النشط إن كان يدعمها
+ * يمنع تسريب الذاكرة من Realtime subscriptions
+ */
+function _destroyActiveComponent() {
+  if (!_activeComponentId) return;
+  const componentMap = {
+    [TABS.DASHBOARD]          : 'DashboardComponent',
+    [TABS.DATA_ENTRY]         : 'DataEntryComponent',
+    [TABS.DAILY_SUMMARY]      : 'DailySummaryComponent',
+    [TABS.BANK_ACCOUNTS]      : 'BankAccountsComponent',
+    [TABS.DEBTORS]            : 'DebtorsComponent',
+    [TABS.FAILED_DEPOSITS]    : 'FailedDepositsComponent',
+    [TABS.NOTIFICATIONS]      : 'NotificationsComponent',
+    [TABS.ALL_OPERATIONS]     : 'AllOperationsComponent',
+    [TABS.AUDIT_LOG]          : 'AuditLogComponent',
+    [TABS.USERS]              : 'UsersComponent',
+    [TABS.ACCOUNT_MANAGEMENT] : 'AccountManagementComponent',
+    [TABS.SETTINGS]           : 'SettingsComponent',
+  };
+  const componentName = componentMap[_activeComponentId];
+  if (componentName && window[componentName]?.destroy) {
+    try {
+      window[componentName].destroy();
+      console.log(`🧹 App.js: destroy() استُدعيت على ${componentName}`);
+    } catch (e) {
+      console.warn(`⚠️ App.js: خطأ في destroy() لـ ${componentName}:`, e.message);
+    }
+  }
+  _activeComponentId = null;
 }
 
 async function _mountComponent(tabId) {
@@ -361,6 +422,9 @@ function _showLoginScreen() {
   _hideLoadingScreen();
   _stopDateClock();
 
+  // FIX-5: تنظيف المكوّن النشط عند الخروج
+  _destroyActiveComponent();
+
   const root = document.getElementById('app-root');
   root.innerHTML = '';
 
@@ -385,6 +449,9 @@ async function _handleLogout() {
     if (window.IdleTimer && user?.role === ROLES.AGENT) IdleTimer.start();
     return;
   }
+
+  // FIX-5: تنظيف المكوّن النشط قبل الخروج
+  _destroyActiveComponent();
 
   SyncService?.stop?.();
   _stopDateClock();
@@ -502,4 +569,4 @@ function _showFatalError(msg) {
 window.App = { navigateTo: _navigateTo, bootApp: _bootApp, onLoginSuccess: _onLoginSuccess };
 window._appNavigateTo = _navigateTo;
 
-console.log('✅ App.js v2.0 — Online-First مع Dexie كطوارئ');
+console.log('✅ App.js v2.1 — FIX-2: شرط _dexieOk | FIX-3: حماية typeof db | FIX-5: destroy() عند التنقل');
