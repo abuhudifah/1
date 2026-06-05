@@ -328,42 +328,78 @@ async function _loadSystemSettings() {
   setState({ systemSettings: settings, logoUrl }, 'store:settingsLoaded');
 }
 
+// ============================================================
+// دالة مساعدة: تحليل JSON بأمان
+// ============================================================
+
+/**
+ * يُحلّل قيمة JSON بأمان بدون إلقاء استثناء
+ * ✅ الإصلاح: بديل آمن لـ JSON.parse() المجردة في _loadNotifications
+ * @param {*} value - القيمة المُراد تحليلها
+ * @param {*} fallback - القيمة الافتراضية عند الفشل
+ * @returns {*}
+ */
+function _safeJsonParse(value, fallback = []) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return fallback;
+  if (typeof value !== 'string') return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed ?? fallback;
+  } catch {
+    console.warn('⚠️  AppStore._safeJsonParse: بيانات JSON فاسدة:', value);
+    return fallback;
+  }
+}
+
 async function _loadNotifications(user) {
-  const allNotifs = await db.notifications
-    .orderBy('created_at')
-    .reverse()
-    .limit(50)
-    .toArray();
+  try {
+    const allNotifs = await db.notifications
+      .orderBy('created_at')
+      .reverse()
+      .limit(50)
+      .toArray();
 
-  // فلترة بحسب target
-  const visible = allNotifs.filter(n => {
-    if (n.target === '"all"' || n.target === 'all') return true;
-    if (Array.isArray(n.target) && n.target.includes(user.id)) return true;
-    if (typeof n.target === 'string') {
-      try {
-        const parsed = JSON.parse(n.target);
-        if (parsed === 'all') return true;
-        if (Array.isArray(parsed) && parsed.includes(user.id)) return true;
-      } catch { /* تجاهل */ }
-    }
-    return false;
-  });
+    // فلترة بحسب target
+    const visible = allNotifs.filter(n => {
+      if (n.target === '"all"' || n.target === 'all') return true;
+      if (Array.isArray(n.target) && n.target.includes(user.id)) return true;
+      if (typeof n.target === 'string') {
+        try {
+          const parsed = JSON.parse(n.target);
+          if (parsed === 'all') return true;
+          if (Array.isArray(parsed) && parsed.includes(user.id)) return true;
+        } catch { /* تجاهل */ }
+      }
+      return false;
+    });
 
-  // فلترة المُخفية
-  const notHidden = visible.filter(n => {
-    const hidden = Array.isArray(n.hidden_by) ? n.hidden_by : JSON.parse(n.hidden_by || '[]');
-    return !hidden.includes(user.id);
-  });
+    // فلترة المُخفية
+    // ✅ الإصلاح: استبدال JSON.parse() المجردة بـ _safeJsonParse()
+    // لمنع الانهيار عند وجود بيانات فاسدة في hidden_by أو read_by
+    const notHidden = visible.filter(n => {
+      const hidden = _safeJsonParse(n.hidden_by, []);
+      return !hidden.includes(user.id);
+    });
 
-  const unread = notHidden.filter(n => {
-    const read = Array.isArray(n.read_by) ? n.read_by : JSON.parse(n.read_by || '[]');
-    return !read.includes(user.id);
-  });
+    const unread = notHidden.filter(n => {
+      const read = _safeJsonParse(n.read_by, []);
+      return !read.includes(user.id);
+    });
 
-  setState({
-    notifications     : notHidden,
-    unreadNotifCount  : unread.length,
-  }, 'store:notificationsLoaded');
+    setState({
+      notifications     : notHidden,
+      unreadNotifCount  : unread.length,
+    }, 'store:notificationsLoaded');
+
+  } catch (e) {
+    console.error('❌ AppStore._loadNotifications():', e);
+    // عدم انهيار الحالة — إبقاء الإشعارات فارغة
+    setState({
+      notifications    : [],
+      unreadNotifCount : 0,
+    }, 'store:notificationsLoaded');
+  }
 }
 
 async function _loadBankAccounts() {
