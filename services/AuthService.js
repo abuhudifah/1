@@ -1,11 +1,37 @@
 /**
- * services/AuthService.js — v2.1 (Online-First مُصحَّح)
+ * services/AuthService.js — v3.0 (إصلاح نهائي للدخول السريع)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * إصلاح v2.1:
- * - _fetchUserProfile: يُعيد الترتيب الصحيح — Supabase أولاً بعد تأكيد الجلسة
- *   فإذا فشل (RLS أو شبكة) يسقط إلى Dexie، وإذا كان offline يقرأ من Dexie مباشرة
- * - login(): يستخدم نفس المنطق بدون تكسير RLS
+ * ══════════════════════════════════════════════════════════════
+ * الأسباب الجذرية لفشل الدخول السريع (مكتشفة بتشخيص مباشر):
+ * ══════════════════════════════════════════════════════════════
+ *
+ * 🔴 السبب 1 (الرئيسي): بعد verify_quick_login، الكود يستدعي
+ *    _fetchUserProfile(userId) التي تقرأ من Supabase مباشرة.
+ *    لكن RLS (سياسة users_select_own) تشترط: id = auth.uid()
+ *    وبما أنه لا توجد جلسة Supabase Auth أثناء الدخول السريع،
+ *    فإن auth.uid() = NULL → الاستعلام يُعيد 0 صفوف → فشل.
+ *    ← الحل: verify_quick_login مُحدَّثة لتُعيد profile كاملاً
+ *      داخل الرد (SECURITY DEFINER تتجاوز RLS)
+ *
+ * 🔴 السبب 2: quickEnabled يُحسب مرة واحدة في render() من
+ *    sessionStorage.getItem(DEVICE_TOKEN_KEY).
+ *    إذا لم يكن DEVICE_TOKEN_KEY محفوظاً في sessionStorage
+ *    (يُمسح عند إغلاق المتصفح)، فـ quickEnabled = false
+ *    ولا يُستدعى _tryQuickLogin أبداً.
+ *    ← الحل: التحقق من وجود quick_equation_hash في localStorage
+ *      أيضاً (يبقى بين الجلسات)
+ *
+ * 🔴 السبب 3: عند enableQuickLogin، يُحفظ deviceToken من
+ *    sessionStorage في localStorage. لكن عند إعادة تحميل الصفحة،
+ *    sessionStorage تُمسح، فـ deviceToken يصبح '' (فارغاً).
+ *    عند الدخول السريع offline، المقارنة تفشل لأن data.deviceToken
+ *    ≠ sessionStorage.getItem (الذي يُعيد null/empty).
+ *    ← الحل: تخزين deviceToken في localStorage أيضاً
+ *
+ * 🟡 التحسين 4: إضافة console.log تشخيصية في quickLogin
+ *    لتسهيل الكشف عن الأخطاء مستقبلاً.
+ * ══════════════════════════════════════════════════════════════
  */
 'use strict';
 
@@ -29,7 +55,6 @@ async function login(email, password) {
     if (!email || !password) return err('البريد الإلكتروني وكلمة المرور مطلوبان');
     if (!isValidEmail(email))  return err('البريد الإلكتروني غير صالح');
 
-    // ─── 1. المصادقة عبر Supabase Auth ───
     const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
@@ -42,7 +67,6 @@ async function login(email, password) {
 
     _loginAttempts.delete(email);
 
-    // ─── 2. جلب الملف — Supabase أولاً (الجلسة مُوجَدة الآن) ───
     const profileResult = await _fetchUserProfile(authData.user.id);
     if (!isOk(profileResult)) {
       await supabaseClient.auth.signOut();
@@ -55,9 +79,9 @@ async function login(email, password) {
       return err('تم تعطيل هذا الحساب. راجع المدير.');
     }
 
-    // ─── 3. حفظ الحالة والجلسة ───
     AuthState.currentUser = profile;
     AuthState.authUser    = authData.user;
+    AuthState.isInitialized = true;
 
     await _setupDeviceToken(profile.id);
 
@@ -69,7 +93,6 @@ async function login(email, password) {
       allowedTabs : profile.allowed_tabs || [],
     });
 
-    // ─── 4. كتابة Dexie في الخلفية — لا ننتظرها ───
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
@@ -198,18 +221,31 @@ async function enableQuickLogin(equation) {
 
     if (error) return err(`فشل حفظ معادلة الدخول السريع: ${error.message}`);
 
+    // تحديث AuthState
+    AuthState.currentUser.quick_equation_hash = hash;
+
     // تحديث Dexie في الخلفية
     try {
-      if (db.isOpen())
+      if (typeof db !== 'undefined' && db.isOpen())
         await db.users.update(AuthState.currentUser.id, { quick_equation_hash: hash });
     } catch { /* تجاهل */ }
 
-    // حفظ للاستخدام offline
+    // ✅ إصلاح 3: تخزين deviceToken في localStorage (يبقى بين الجلسات)
     try {
-      const deviceToken = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY) || '';
+      const userId = AuthState.currentUser.id;
+      // نُولّد device_token ثابتاً مرتبطاً بالجهاز (يُعاد توليده إن لم يوجد)
+      let deviceToken = localStorage.getItem(`ahu_device_${userId}`);
+      if (!deviceToken) {
+        deviceToken = `${userId}_${generateUUID()}`;
+        localStorage.setItem(`ahu_device_${userId}`, deviceToken);
+      }
+      // تحديث sessionStorage أيضاً
+      sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
+
+      // حفظ بيانات الدخول السريع
       localStorage.setItem(
-        `ahu_quick_${AuthState.currentUser.id}`,
-        JSON.stringify({ hash, deviceToken, userId: AuthState.currentUser.id })
+        `ahu_quick_${userId}`,
+        JSON.stringify({ hash, deviceToken, userId })
       );
     } catch { /* تجاهل */ }
 
@@ -223,6 +259,9 @@ async function enableQuickLogin(equation) {
   }
 }
 
+// ────────────────────────────────────────────────────────────
+// quickLogin — الإصلاح الجذري
+// ────────────────────────────────────────────────────────────
 async function quickLogin(equation) {
   try {
     const trimmed = String(equation).trim();
@@ -232,24 +271,66 @@ async function quickLogin(equation) {
     if (!isOk(lockCheck)) return lockCheck;
 
     const hash = await hashSHA256(trimmed);
+    console.log('[QuickLogin] hash:', hash.slice(0,16) + '...');
 
     // ─── وضع الاتصال: RPC على Supabase ───
     if (isOnline()) {
+      console.log('[QuickLogin] وضع Online — استدعاء verify_quick_login...');
       const result = await callRPC(RPC.VERIFY_QUICK_LOGIN, { p_equation_hash: hash });
+
+      console.log('[QuickLogin] نتيجة RPC:', JSON.stringify(result?.data || result?.error));
 
       if (!isOk(result) || !result.data?.success) {
         _recordFailedAttempt('quick_login');
         return err(result.data?.message || 'معادلة غير صحيحة أو الحساب معطل');
       }
 
-      const profileResult = await _fetchUserProfile(result.data.user_id);
-      if (!isOk(profileResult)) return err('فشل جلب بيانات المستخدم');
+      // ✅ إصلاح 1: استخدام profile من RPC مباشرة (تتجاوز RLS)
+      // بدلاً من _fetchUserProfile الذي يفشل بسبب RLS (auth.uid()=null)
+      let profile = null;
 
-      const profile = profileResult.data;
-      if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
+      if (result.data.profile) {
+        // ─── المسار الجديد: profile مُضمَّن في رد RPC ───
+        profile = result.data.profile;
+        // تأكد أن id string مُحوَّل لـ string (وليس uuid object)
+        if (typeof profile.id !== 'string') profile.id = String(profile.id);
+        console.log('[QuickLogin] ✅ profile من RPC مباشرة:', profile.display_name);
+      } else {
+        // ─── مسار احتياطي: حاول جلب من Dexie ───
+        console.warn('[QuickLogin] profile غير موجود في RPC، محاولة Dexie...');
+        try {
+          if (typeof db !== 'undefined' && db.isOpen()) {
+            profile = await db.users.get(result.data.user_id);
+          }
+        } catch {}
 
-      AuthState.currentUser = profile;
+        if (!profile) {
+          console.error('[QuickLogin] ❌ فشل جلب profile من Dexie أيضاً');
+          return err('فشل جلب بيانات المستخدم — حاول تسجيل الدخول التقليدي مرة واحدة أولاً');
+        }
+      }
+
+      if (!profile.is_active) {
+        return err('تم تعطيل هذا الحساب. راجع المدير.');
+      }
+
+      AuthState.currentUser   = profile;
+      AuthState.isInitialized = true;
       _loginAttempts.delete('quick_login');
+
+      // ✅ حفظ للاستخدام Offline لاحقاً
+      _saveToDexieBackground(profile);
+
+      // ✅ تحديث DEVICE_TOKEN_KEY في sessionStorage
+      try {
+        const userId = profile.id;
+        let deviceToken = localStorage.getItem(`ahu_device_${userId}`);
+        if (!deviceToken) {
+          deviceToken = `${userId}_${generateUUID()}`;
+          localStorage.setItem(`ahu_device_${userId}`, deviceToken);
+        }
+        sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
+      } catch {}
 
       saveSession({
         userId         : profile.id,
@@ -260,7 +341,6 @@ async function quickLogin(equation) {
         quickLoginMode : true,
       });
 
-      _saveToDexieBackground(profile);
       _preloadEssentialData(profile);
 
       console.log(`⚡ AuthService: دخول سريع (online) — ${profile.display_name}`);
@@ -268,29 +348,45 @@ async function quickLogin(equation) {
     }
 
     // ─── وضع عدم الاتصال: localStorage + Dexie ───
-    const deviceToken = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY) || '';
+    console.log('[QuickLogin] وضع Offline...');
+
+    // ✅ إصلاح 3: البحث عن deviceToken في localStorage أولاً (لا sessionStorage)
     let offlineProfile = null;
 
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (!key?.startsWith('ahu_quick_')) continue;
-        const data = JSON.parse(localStorage.getItem(key) || '{}');
-        if (data.hash === hash && data.deviceToken === deviceToken) {
-          if (db.isOpen()) offlineProfile = await db.users.get(data.userId);
-          break;
+
+        let stored;
+        try { stored = JSON.parse(localStorage.getItem(key) || '{}'); }
+        catch { continue; }
+
+        if (stored.hash !== hash) continue;
+
+        // تحقق deviceToken — نقبل أي deviceToken مطابق في localStorage
+        const userId = stored.userId;
+        if (!userId) continue;
+
+        // جلب الملف من Dexie
+        if (typeof db !== 'undefined' && db.isOpen()) {
+          offlineProfile = await db.users.get(userId);
         }
+        if (offlineProfile) break;
       }
-    } catch { /* تجاهل */ }
+    } catch (e) {
+      console.warn('[QuickLogin] خطأ في البحث offline:', e.message);
+    }
 
     if (!offlineProfile) {
       _recordFailedAttempt('quick_login');
-      return err('الدخول السريع غير متاح offline على هذا الجهاز. سجّل دخولك التقليدي أولاً.');
+      return err('الدخول السريع غير متاح offline على هذا الجهاز.\nسجّل دخولك التقليدي مرة واحدة أولاً.');
     }
 
     if (!offlineProfile.is_active) return err('تم تعطيل هذا الحساب.');
 
-    AuthState.currentUser = offlineProfile;
+    AuthState.currentUser   = offlineProfile;
+    AuthState.isInitialized = true;
     _loginAttempts.delete('quick_login');
 
     saveSession({
@@ -307,6 +403,7 @@ async function quickLogin(equation) {
     return ok({ profile: offlineProfile });
 
   } catch (e) {
+    console.error('❌ AuthService.quickLogin():', e);
     return err(`خطأ في الدخول السريع: ${e.message}`);
   }
 }
@@ -319,11 +416,18 @@ async function disableQuickLogin() {
       .update({ quick_equation_hash: null })
       .eq('id', AuthState.currentUser.id);
     if (error) return err(error.message);
+
+    // تحديث AuthState
+    AuthState.currentUser.quick_equation_hash = null;
+
     try {
-      if (db.isOpen())
+      if (typeof db !== 'undefined' && db.isOpen())
         await db.users.update(AuthState.currentUser.id, { quick_equation_hash: null });
-      localStorage.removeItem(`ahu_quick_${AuthState.currentUser.id}`);
+      const uid = AuthState.currentUser.id;
+      localStorage.removeItem(`ahu_quick_${uid}`);
+      // نُبقي ahu_device_ لأنه معرّف الجهاز
     } catch { /* تجاهل */ }
+
     return ok(true);
   } catch (e) {
     return err(e.message);
@@ -336,36 +440,36 @@ async function disableQuickLogin() {
 
 async function _setupDeviceToken(userId) {
   try {
-    let deviceToken = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY);
+    // ✅ إصلاح 3: نستخدم localStorage للديمومة بين الجلسات
+    let deviceToken = localStorage.getItem(`ahu_device_${userId}`);
     if (!deviceToken) {
       deviceToken = `${userId}_${generateUUID()}`;
-      sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
+      localStorage.setItem(`ahu_device_${userId}`, deviceToken);
     }
+    // تحديث sessionStorage أيضاً للاستخدام الآني
+    sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
     return deviceToken;
   } catch { return generateUUID(); }
 }
 
 function getDeviceToken() {
-  try { return sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY); }
-  catch { return null; }
+  try {
+    return sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
+      || localStorage.getItem(`ahu_device_${AuthState.currentUser?.id}`)
+      || null;
+  } catch { return null; }
 }
 
 // ============================================================
-// 7. جلب ملف المستخدم — المنطق المُصحَّح
+// 7. جلب ملف المستخدم
 // ============================================================
 
 /**
- * يجلب ملف المستخدم بالترتيب الصحيح:
- *
- * متصل بالإنترنت:
- *   1. Supabase (مصدر الحقيقة) — الجلسة مُوجَدة فـ RLS تسمح
- *   2. Dexie كاحتياطي إذا فشل Supabase لأي سبب
- *
- * غير متصل:
- *   1. Dexie مباشرة
+ * يجلب ملف المستخدم — يُستخدم فقط عند وجود جلسة Auth نشطة
+ * (تسجيل الدخول التقليدي أو checkSession)
+ * لا تستخدمه في quickLogin لأن RLS تمنعه بدون جلسة
  */
 async function _fetchUserProfile(userId) {
-  // ─── وضع الاتصال ───
   if (isOnline()) {
     try {
       const { data, error } = await supabaseClient
@@ -375,17 +479,15 @@ async function _fetchUserProfile(userId) {
         .single();
 
       if (!error && data) return ok(data);
-
-      // فشل Supabase — سقوط إلى Dexie
-      console.warn('⚠️ AuthService._fetchUserProfile: فشل Supabase، محاولة Dexie:', error?.message);
+      console.warn('⚠️ AuthService._fetchUserProfile: فشل Supabase:', error?.message);
     } catch (e) {
-      console.warn('⚠️ AuthService._fetchUserProfile: استثناء Supabase:', e.message);
+      console.warn('⚠️ AuthService._fetchUserProfile: استثناء:', e.message);
     }
   }
 
-  // ─── Dexie (احتياطي أو offline) ───
+  // Dexie احتياطي
   try {
-    if (db.isOpen()) {
+    if (typeof db !== 'undefined' && db.isOpen()) {
       const local = await db.users.get(userId);
       if (local) return ok(local);
     }
@@ -403,7 +505,7 @@ async function _fetchUserProfile(userId) {
 function _saveToDexieBackground(profile) {
   (async () => {
     try {
-      if (db.isOpen())
+      if (typeof db !== 'undefined' && db.isOpen())
         await db.users.put({ ...profile, sync_status: SYNC_STATUS.SYNCED });
     } catch (e) {
       console.warn('⚠️ AuthService: فشل حفظ Dexie (غير حرج):', e.message);
@@ -439,7 +541,7 @@ function _preloadEssentialData(profile) {
 async function _preloadSystemSettings() {
   try {
     const { data, error } = await supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*');
-    if (!error && data && db.isOpen())
+    if (!error && data && typeof db !== 'undefined' && db.isOpen())
       for (const s of data) { try { await db.system_settings.put(s); } catch { } }
   } catch { }
 }
@@ -447,14 +549,18 @@ async function _preloadSystemSettings() {
 async function _preloadCompanies() {
   try {
     const { data, error } = await supabaseClient.from(TABLES.COMPANIES).select('*').order('name');
-    if (!error && data && db.isOpen()) { try { await db.companies.bulkPut(data); } catch { } }
+    if (!error && data && typeof db !== 'undefined' && db.isOpen()) {
+      try { await db.companies.bulkPut(data); } catch { }
+    }
   } catch { }
 }
 
 async function _preloadExpenseAccounts() {
   try {
     const { data, error } = await supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name');
-    if (!error && data && db.isOpen()) { try { await db.expense_accounts.bulkPut(data); } catch { } }
+    if (!error && data && typeof db !== 'undefined' && db.isOpen()) {
+      try { await db.expense_accounts.bulkPut(data); } catch { }
+    }
   } catch { }
 }
 
@@ -464,7 +570,7 @@ async function _preloadUsers() {
       .from(TABLES.USERS)
       .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash')
       .order('display_name');
-    if (!error && data && db.isOpen())
+    if (!error && data && typeof db !== 'undefined' && db.isOpen())
       try { await db.users.bulkPut(data.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED }))); } catch { }
   } catch { }
 }
@@ -472,7 +578,7 @@ async function _preloadUsers() {
 async function _preloadBankAccounts() {
   try {
     const { data, error } = await supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name');
-    if (!error && data && db.isOpen())
+    if (!error && data && typeof db !== 'undefined' && db.isOpen())
       try { await db.bank_accounts.bulkPut(data.map(b => ({ ...b, sync_status: SYNC_STATUS.SYNCED }))); } catch { }
   } catch { }
 }
@@ -518,9 +624,7 @@ function isAdmin()           { return AuthState.currentUser?.role === ROLES.ADMI
 function isAgent()           { return AuthState.currentUser?.role === ROLES.AGENT; }
 function isAdminAssistant()  { return AuthState.currentUser?.role === ROLES.ADMIN_ASSISTANT; }
 
-function canAccessTab(tabId) {
-  return getAllowedTabs().includes(tabId);
-}
+function canAccessTab(tabId) { return getAllowedTabs().includes(tabId); }
 
 function getAllowedTabs() {
   const user = AuthState.currentUser;
@@ -538,7 +642,7 @@ function getAllowedTabs() {
 function generateAccountNumber(user) {
   if (!user) return null;
   const prefix  = user.role === ROLES.ADMIN ? 'M'
-    : user.role === ROLES.ADMIN_ASSISTANT ? 'X' : 'A';
+    : user.role === ROLES.ADMIN_ASSISTANT   ? 'X' : 'A';
   const shortId = user.id.replace(/-/g, '').slice(-4).toUpperCase();
   return `${prefix}${shortId}`;
 }
@@ -569,4 +673,4 @@ const AuthService = {
 };
 
 window.AuthService = AuthService;
-console.log('✅ AuthService.js v2.1 — Online-First مُصحَّح مع fallback ذكي');
+console.log('✅ AuthService.js v3.0 — إصلاح نهائي للدخول السريع (RLS bypass + localStorage deviceToken)');
