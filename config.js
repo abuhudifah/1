@@ -148,6 +148,7 @@ const AGENT_TABS = Object.freeze([
   TABS.BANK_ACCOUNTS,
   TABS.DEBTORS,
   TABS.NOTIFICATIONS,
+  TABS.SETTINGS,        // ✅ إضافة جديدة — لظهور إعدادات الملف الشخصي
 ]);
 
 // التبويبات الإدارية (للمدير والمساعد الإداري)
