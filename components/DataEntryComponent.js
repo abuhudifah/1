@@ -836,6 +836,12 @@ const DataEntryComponent = {
   async _saveCollection({ amount, customer, customerId, companyId }) {
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
+    // تحقق من التعارض: لا يمكن تحديد شركة وعميل مديون في نفس الوقت
+    if (companyId && customerId) {
+      showToast('لا يمكن تحديد شركة وعميل مديون في نفس الوقت', 'error');
+      return;
+    }
+
     const rounded = roundAmount(amount);
 
     // Fix #15 — BR-002: تحقق من مبلغ التحصيل مقابل الدين المتبقي

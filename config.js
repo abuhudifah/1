@@ -164,6 +164,7 @@ const AGENT_TABS = Object.freeze([
   TABS.DAILY_SUMMARY,
   TABS.BANK_ACCOUNTS,
   TABS.DEBTORS,
+  TABS.FAILED_DEPOSITS,
   TABS.NOTIFICATIONS,
   TABS.SETTINGS,        // ✅ إضافة جديدة — لظهور إعدادات الملف الشخصي
 ]);

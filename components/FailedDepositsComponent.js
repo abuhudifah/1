@@ -313,8 +313,22 @@ const FailedDepositsComponent = {
 
     if (!choice) return;
     const result = await repo.update(TABLES.FAILED_DEPOSITS, fd.id, { status: choice });
-    if (isOk(result)) { showToast('تم تحديث الحالة', 'success'); await this._load(); }
-    else showToast(`فشل: ${result.error}`, 'error');
+    if (!isOk(result)) { showToast(`فشل: ${result.error}`, 'error'); return; }
+
+    // قيد محاسبي عند الاسترداد: مدين BNK_ / دائن AGT_ (مثل إيداع عادي)
+    if (choice === FAILED_DEPOSIT_STATUS.REFUNDED && fd.bank_account_id) {
+      await AccountingService.createTransactionWithEntries({
+        type            : TRANSACTION_TYPES.DEPOSIT,
+        amount          : fd.amount,
+        agent_id        : fd.agent_id,
+        bank_account_id : fd.bank_account_id,
+        date            : getCurrentSaudiDate(),
+        details         : `تسوية إيداع فاشل — ${fd.id}`,
+      });
+    }
+
+    showToast('تم تحديث الحالة', 'success');
+    await this._load();
   },
 
   async _delete(id, amount) {
