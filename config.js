@@ -78,6 +78,10 @@ const RPC = Object.freeze({
   GET_AUDIT_LOGS                  : 'get_audit_logs',                  // params: {p_from, p_to, p_user_id?}
   GET_OPENING_BALANCE             : 'get_opening_balance',             // params: {p_account_id, p_from_date} → numeric
   GET_NEXT_VOUCHER_NUMBER         : 'get_next_voucher_number',         // params: {} → text
+  // دوال الموافقة على المعاملات
+  APPROVE_TRANSACTION             : 'approve_transaction',             // params: {p_transaction_id}
+  REJECT_TRANSACTION              : 'reject_transaction',              // params: {p_transaction_id, p_reason}
+  GET_PENDING_APPROVALS           : 'get_pending_approvals',           // params: {} → [{id,type,amount,...}]
 });
 
 // ============================================================
@@ -237,7 +241,21 @@ const ACCOUNT_PREFIXES = Object.freeze({
   BANK     : 'BNK_',
   CUSTOMER : 'CUST_',
   EXPENSE  : 'EXP_',
+  REVENUE  : 'REV_',
   SUSPENSE : 'SUSP_',
+});
+
+// حالات الموافقة على المعاملات
+const APPROVAL_STATUS = Object.freeze({
+  APPROVED : 'approved',
+  PENDING  : 'pending',
+  REJECTED : 'rejected',
+});
+
+const APPROVAL_STATUS_LABELS = Object.freeze({
+  approved : 'مُوافَق عليه',
+  pending  : 'بانتظار الموافقة',
+  rejected : 'مرفوض',
 });
 
 // ============================================================
@@ -341,5 +359,7 @@ window.FAILED_DEPOSIT_STATUS = FAILED_DEPOSIT_STATUS;
 window.FAILED_DEPOSIT_STATUS_LABELS = FAILED_DEPOSIT_STATUS_LABELS;
 window.NOTIFICATION_TYPES    = NOTIFICATION_TYPES;
 window.ACCOUNT_PREFIXES      = ACCOUNT_PREFIXES;
+window.APPROVAL_STATUS       = APPROVAL_STATUS;
+window.APPROVAL_STATUS_LABELS = APPROVAL_STATUS_LABELS;
 
 console.log(`✅ config.js محمّل — ${APP_CONFIG.NAME} v${APP_CONFIG.VERSION}`);

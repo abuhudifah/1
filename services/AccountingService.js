@@ -48,6 +48,8 @@ const AccountId = {
   bank     : (id)   => `${ACCOUNT_PREFIXES.BANK}${id}`,
   customer : (id)   => `${ACCOUNT_PREFIXES.CUSTOMER}${id}`,
   expense  : (code) => `${ACCOUNT_PREFIXES.EXPENSE}${code}`,
+  revenue  : (code) => `${ACCOUNT_PREFIXES.REVENUE}${code}`,
+  suspense : (txId) => `${ACCOUNT_PREFIXES.SUSPENSE}${txId}`,
 };
 
 // ============================================================
@@ -124,17 +126,28 @@ function _buildExpenseEntries(tx, voucher) {
 }
 
 function _buildReceiptEntries(tx, voucher) {
-  const date        = tx.date || getCurrentSaudiDate();
-  const receiverAcc = AccountId.agent(tx.agent_id);
-  // FIX-5a: كان يستخدم 'GENERAL_FUND' مباشرة بدون ثابت — الآن موحَّد
-  const senderAcc   = tx.from_agent_id
+  const date      = tx.date || getCurrentSaudiDate();
+  const senderAcc = tx.from_agent_id
     ? AccountId.agent(tx.from_agent_id)
     : (tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID);
 
+  // Fix #11: RECEIPT في حالة انتظار → SUSP_ بدلاً من صندوق المندوب مباشرة
+  // عند الموافقة يُنفَّذ: DR AGT_ / CR SUSP_ (عبر approve_transaction RPC)
+  if (tx.approval_status === APPROVAL_STATUS.PENDING) {
+    const suspAcc = AccountId.suspense(tx.id);
+    return [
+      { voucher_number: voucher, date, account_id: suspAcc,   debit: tx.amount, credit: 0,
+        description: `استلام معلق — بانتظار موافقة المدير` },
+      { voucher_number: voucher, date, account_id: senderAcc, debit: 0, credit: tx.amount,
+        description: 'استلام معلق — خصم مؤقت من المرسِل' },
+    ];
+  }
+
+  // حالة عادية (approved مباشرة)
   return [
-    { voucher_number: voucher, date, account_id: receiverAcc, debit: tx.amount, credit: 0,
+    { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id), debit: tx.amount, credit: 0,
       description: `استلام من ${tx.from_agent_id ? 'مندوب' : 'الشركة'}` },
-    { voucher_number: voucher, date, account_id: senderAcc,   debit: 0, credit: tx.amount,
+    { voucher_number: voucher, date, account_id: senderAcc, debit: 0, credit: tx.amount,
       description: 'تسليم إلى المندوب' },
   ];
 }
@@ -245,14 +258,20 @@ async function createTransactionWithEntries(txData) {
       return err('التاريخ غير صالح');
     }
 
+    // Fix #12: RECEIPT يبدأ بحالة انتظار الموافقة إلا إذا كان المدير يسجلها مباشرة
+    const isReceiptByAgent = txData.type === TRANSACTION_TYPES.RECEIPT
+      && AuthService.currentUser()?.role === ROLES.AGENT;
+
     const transaction = {
       ...txData,
-      id          : txData.id || (isOnline() ? generateUUID() : generateTempId()),
-      date        : txData.date || getCurrentSaudiDate(),
-      time        : txData.time || getCurrentSaudiTime(),
-      created_at  : new Date().toISOString(),
-      updated_at  : new Date().toISOString(),
-      sync_status : isOnline() ? SYNC_STATUS.SYNCED : SYNC_STATUS.PENDING,
+      id              : txData.id || (isOnline() ? generateUUID() : generateTempId()),
+      date            : txData.date || getCurrentSaudiDate(),
+      time            : txData.time || getCurrentSaudiTime(),
+      created_at      : new Date().toISOString(),
+      updated_at      : new Date().toISOString(),
+      sync_status     : isOnline() ? SYNC_STATUS.SYNCED : SYNC_STATUS.PENDING,
+      approval_status : txData.approval_status
+        || (isReceiptByAgent ? APPROVAL_STATUS.PENDING : APPROVAL_STATUS.APPROVED),
     };
 
     const entriesResult = buildEntries(transaction);
@@ -653,6 +672,70 @@ async function getAgentDailySummary(agentId, date) {
 // تصدير
 // ============================================================
 
+// ============================================================
+// Fix #12: الموافقة على المعاملات المعلقة
+// ============================================================
+
+async function approveTransaction(transactionId) {
+  try {
+    if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
+      return err('الموافقة مسموحة للمدير والمساعد الإداري فقط');
+    }
+    if (!isOnline()) return err('يجب الاتصال بالإنترنت للموافقة على المعاملات');
+
+    const result = await callRPC(RPC.APPROVE_TRANSACTION, { p_transaction_id: transactionId });
+    if (!isOk(result)) return result;
+
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      await db.transactions.update(transactionId, { approval_status: APPROVAL_STATUS.APPROVED });
+    }
+
+    window.dispatchEvent(new CustomEvent('accounting:transactionApproved', { detail: { transactionId } }));
+    return result;
+  } catch (e) {
+    return err(`فشل الموافقة: ${e.message}`);
+  }
+}
+
+async function rejectTransaction(transactionId, reason = '') {
+  try {
+    if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
+      return err('الرفض مسموح للمدير والمساعد الإداري فقط');
+    }
+    if (!isOnline()) return err('يجب الاتصال بالإنترنت لرفض المعاملات');
+
+    const result = await callRPC(RPC.REJECT_TRANSACTION, {
+      p_transaction_id : transactionId,
+      p_reason         : reason,
+    });
+    if (!isOk(result)) return result;
+
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      await db.transactions.update(transactionId, { approval_status: APPROVAL_STATUS.REJECTED });
+    }
+
+    window.dispatchEvent(new CustomEvent('accounting:transactionRejected', { detail: { transactionId, reason } }));
+    return result;
+  } catch (e) {
+    return err(`فشل الرفض: ${e.message}`);
+  }
+}
+
+async function getPendingApprovals() {
+  try {
+    if (!isOnline()) return ok([]);
+    const result = await callRPC(RPC.GET_PENDING_APPROVALS, {});
+    if (!isOk(result)) return ok([]);
+    return ok(Array.isArray(result.data) ? result.data : []);
+  } catch {
+    return ok([]);
+  }
+}
+
+// ============================================================
+// تصدير
+// ============================================================
+
 const AccountingService = {
   buildEntries,
   createTransactionWithEntries,
@@ -663,10 +746,12 @@ const AccountingService = {
   validateLedger,
   getDailyDepositsTotal,
   getAgentDailySummary,
+  approveTransaction,
+  rejectTransaction,
+  getPendingApprovals,
   AccountId,
-  // FIX-5a: تصدير الثابت للاستخدام في مكونات أخرى
   GENERAL_ACCOUNT_ID,
 };
 
 window.AccountingService = AccountingService;
-console.log('✅ AccountingService.js v1.1 — FIX-5a: CASH_GENERAL → GENERAL_FUND | FIX-3: حماية typeof db');
+console.log('✅ AccountingService.js v2.0 — Phase C: SUSP_ accounts, approval workflow, revenue accounts');
