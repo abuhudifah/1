@@ -21,6 +21,21 @@
 'use strict';
 
 // ============================================================
+// خريطة المفاتيح الأساسية للجداول ذات PK غير قياسي
+// مطابقة لـ TABLE_PRIMARY_KEYS في Repository.js
+// ============================================================
+
+const _SQ_PK_MAP = Object.freeze({
+  account_balances : 'account_id',
+  system_settings  : 'key',
+  cache_meta       : 'key',
+});
+
+function _sqGetPKColumn(tableName) {
+  return _SQ_PK_MAP[tableName] || 'id';
+}
+
+// ============================================================
 // حالة داخلية للطابور
 // ============================================================
 
@@ -285,11 +300,13 @@ const SyncQueue = {
    */
   async _executeUpdate(tableName, recordId, changes) {
     try {
+      const pkCol = _sqGetPKColumn(tableName);
+
       // جلب updated_at الحالي من الخادم
       const { data: current, error: fetchError } = await supabaseClient
         .from(tableName)
         .select('updated_at')
-        .eq('id', recordId)
+        .eq(pkCol, recordId)
         .single();
 
       if (fetchError) {
@@ -300,7 +317,7 @@ const SyncQueue = {
         return err(fetchError.message);
       }
 
-      // ✅ الإصلاح: مقارنة updated_at لكشف ما إذا عدّل شخص آخر السجل
+      // مقارنة updated_at لكشف ما إذا عدّل شخص آخر السجل
       if (
         current?.updated_at &&
         changes?.updated_at &&
@@ -320,7 +337,7 @@ const SyncQueue = {
       const { data: saved, error } = await supabaseClient
         .from(tableName)
         .update(cleanChanges)
-        .eq('id', recordId)
+        .eq(pkCol, recordId)
         .select()
         .single();
 
@@ -344,10 +361,12 @@ const SyncQueue = {
    */
   async _executeDelete(tableName, recordId) {
     try {
+      const pkCol = _sqGetPKColumn(tableName);
+
       const { error } = await supabaseClient
         .from(tableName)
         .delete()
-        .eq('id', recordId);
+        .eq(pkCol, recordId);
 
       // إذا كان السجل غير موجود — اعتبره محذوفاً بالفعل
       if (error && error.code !== 'PGRST116') {
@@ -547,7 +566,7 @@ const SyncQueue = {
           const { data } = await supabaseClient
             .from(item.table_name)
             .select('*')
-            .eq('id', item.record_id)
+            .eq(_sqGetPKColumn(item.table_name), item.record_id)
             .single();
           serverData = data;
         }
