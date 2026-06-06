@@ -504,7 +504,33 @@ function _translateAuthError(msg) {
 }
 
 // ============================================================
-// 14. الدوال العامة
+// 14. التحقق من is_active عند التنقل (TASK-2.3)
+// ============================================================
+let _lastActiveCheckTs = 0;
+const _ACTIVE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 دقائق
+
+async function verifyIsActive() {
+  const user = AuthState.currentUser;
+  if (!user) return err('لا يوجد مستخدم مسجّل');
+
+  const now = Date.now();
+  const useCache = !isOnline() || (now - _lastActiveCheckTs) < _ACTIVE_CHECK_INTERVAL_MS;
+  if (useCache) return user.is_active ? ok(true) : err('تم تعطيل هذا الحساب');
+
+  try {
+    const { data, error } = await supabaseClient
+      .from(TABLES.USERS).select('is_active').eq('id', user.id).single();
+    _lastActiveCheckTs = now;
+    if (!error && data) AuthState.currentUser.is_active = data.is_active;
+    const active = error ? user.is_active : data.is_active;
+    return active ? ok(true) : err('تم تعطيل هذا الحساب');
+  } catch {
+    return user.is_active ? ok(true) : err('تم تعطيل هذا الحساب');
+  }
+}
+
+// ============================================================
+// 15. الدوال العامة
 // ============================================================
 function getCurrentUser()    { return AuthState.currentUser; }
 function getCurrentRole()    { return AuthState.currentUser?.role || null; }
@@ -542,6 +568,7 @@ const AuthService = {
   enableQuickLogin, quickLogin, disableQuickLogin,
   getDeviceToken, getCurrentUser, getCurrentRole, getCurrentUserId,
   isAdmin, isAgent, isAdminAssistant,
+  verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
   _state: AuthState,
 };
