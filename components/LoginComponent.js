@@ -1,5 +1,5 @@
 /**
- * components/LoginComponent.js — v5.0 Phase1
+ * components/LoginComponent.js — v5.1 Phase3
  * نظام أبو حذيفة
  *
  * تدفق المصادقة المُعاد تصميمه:
@@ -36,173 +36,263 @@ function _hasAnyQuickLogin() {
 
 // ─── أنماط CSS ─────────────────────────────────────────────
 const _CSS = `
-  /* ── صفحة تسجيل الدخول ── */
+  /* ══ Phase 3: Login Screen Visual Identity ══ */
+
+  /* ── الخلفية الرئيسية مع نمط شبكي دقيق ── */
   .lp-wrap {
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 20px;
+    padding: 80px 20px 40px;
     position: relative;
     overflow: hidden;
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 55%, #0f172a 100%);
-    transition: background 0.4s;
-  }
-  body.dark-mode .lp-wrap {
-    background: linear-gradient(135deg, #060b14 0%, #0f1e35 55%, #060b14 100%);
+    background:
+      linear-gradient(135deg, #080e1f 0%, #0e2245 45%, #071628 75%, #080e1f 100%);
   }
 
-  /* ── خلفية زخرفية ── */
+  /* شبكة نقطية خفية في الخلفية */
+  .lp-wrap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(59,130,246,0.18) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  /* ── كرات ضوء متحركة ── */
   .lp-bg-orb {
     position: absolute;
     border-radius: 50%;
     pointer-events: none;
+    filter: blur(1px);
   }
   .lp-bg-orb-1 {
-    width: 480px; height: 480px;
-    background: radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 70%);
-    top: -100px; right: -80px;
-    animation: lp-pulse 6s ease-in-out infinite;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(37,99,235,0.18) 0%, transparent 65%);
+    top: -160px; right: -120px;
+    animation: lp-drift 10s ease-in-out infinite;
   }
   .lp-bg-orb-2 {
-    width: 320px; height: 320px;
-    background: radial-gradient(circle, rgba(16,185,129,0.10) 0%, transparent 70%);
-    bottom: -60px; left: -60px;
-    animation: lp-pulse 8s ease-in-out infinite 2.5s;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 65%);
+    bottom: -80px; left: -80px;
+    animation: lp-drift 13s ease-in-out infinite 3s;
   }
-  @keyframes lp-pulse { 0%,100% { opacity:.5; } 50% { opacity:1; } }
+  .lp-bg-orb-3 {
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(139,92,246,0.10) 0%, transparent 65%);
+    top: 55%; left: 55%;
+    animation: lp-drift 9s ease-in-out infinite 1.5s;
+  }
+  @keyframes lp-drift {
+    0%,100% { transform: translate(0,0)    scale(1);    opacity: 0.6; }
+    33%      { transform: translate(20px,-15px) scale(1.06); opacity: 0.9; }
+    66%      { transform: translate(-12px,10px) scale(0.96); opacity: 0.7; }
+  }
 
-  /* ── شعار أعلى الشاشة ── */
+  /* ── شعار الشركة في الأعلى (مُعاد تصميمه) ── */
   .lp-brand {
     position: absolute;
-    top: 24px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 64px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: center;
+    gap: 12px;
     z-index: 20;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(8,14,31,0.60);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
   .lp-brand-icon {
-    width: 36px; height: 36px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    width: 38px; height: 38px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 14px rgba(37,99,235,0.45);
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.30), 0 4px 16px rgba(37,99,235,0.40);
+  }
+  .lp-brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
   }
   .lp-brand-name {
-    color: rgba(255,255,255,0.90);
-    font-size: 0.88rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+  }
+  .lp-brand-sub {
+    color: rgba(255,255,255,0.40);
+    font-size: 0.68rem;
+    font-weight: 400;
+    letter-spacing: 0.04em;
   }
 
   /* ── حاوية البطاقة ── */
   .lp-scene {
     width: 100%;
-    max-width: 360px;
+    max-width: 368px;
     position: relative;
     z-index: 10;
+    margin-top: 16px;
   }
 
   /* ── بطاقة Base ── */
   .lp-card {
-    border-radius: 28px;
-    padding: 28px 24px 24px;
-    animation: lp-scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border-radius: 24px;
+    padding: 26px 22px 22px;
+    animation: lp-scale-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   @keyframes lp-scale-in {
-    from { opacity:0; transform:scale(0.94) translateY(8px); }
+    from { opacity:0; transform:scale(0.92) translateY(12px); }
     to   { opacity:1; transform:scale(1)    translateY(0); }
   }
 
-  /* ── بطاقة الآلة الحاسبة (تفعيل القفلية) ── */
+  /* ── بطاقة الآلة الحاسبة ── */
   .calc-card {
-    background: #1c1c1e;
-    border: none;
-    box-shadow: 0 40px 100px rgba(0,0,0,0.70);
+    background: linear-gradient(160deg, #161b2e 0%, #0f1422 100%);
+    border: 1px solid rgba(59,130,246,0.14);
+    box-shadow:
+      0 32px 80px rgba(0,0,0,0.75),
+      0 0 0 1px rgba(255,255,255,0.04) inset,
+      0 1px 0 rgba(255,255,255,0.06) inset;
   }
   .calc-display {
-    background: transparent;
-    border: none;
-    padding: 8px 12px 18px;
-    margin-bottom: 12px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 14px 16px 18px;
+    margin-bottom: 14px;
     text-align: right;
     direction: ltr;
-    min-height: 110px;
+    min-height: 112px;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     overflow: hidden;
   }
-  .calc-expr   { color:rgba(255,255,255,0.40); font-size:0.88rem; min-height:20px; word-break:break-all; margin-bottom:6px; font-family:var(--font-mono,monospace); text-align:right; }
-  .calc-result { color:#fff; font-size:3rem; font-weight:300; line-height:1.1; word-break:break-all; text-align:right; transition:font-size 150ms,color 150ms; letter-spacing:-1px; }
+  .calc-expr {
+    color: rgba(255,255,255,0.35);
+    font-size: 0.82rem;
+    min-height: 18px;
+    word-break: break-all;
+    margin-bottom: 8px;
+    font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+    text-align: right;
+    letter-spacing: 0.02em;
+  }
+  .calc-result {
+    color: #fff;
+    font-size: 2.8rem;
+    font-weight: 200;
+    line-height: 1.1;
+    word-break: break-all;
+    text-align: right;
+    transition: font-size 120ms ease, color 120ms ease;
+    letter-spacing: -1.5px;
+    font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+  }
 
   /* ── مؤشر Quick Login ── */
   .calc-ql-badge {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    background: rgba(37,99,235,0.18);
-    border: 1px solid rgba(37,99,235,0.35);
-    border-radius: 10px;
-    margin-bottom: 12px;
+    padding: 9px 13px;
+    background: rgba(37,99,235,0.12);
+    border: 1px solid rgba(59,130,246,0.25);
+    border-radius: 12px;
+    margin-bottom: 14px;
     color: #93c5fd;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
+    line-height: 1.5;
   }
   .calc-ql-badge-dot {
-    width: 7px; height: 7px;
+    width: 8px; height: 8px;
     border-radius: 50%;
     background: #3b82f6;
     flex-shrink: 0;
-    box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
-    animation: ql-dot-pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.22);
+    animation: ql-dot-pulse 2.4s ease-in-out infinite;
   }
-  @keyframes ql-dot-pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+  @keyframes ql-dot-pulse {
+    0%,100% { opacity:1; box-shadow:0 0 0 3px rgba(59,130,246,0.22); }
+    50%     { opacity:0.6; box-shadow:0 0 0 5px rgba(59,130,246,0.08); }
+  }
 
   /* ── شبكة الأزرار ── */
-  .ios-calc-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .ios-calc-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
   .calc-btn {
     aspect-ratio: 1/1;
     border: none;
     border-radius: 50%;
-    font-size: 1.4rem;
-    font-weight: 500;
+    font-size: 1.35rem;
+    font-weight: 400;
     cursor: pointer;
-    font-family: inherit;
+    font-family: var(--font-arabic, inherit);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: filter 80ms, transform 80ms;
+    transition: transform 70ms ease, filter 70ms ease, box-shadow 70ms ease;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     line-height: 1;
+    position: relative;
   }
   .calc-btn.wide {
     border-radius: 999px;
     aspect-ratio: auto;
     grid-column: span 2;
     justify-content: flex-start;
-    padding: 0 0 0 28px;
+    padding: 0 0 0 26px;
+    font-size: 1.1rem;
   }
-  .calc-btn-num  { background:#333333; color:#fff; }
-  .calc-btn-op   { background:#2563eb; color:#fff; }
-  .calc-btn-fn   { background:#334155; color:#94a3b8; }
-  .calc-btn-eq   { background:#2563eb; color:#fff; }
-  .calc-btn:active, .calc-btn.pressed { transform:scale(0.88); filter:brightness(1.3); }
-  .calc-btn-num:hover { filter:brightness(1.15); }
-  .calc-btn-op:hover  { filter:brightness(1.12); }
-  .calc-btn-fn:hover  { filter:brightness(1.12); }
+  .calc-btn-num {
+    background: rgba(70,80,100,0.65);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.30), 0 1px 0 rgba(255,255,255,0.06) inset;
+  }
+  .calc-btn-op {
+    background: linear-gradient(145deg, #2563eb, #1d4ed8);
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(37,99,235,0.40), 0 1px 0 rgba(255,255,255,0.12) inset;
+  }
+  .calc-btn-fn {
+    background: rgba(51,65,85,0.75);
+    color: #94a3b8;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  }
+  .calc-btn-eq {
+    background: linear-gradient(145deg, #2563eb, #1d4ed8);
+    color: #fff;
+    box-shadow: 0 3px 12px rgba(37,99,235,0.50), 0 1px 0 rgba(255,255,255,0.14) inset;
+  }
+  .calc-btn:active, .calc-btn.pressed {
+    transform: scale(0.86);
+    filter: brightness(1.25);
+    box-shadow: none;
+  }
+  .calc-btn-num:hover  { filter:brightness(1.18); }
+  .calc-btn-op:hover   { filter:brightness(1.10); }
+  .calc-btn-fn:hover   { filter:brightness(1.15); }
+  .calc-btn-eq:hover   { filter:brightness(1.10); }
 
   .calc-ql-status {
     text-align: center;
-    font-size: 0.78rem;
-    color: #3b82f6;
-    margin-top: 8px;
+    font-size: 0.76rem;
+    color: #60a5fa;
+    margin-top: 10px;
     min-height: 20px;
-    transition: color 200ms;
+    transition: color 180ms;
+    letter-spacing: 0.01em;
   }
 
   /* ── زر التبديل للتسجيل التقليدي ── */
@@ -230,38 +320,58 @@ const _CSS = `
 
   /* ── بطاقة التسجيل التقليدي ── */
   .login-card {
-    background: rgba(255,255,255,0.94);
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
-    border: 1px solid rgba(15,23,42,0.08);
-    box-shadow: 0 32px 80px rgba(15,23,42,0.20), inset 0 1px 0 rgba(255,255,255,0.6);
+    background: rgba(255,255,255,0.97);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    border: 1px solid rgba(15,23,42,0.07);
+    box-shadow:
+      0 40px 90px rgba(8,14,31,0.28),
+      0 0 0 1px rgba(255,255,255,0.50) inset;
   }
   body.dark-mode .login-card {
-    background: rgba(15,23,42,0.94);
-    border-color: rgba(248,250,252,0.08);
+    background: rgba(14,20,36,0.97);
+    border-color: rgba(59,130,246,0.12);
+    box-shadow: 0 40px 90px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset;
   }
 
+  /* رأس بطاقة الدخول */
   .lp-logo-row {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    margin-bottom: 22px;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(15,23,42,0.07);
   }
+  body.dark-mode .lp-logo-row { border-bottom-color: rgba(255,255,255,0.06); }
+
   .lp-logo-circle {
-    width: 44px; height: 44px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    width: 46px; height: 46px;
+    border-radius: 13px;
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 16px rgba(37,99,235,0.40);
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.30), 0 6px 20px rgba(37,99,235,0.35);
     flex-shrink: 0;
   }
+  .lp-logo-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
   .lp-form-title {
-    font-size: 1.10rem;
+    font-size: 1.05rem;
     font-weight: 700;
-    color: var(--text-primary, #0f172a);
+    color: #0f172a;
+    line-height: 1.2;
   }
   body.dark-mode .lp-form-title { color: #f1f5f9; }
+  .lp-form-subtitle {
+    font-size: 0.70rem;
+    color: #94a3b8;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+  }
 
   .lp-label {
     display: block;
@@ -627,7 +737,8 @@ const LoginComponent = {
     // خلفية زخرفية
     page.innerHTML = `
       <div class="lp-bg-orb lp-bg-orb-1" aria-hidden="true"></div>
-      <div class="lp-bg-orb lp-bg-orb-2" aria-hidden="true"></div>`;
+      <div class="lp-bg-orb lp-bg-orb-2" aria-hidden="true"></div>
+      <div class="lp-bg-orb lp-bg-orb-3" aria-hidden="true"></div>`;
 
     // الشعار
     page.appendChild(this._buildBrand());
@@ -668,7 +779,10 @@ const LoginComponent = {
           <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
         </svg>
       </div>
-      <span class="lp-brand-name">${escapeHtml(APP_CONFIG?.NAME_SHORT || 'أبو حذيفة')}</span>`;
+      <div class="lp-brand-text">
+        <span class="lp-brand-name">${escapeHtml(APP_CONFIG?.NAME_SHORT || 'أبو حذيفة')}</span>
+        <span class="lp-brand-sub">نظام الصرافة والتحويلات</span>
+      </div>`;
     return b;
   },
 
@@ -822,7 +936,10 @@ const LoginComponent = {
           <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
         </svg>
       </div>
-      <span class="lp-form-title">تسجيل الدخول</span>`;
+      <div class="lp-logo-text">
+        <span class="lp-form-title">تسجيل الدخول</span>
+        <span class="lp-form-subtitle">${escapeHtml(APP_CONFIG?.NAME_SHORT || 'أبو حذيفة')} — نظام الصرافة</span>
+      </div>`;
     card.appendChild(logoRow);
 
     // حقل البريد
@@ -899,6 +1016,12 @@ const LoginComponent = {
       backBtn.addEventListener('click', () => this._switchToCalc());
       card.appendChild(backBtn);
     }
+
+    // تذييل بسيط
+    const footer = document.createElement('div');
+    footer.style.cssText = 'margin-top:18px;text-align:center;font-size:0.68rem;color:#94a3b8;';
+    footer.textContent = `v${APP_CONFIG?.VERSION || '1.0.0'} · نظام أبو حذيفة للصرافة والتحويلات`;
+    card.appendChild(footer);
 
     setTimeout(() => emailInput.focus(), 100);
     return card;
@@ -1220,4 +1343,4 @@ const LoginComponent = {
 };
 
 window.LoginComponent = LoginComponent;
-console.log('✅ LoginComponent v5.0 Phase1 — تدفق Auth مُعاد تصميمه + Quick Login UX محسَّن');
+console.log('✅ LoginComponent v5.1 Phase3 — تصميم بصري مُعاد + هوية أبو حذيفة + شبكة نقطية + Brand Header');
