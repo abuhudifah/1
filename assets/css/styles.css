@@ -638,6 +638,12 @@ textarea.form-control {
   gap            : 12px;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
+  transition     : box-shadow 0.25s ease, border-color 0.25s ease;
+}
+/* حالة التمرير — ظل أعمق */
+.app-header.scrolled {
+  box-shadow  : 0 4px 24px rgba(0,0,0,0.40);
+  border-color: rgba(59,130,246,0.25);
 }
 
 /* ── اليمين: شعار + اسم النظام ── */
@@ -987,16 +993,75 @@ textarea.form-control {
 }
 
 .nav-tab.active {
-  background : var(--accent);
-  color      : #fff;
+  background : rgba(37,99,235,0.18);
+  color      : #60a5fa;
   font-weight: 700;
-  box-shadow : 0 2px 8px rgba(37, 99, 235, 0.30);
+}
+.nav-tab.active::after {
+  content      : '';
+  position     : absolute;
+  bottom       : 0;
+  right        : 14px;
+  left         : 14px;
+  height       : 2px;
+  background   : #3b82f6;
+  border-radius: 2px 2px 0 0;
 }
 
 .nav-tab .tab-icon {
   width : 16px;
   height: 16px;
   flex-shrink: 0;
+}
+
+/* ── Fade masks لحافتَي شريط التنقل ── */
+.app-nav::before,
+.app-nav::after {
+  content  : '';
+  position : sticky;
+  top      : 0;
+  bottom   : 0;
+  width    : 32px;
+  flex-shrink: 0;
+  pointer-events: none;
+  z-index  : 1;
+}
+.app-nav::before {
+  right      : 0;
+  background : linear-gradient(to left, var(--nav-bg), transparent);
+  order      : 999;
+}
+.app-nav::after {
+  left       : 0;
+  background : linear-gradient(to right, var(--nav-bg), transparent);
+  order      : -1;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RESPONSIVE HEADER — Tablet & Mobile
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── تابلت (640–1024px): إخفاء رقم الحساب واختصار المعلومات ── */
+@media (max-width: 1024px) {
+  .header-acc-num    { display: none !important; }
+  .header-date-line  { display: none; }
+  .app-header        { padding: 0 14px; gap: 8px; }
+}
+
+/* ── موبايل (<640px): إظهار الأفاتار فقط في الوسط ── */
+@media (max-width: 639px) {
+  .header-center     { padding: 5px 8px; gap: 0; }
+  .header-user-info  { display: none; }
+  .header-center > svg:last-of-type { display: none; }
+  .header-sync-btn   { display: none; }
+  .header-app-name   { font-size: 0.80rem; }
+  .app-header        { padding: 0 10px; gap: 6px; }
+  .header-icon-btn   { width: 34px; height: 34px; }
+}
+
+/* ── صغير جداً (<380px): إخفاء شعار النص كذلك ── */
+@media (max-width: 379px) {
+  .header-title-area { display: none; }
 }
 
 /* ============================================================
