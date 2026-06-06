@@ -29,6 +29,7 @@
 :root {
   /* --- الألوان الأساسية --- */
   --primary        : #0f172a;
+  --brand          : #0f172a;  /* لون العلامة التجارية — لا يتغير بين الثيمات */
   --accent         : #2563eb;
   --accent-light   : #3b82f6;
   --success        : #059669;
@@ -105,6 +106,14 @@
   --spacing-lg  : 24px;
   --spacing-xl  : 32px;
   --spacing-2xl : 48px;
+
+  /* --- رموز دلالية للجداول --- */
+  --table-header-bg    : #0f172a;
+  --table-header-color : #ffffff;
+  /* --- رموز دلالية للحالات --- */
+  --state-online  : #10b981;
+  --state-offline : #94a3b8;
+  --state-error   : #ef4444;
 }
 
 /* ============================================================
@@ -563,7 +572,7 @@ textarea.form-control {
 }
 
 .data-table thead {
-  background   : var(--primary);
+  background   : var(--brand);
   color        : #fff;
   position     : sticky;
   top          : 0;
@@ -626,6 +635,12 @@ textarea.form-control {
   gap            : 12px;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
+  transition     : box-shadow 0.25s ease, border-color 0.25s ease;
+}
+/* حالة التمرير — ظل أعمق */
+.app-header.scrolled {
+  box-shadow  : 0 4px 24px rgba(0,0,0,0.40);
+  border-color: rgba(59,130,246,0.25);
 }
 
 /* ── اليمين: شعار + اسم النظام ── */
@@ -975,10 +990,19 @@ textarea.form-control {
 }
 
 .nav-tab.active {
-  background : var(--accent);
-  color      : #fff;
+  background : rgba(37,99,235,0.18);
+  color      : #60a5fa;
   font-weight: 700;
-  box-shadow : 0 2px 8px rgba(37, 99, 235, 0.30);
+}
+.nav-tab.active::after {
+  content      : '';
+  position     : absolute;
+  bottom       : 0;
+  right        : 14px;
+  left         : 14px;
+  height       : 2px;
+  background   : #3b82f6;
+  border-radius: 2px 2px 0 0;
 }
 
 .nav-tab .tab-icon {
@@ -987,9 +1011,239 @@ textarea.form-control {
   flex-shrink: 0;
 }
 
+/* ── Fade masks لحافتَي شريط التنقل ── */
+.app-nav::before,
+.app-nav::after {
+  content  : '';
+  position : sticky;
+  top      : 0;
+  bottom   : 0;
+  width    : 32px;
+  flex-shrink: 0;
+  pointer-events: none;
+  z-index  : 1;
+}
+.app-nav::before {
+  right      : 0;
+  background : linear-gradient(to left, var(--nav-bg), transparent);
+  order      : 999;
+}
+.app-nav::after {
+  left       : 0;
+  background : linear-gradient(to right, var(--nav-bg), transparent);
+  order      : -1;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RESPONSIVE HEADER — Tablet & Mobile
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── تابلت (640–1024px): إخفاء رقم الحساب واختصار المعلومات ── */
+@media (max-width: 1024px) {
+  .header-acc-num    { display: none !important; }
+  .header-date-line  { display: none; }
+  .app-header        { padding: 0 14px; gap: 8px; }
+}
+
+/* ── موبايل (<640px): إظهار الأفاتار فقط في الوسط ── */
+@media (max-width: 639px) {
+  .header-center     { padding: 5px 8px; gap: 0; }
+  .header-user-info  { display: none; }
+  .header-center > svg:last-of-type { display: none; }
+  .header-sync-btn   { display: none; }
+  .header-app-name   { font-size: 0.80rem; }
+  .app-header        { padding: 0 10px; gap: 6px; }
+  .header-icon-btn   { width: 34px; height: 34px; }
+}
+
+/* ── صغير جداً (<380px): إخفاء شعار النص كذلك ── */
+@media (max-width: 379px) {
+  .header-title-area { display: none; }
+}
+
 /* ============================================================
    11. البطاقات (KPI Cards)
    ============================================================ */
+
+/* ============================================================
+   11-b. Chart of Accounts UX
+   ============================================================ */
+
+/* شريط KPI الإجماليات */
+.acct-kpi-bar {
+  display              : grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap                  : 10px;
+  margin-bottom        : 20px;
+}
+.acct-kpi-item {
+  background   : var(--glass-bg);
+  border       : 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding      : 14px 16px;
+  text-align   : center;
+  transition   : box-shadow var(--transition-fast);
+}
+.acct-kpi-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+.acct-kpi-label {
+  font-size   : 0.72rem;
+  color       : var(--text-muted);
+  margin-bottom: 6px;
+}
+.acct-kpi-value {
+  font-size  : 1.15rem;
+  font-weight: 800;
+  direction  : ltr;
+  font-family: var(--font-mono);
+}
+
+/* شريط البحث */
+.acct-search-bar {
+  display    : flex;
+  align-items: center;
+  gap        : 10px;
+  margin-bottom: 16px;
+}
+.acct-search-wrap {
+  position  : relative;
+  flex       : 1;
+  max-width  : 400px;
+}
+.acct-search-wrap svg {
+  position : absolute;
+  top      : 50%;
+  right    : 12px;
+  transform: translateY(-50%);
+  color    : var(--text-muted);
+  pointer-events: none;
+}
+.acct-search-input {
+  width         : 100%;
+  padding       : 9px 38px 9px 12px;
+  border-radius : 12px;
+  border        : 1px solid var(--border-color);
+  background    : var(--glass-bg);
+  color         : var(--text-primary);
+  font-family   : var(--font-arabic);
+  font-size     : 0.87rem;
+  transition    : border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.acct-search-input:focus {
+  outline      : none;
+  border-color : var(--accent);
+  box-shadow   : 0 0 0 3px rgba(37,99,235,0.12);
+}
+.acct-result-count {
+  font-size : 0.76rem;
+  color     : var(--text-muted);
+  white-space: nowrap;
+}
+
+/* قسم الفئة */
+.acct-category {
+  margin-bottom: 12px;
+  overflow     : hidden;
+}
+.acct-cat-header {
+  display        : flex;
+  align-items    : center;
+  justify-content: space-between;
+  cursor         : pointer;
+  padding        : 14px 16px;
+  border-radius  : 14px 14px 0 0;
+  user-select    : none;
+  transition     : background var(--transition-fast);
+}
+.acct-cat-header:hover { background: rgba(255,255,255,0.04); }
+.acct-cat-header-right {
+  display    : flex;
+  align-items: center;
+  gap        : 12px;
+}
+.acct-cat-icon {
+  width          : 40px;
+  height         : 40px;
+  border-radius  : 12px;
+  display        : flex;
+  align-items    : center;
+  justify-content: center;
+  font-size      : 1.3rem;
+  flex-shrink    : 0;
+}
+.acct-cat-title {
+  font-weight: 700;
+  font-size  : 0.95rem;
+  color      : var(--text-primary);
+}
+.acct-cat-count {
+  font-size    : 0.70rem;
+  color        : var(--text-muted);
+  margin-top   : 2px;
+}
+.acct-cat-total {
+  font-weight: 800;
+  font-size  : 1.05rem;
+  direction  : ltr;
+  font-family: var(--font-mono);
+}
+.acct-cat-total-label {
+  font-size : 0.68rem;
+  color     : var(--text-muted);
+  text-align: left;
+}
+.acct-cat-chevron {
+  color     : var(--text-muted);
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+.acct-cat-chevron.open { transform: rotate(180deg); }
+
+/* جسم القسم القابل للطي */
+.acct-cat-body {
+  overflow  : hidden;
+  max-height: 2000px;
+  transition: max-height 0.35s ease;
+}
+.acct-cat-body.collapsed {
+  max-height: 0;
+}
+
+/* صفوف جدول الحسابات */
+.acct-row td { transition: background var(--transition-fast); }
+.acct-row:hover td { background: var(--bg-hover) !important; }
+
+/* شارة الشركة الأم */
+.acct-parent-badge {
+  font-size    : 0.68rem;
+  color        : #7c3aed;
+  background   : rgba(124,58,237,0.08);
+  padding      : 1px 6px;
+  border-radius: 5px;
+  margin-left  : 4px;
+}
+
+/* بطاقة الإجمالي السفلية */
+.acct-totals-grid {
+  display              : grid;
+  grid-template-columns: 1fr 1fr;
+  gap                  : 14px;
+}
+.acct-total-card {
+  text-align   : center;
+  padding      : 16px;
+  border-radius: 12px;
+}
+.acct-total-card-label {
+  font-size    : 0.75rem;
+  color        : var(--text-muted);
+  margin-bottom: 6px;
+}
+.acct-total-card-value {
+  font-size  : 1.3rem;
+  font-weight: 800;
+  direction  : ltr;
+  font-family: var(--font-mono);
+}
 
 .kpi-grid {
   display              : grid;
@@ -1461,11 +1715,6 @@ body.dark-mode input[type="time"]        {
 @keyframes pulse-glow {
   0%,100%{ transform:scale(1);   opacity:0.6; }
   50%    { transform:scale(1.08);opacity:1;   }
-}
-
-@keyframes spin {
-  from{ transform:rotate(0deg); }
-  to  { transform:rotate(360deg); }
 }
 
 /* بطاقة بنكية — hover lift */
@@ -2061,17 +2310,11 @@ body.dark-mode #login-page .calc-expr   { color: rgba(248,250,252,0.35) !importa
   animation: bounce-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-/* ── تحسين تبديل الوضع المظلم (لا يومض) ── */
-*, *::before, *::after {
-  transition-property: background-color, border-color, color, box-shadow;
-  transition-duration: 200ms;
-  transition-timing-function: ease;
-}
-/* استثناء الحركات والانتقالات المقصودة */
-.animate-fade-in, .animate-scale-in, .animate-slide-right,
-.kpi-card, .glass-card, .modal-box, .modal-overlay,
-.spinner, .sync-dot, .skeleton, .progress-fill {
-  transition: none;
+/* theme transition — only on elements that change with dark mode */
+body, .glass-card, .glass-card-sm, .kpi-card, .modal-box,
+.form-control, .data-table tbody td, .btn-secondary,
+.app-nav, .nav-tab, .badge-neutral, .bank-card, .agent-box {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 
 /* ── نهاية التحسينات ── */
@@ -2179,8 +2422,8 @@ body.dark-mode textarea.form-control {
 
 /* ── جداول البيانات الليلية ── */
 body.dark-mode .data-table thead {
-  background: rgba(15, 22, 38, 0.98) !important;
-  color: #8ea4c0 !important;
+  background: #0f172a !important;
+  color: rgba(248,250,252,0.80) !important;
 }
 body.dark-mode .data-table tbody tr:hover {
   background: var(--bg-hover);
@@ -2298,22 +2541,6 @@ body.dark-mode .sync-dot.conflict{ box-shadow: 0 0 8px var(--danger);  }
    تحسينات بصرية عامة (فاتح + داكن)
    ════════════════════════════════════════════════ */
 
-/* Toast في الأسفل */
-#toast-container {
-  position: fixed !important;
-  bottom  : 24px !important;
-  top     : auto !important;
-  left    : 50% !important;
-  transform: translateX(-50%) !important;
-  z-index : 99999;
-  display : flex;
-  flex-direction: column-reverse;
-  align-items: center;
-  gap: 8px;
-  pointer-events: none;
-  width: max-content;
-  max-width: 92vw;
-}
 
 /* بطاقات KPI مع أنيميشن متتالي */
 .kpi-grid .kpi-card { animation: fadeIn 0.35s ease both; }
@@ -2382,23 +2609,6 @@ input[type="number"].form-control::-webkit-inner-spin-button { opacity: 0.4; }
   transition: width 0.7s cubic-bezier(0.4,0,0.2,1) !important;
 }
 
-/* شارة الإشعارات */
-.notif-badge {
-  animation: badgePop 0.4s cubic-bezier(0.34,1.56,0.64,1);
-}
-@keyframes badgePop {
-  0%   { transform: scale(0); }
-  100% { transform: scale(1); }
-}
-
-/* حالة فارغة */
-.empty-state-icon {
-  animation: floatIcon 3s ease-in-out infinite;
-}
-@keyframes floatIcon {
-  0%,100% { transform: translateY(0); }
-  50%      { transform: translateY(-8px); }
-}
 
 /* spinner محسّن */
 .spinner { will-change: transform; }
@@ -2478,254 +2688,154 @@ body.dark-mode .login-page-wrap {
 /* تحسين نص "الحسابات البنكية" */
 body.dark-mode .bank-card-name { color: var(--text-primary); }
 
+/* ============================================================
+   Phase 7: Animations & Final Polish
+   ============================================================ */
+
+/* ── انتقال التبويبات ── */
+@keyframes tab-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.app-content.tab-enter {
+  animation: tab-fade-in 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ── دخول البطاقات بالتتالي (stagger) ── */
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.glass-card {
+  animation: card-rise 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: calc(var(--card-index, 0) * 55ms);
+}
+
+/* ── ضغط الأزرار ── */
+.btn:active:not(:disabled) {
+  transform : scale(0.96);
+  transition: transform 80ms ease;
+}
+.header-icon-btn:active {
+  transform : scale(0.90) !important;
+}
+
+/* ── تأثير ripple على الأزرار ── */
+.btn {
+  overflow: hidden;
+  position: relative;
+}
+.btn-ripple {
+  position      : absolute;
+  border-radius : 50%;
+  transform     : scale(0);
+  background    : rgba(255,255,255,0.30);
+  pointer-events: none;
+  animation     : ripple-expand 0.50s linear;
+}
+@keyframes ripple-expand {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* ── زر الرجوع للأعلى ── */
+#scroll-to-top {
+  position      : fixed;
+  bottom        : 28px;
+  left          : 24px;
+  width         : 42px;
+  height        : 42px;
+  border-radius : 50%;
+  background    : var(--accent);
+  border        : none;
+  color         : #fff;
+  display       : flex;
+  align-items   : center;
+  justify-content: center;
+  cursor        : pointer;
+  box-shadow    : 0 4px 16px rgba(37,99,235,0.40);
+  z-index       : 990;
+  opacity       : 0;
+  transform     : translateY(12px) scale(0.85);
+  transition    : opacity 0.22s ease, transform 0.22s ease, box-shadow 0.2s ease;
+  pointer-events: none;
+}
+#scroll-to-top.visible {
+  opacity       : 1;
+  transform     : translateY(0) scale(1);
+  pointer-events: auto;
+}
+#scroll-to-top:hover {
+  box-shadow: 0 6px 22px rgba(37,99,235,0.55);
+  transform : translateY(-2px) scale(1.06);
+}
+
+/* ── تحسين focus للوصولية ── */
+:focus-visible {
+  outline       : 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius : 4px;
+}
+
+/* ── تحسين حركة nav-tab ── */
+.nav-tab {
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nav-tab::after {
+  transition: right 0.2s ease, left 0.2s ease;
+}
+
+/* ── skeleton متحرك أفضل ── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    var(--bg-hover)     50%,
+    var(--bg-secondary) 75%
+  );
+  background-size: 300% 100%;
+  animation: skeleton-wave 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-wave {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: -100% 50%; }
+}
+
+/* ── احترام تفضيل تقليل الحركة ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration  : 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration : 0.01ms !important;
+  }
+}
+
+/* ── Dark mode: Chart of Accounts ── */
+body.dark-mode .acct-kpi-item {
+  background  : rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.08);
+}
+body.dark-mode .acct-cat-header:hover {
+  background: rgba(255,255,255,0.05);
+}
+body.dark-mode .acct-search-input {
+  background  : rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.10);
+  color       : var(--text-primary);
+}
+body.dark-mode .acct-search-input:focus {
+  border-color: var(--accent);
+  box-shadow  : 0 0 0 3px rgba(37,99,235,0.18);
+}
+body.dark-mode .acct-total-card {
+  filter: brightness(1.1);
+}
+
+/* ── Dark mode: Bank cards ── */
+body.dark-mode .bank-card {
+  background  : rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+body.dark-mode .bank-card-name { color: var(--text-primary); }
+
 /* ══ نهاية ملف التحسينات ══ */
 
-/* ══════════════════════════════════════════════════════════════
-   Header Styles — TASK-5.1 (نُقل من App.js _injectHeaderStyles)
-   ══════════════════════════════════════════════════════════════ */
-
-/* ── الهيدر الرئيسي ── */
-#app-header.app-header {
-  position         : fixed;
-  top              : 0;
-  right            : 0;
-  left             : 0;
-  height           : 68px;
-  display          : flex;
-  align-items      : center;
-  justify-content  : space-between;
-  padding          : 0 20px;
-  gap              : 16px;
-  z-index          : 1000;
-  background       : var(--primary, #2563eb);
-  background       : linear-gradient(135deg, var(--primary, #2563eb) 0%, #4f46e5 100%);
-  box-shadow       : 0 2px 20px rgba(37,99,235,.35), 0 1px 0 rgba(255,255,255,.08) inset;
-  border-bottom    : 1px solid rgba(255,255,255,.10);
-}
-
-/* ── الجانب الأيمن ── */
-.header-right {
-  display    : flex;
-  align-items: center;
-  gap        : 12px;
-  flex-shrink: 0;
-}
-
-.header-logo-area {
-  display    : flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.header-logo-img {
-  height       : 44px;
-  width        : auto;
-  max-width    : 120px;
-  object-fit   : contain;
-  border-radius: 8px;
-  filter       : drop-shadow(0 2px 6px rgba(0,0,0,.25));
-  transition   : transform .2s;
-}
-.header-logo-img:hover { transform: scale(1.04); }
-
-.header-logo-placeholder {
-  width          : 44px;
-  height         : 44px;
-  border-radius  : 12px;
-  display        : flex;
-  align-items    : center;
-  justify-content: center;
-  filter         : drop-shadow(0 2px 8px rgba(0,0,0,.20));
-}
-
-.header-title-area {
-  display       : flex;
-  flex-direction: column;
-  gap           : 1px;
-}
-
-.header-app-name {
-  font-size     : 1.05rem;
-  font-weight   : 800;
-  color         : #fff;
-  line-height   : 1.2;
-  letter-spacing: -.01em;
-}
-
-.header-date-line {
-  font-size : .72rem;
-  color     : rgba(255,255,255,.65);
-  white-space: nowrap;
-}
-
-/* ── الوسط: بيانات المستخدم ── */
-.header-center {
-  display        : flex;
-  align-items    : center;
-  gap            : 10px;
-  flex           : 1;
-  justify-content: center;
-}
-
-@media (max-width: 600px) {
-  .header-center { display: none; }
-}
-
-.header-user-avatar {
-  width          : 38px;
-  height         : 38px;
-  border-radius  : 50%;
-  background     : rgba(255,255,255,.18);
-  border         : 2px solid rgba(255,255,255,.35);
-  display        : flex;
-  align-items    : center;
-  justify-content: center;
-  font-size      : 1rem;
-  font-weight    : 800;
-  color          : #fff;
-  flex-shrink    : 0;
-  letter-spacing : -.02em;
-}
-
-.header-user-info {
-  display       : flex;
-  flex-direction: column;
-  gap           : 3px;
-}
-
-.header-user-name {
-  font-size  : .9rem;
-  font-weight: 700;
-  color      : #fff;
-  line-height: 1;
-}
-
-.header-user-meta {
-  display    : flex;
-  align-items: center;
-  gap        : 6px;
-}
-
-.header-role-badge {
-  font-size    : .71rem;
-  color        : rgba(255,255,255,.8);
-  background   : rgba(255,255,255,.12);
-  border       : 1px solid rgba(255,255,255,.18);
-  border-radius: 20px;
-  padding      : 1px 7px;
-  white-space  : nowrap;
-}
-
-.header-acc-num {
-  font-size    : .71rem;
-  color        : rgba(255,255,255,.7);
-  font-family  : monospace;
-  background   : rgba(0,0,0,.15);
-  border-radius: 4px;
-  padding      : 1px 6px;
-  cursor       : default;
-}
-
-/* ── الجانب الأيسر: أدوات ── */
-.header-left {
-  display    : flex;
-  align-items: center;
-  gap        : 6px;
-  flex-shrink: 0;
-}
-
-.header-icon-btn {
-  width          : 40px;
-  height         : 40px;
-  border-radius  : 11px;
-  background     : rgba(255,255,255,.10);
-  border         : 1px solid rgba(255,255,255,.14);
-  color          : rgba(255,255,255,.85);
-  display        : flex;
-  align-items    : center;
-  justify-content: center;
-  cursor         : pointer;
-  transition     : all .15s;
-  position       : relative;
-}
-.header-icon-btn:hover {
-  background: rgba(255,255,255,.20);
-  color     : #fff;
-  transform : translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,.15);
-}
-.header-logout-btn:hover {
-  background  : rgba(239,68,68,.25) !important;
-  border-color: rgba(239,68,68,.4) !important;
-}
-
-.notif-badge {
-  position     : absolute;
-  top          : 5px;
-  left         : 5px;
-  min-width    : 17px;
-  height       : 17px;
-  border-radius: 9px;
-  background   : #ef4444;
-  color        : #fff;
-  font-size    : .62rem;
-  font-weight  : 700;
-  display      : flex;
-  align-items  : center;
-  justify-content: center;
-  border       : 2px solid var(--primary, #2563eb);
-  padding      : 0 3px;
-}
-
-/* ── مؤشر المزامنة ── */
-.header-sync-btn {
-  display      : flex;
-  align-items  : center;
-  gap          : 5px;
-  padding      : 6px 10px;
-  border-radius: 10px;
-  background   : rgba(255,255,255,.10);
-  border       : 1px solid rgba(255,255,255,.14);
-  color        : rgba(255,255,255,.80);
-  cursor       : pointer;
-  font-size    : .74rem;
-  font-family  : inherit;
-  transition   : all .15s;
-  white-space  : nowrap;
-}
-.header-sync-btn:hover {
-  background: rgba(255,255,255,.18);
-  color     : #fff;
-}
-
-.sync-dot {
-  width        : 8px;
-  height       : 8px;
-  border-radius: 50%;
-  flex-shrink  : 0;
-  transition   : background .3s;
-}
-.sync-dot.synced  { background: #4ade80; }
-.sync-dot.pending { background: #fbbf24; animation: syncPulse 1.2s ease-in-out infinite; }
-.sync-dot.error   { background: #f87171; }
-
-@keyframes syncPulse {
-  0%,100% { opacity:1; transform:scale(1); }
-  50%     { opacity:.6; transform:scale(1.3); }
-}
-
-.sync-label { color: rgba(255,255,255,.80); font-size:.74rem; }
-.sync-count {
-  background   : #fbbf24;
-  color        : #1e1b4b;
-  border-radius: 10px;
-  padding      : 1px 6px;
-  font-size    : .65rem;
-  font-weight  : 700;
-}
-
-/* ── تعديل ارتفاع Nav ── */
-.app-nav { top: 68px !important; }
-
-/* ── تعديل ارتفاع المحتوى ── */
-.app-content { margin-top: calc(68px + var(--nav-height, 52px)) !important; }

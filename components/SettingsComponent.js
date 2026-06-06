@@ -56,12 +56,12 @@ const SettingsComponent = {
     divider.style.cssText = `
       display:flex;align-items:center;gap:12px;margin-bottom:24px;`;
     divider.innerHTML = `
-      <div style="flex:1;height:1px;background:var(--border);"></div>
+      <div style="flex:1;height:1px;background:var(--border-color);"></div>
       <span style="font-size:.78rem;color:var(--text-muted);white-space:nowrap;font-weight:600;
-        padding:4px 10px;background:var(--bg-secondary);border-radius:20px;border:1px solid var(--border);">
+        padding:4px 10px;background:var(--bg-hover);border-radius:20px;border:1px solid var(--border-color);">
         ⚙️ إعدادات النظام
       </span>
-      <div style="flex:1;height:1px;background:var(--border);"></div>`;
+      <div style="flex:1;height:1px;background:var(--border-color);"></div>`;
     wrap.appendChild(divider);
 
     // ─── حاوية إعدادات النظام ───

@@ -84,12 +84,18 @@ const AccountManagementComponent = {
     wrap.appendChild(titleRow);
 
     /* ── بحث سريع ── */
-    const searchWrap = document.createElement('div');
-    searchWrap.style.cssText = 'margin-bottom:16px;';
-    searchWrap.innerHTML = `
-      <input id="acct-search" type="text" class="form-control"
-        placeholder="🔍 بحث في الحسابات..." style="max-width:360px;">`;
-    wrap.appendChild(searchWrap);
+    const searchBar = document.createElement('div');
+    searchBar.className = 'acct-search-bar';
+    searchBar.innerHTML = `
+      <div class="acct-search-wrap">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input id="acct-search" type="text" class="acct-search-input"
+          placeholder="بحث في الحسابات باسم أو المعرّف...">
+      </div>
+      <span id="acct-result-count" class="acct-result-count" style="display:none;"></span>`;
+    wrap.appendChild(searchBar);
 
     /* ── دليل الحسابات ── */
     const chartEl = document.createElement('div');
@@ -114,6 +120,13 @@ const AccountManagementComponent = {
             <p style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;font-family:monospace;" id="stmt-account-id"></p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="stmt-share-btn" class="btn btn-secondary btn-sm"
+              style="background:rgba(37,211,102,0.10);border-color:rgba(37,211,102,0.30);color:#25d366;">
+              <i data-lucide="share-2" style="width:13px;height:13px;"></i> مشاركة
+            </button>
+            <button id="stmt-copy-btn" class="btn btn-secondary btn-sm">
+              <i data-lucide="copy" style="width:13px;height:13px;"></i> نسخ
+            </button>
             <button id="stmt-print-btn" class="btn btn-secondary btn-sm">
               <i data-lucide="printer" style="width:13px;height:13px;"></i> طباعة
             </button>
@@ -154,9 +167,24 @@ const AccountManagementComponent = {
       this._selectedAccount = null;
     });
     document.getElementById('stmt-print-btn')?.addEventListener('click', () => this._printStatement());
+    document.getElementById('stmt-share-btn')?.addEventListener('click', () => this._shareStatement());
+    document.getElementById('stmt-copy-btn')?.addEventListener('click', () => {
+      const name = this._selectedAccountName || '';
+      const from = document.getElementById('stmt-from')?.value || '';
+      const to   = document.getElementById('stmt-to')?.value   || '';
+      const rows = [...document.querySelectorAll('#stmt-print-table tbody tr')]
+        .map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()).join(' | '))
+        .join('\n');
+      PrintService.copyText(
+        `كشف حساب: ${name}\nالفترة: ${from} → ${to}\n${'─'.repeat(30)}\n${rows}`,
+        'تم نسخ كشف الحساب'
+      );
+    });
 
+    let _searchTimer = null;
     document.getElementById('acct-search')?.addEventListener('input', (e) => {
-      this._filterChart(e.target.value.trim());
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(() => this._filterChart(e.target.value.trim()), 180);
     });
 
     if (window.lucide) lucide.createIcons();
@@ -290,16 +318,55 @@ const AccountManagementComponent = {
 
   _renderChart(el, chartData) {
     const categoryMeta = {
-      agents   : { icon:'👤', label:'حسابات المناديب',          color:'var(--accent)',  bg:'rgba(37,99,235,0.06)'  },
-      debtors  : { icon:'👥', label:'حسابات العملاء المديونين',  color:'var(--info)',    bg:'rgba(2,132,199,0.06)'  },
-      companies: { icon:'🏢', label:'حسابات الشركات',            color:'#7c3aed',        bg:'rgba(124,58,237,0.06)' },
-      banks    : { icon:'🏦', label:'الحسابات البنكية',           color:'var(--success)', bg:'rgba(5,150,105,0.06)'  },
-      expenses : { icon:'💸', label:'حسابات المصروفات',           color:'var(--danger)',  bg:'rgba(220,38,38,0.06)'  },
-      treasury : { icon:'🏛️', label:'الخزينة والحسابات العامة', color:'var(--warning)', bg:'rgba(217,119,6,0.06)'  },
-      revenue  : { icon:'💰', label:'حسابات الإيرادات',          color:'#059669',        bg:'rgba(5,150,105,0.06)'  },
-      suspense : { icon:'⏳', label:'الحسابات المعلقة',          color:'#d97706',        bg:'rgba(217,119,6,0.06)'  },
+      agents   : { icon:'👤', label:'حسابات المناديب',          color:'#2563eb', bg:'rgba(37,99,235,0.08)'  },
+      debtors  : { icon:'👥', label:'حسابات العملاء المديونين',  color:'#0284c7', bg:'rgba(2,132,199,0.08)'  },
+      companies: { icon:'🏢', label:'حسابات الشركات',            color:'#7c3aed', bg:'rgba(124,58,237,0.08)' },
+      banks    : { icon:'🏦', label:'الحسابات البنكية',           color:'#059669', bg:'rgba(5,150,105,0.08)'  },
+      expenses : { icon:'💸', label:'حسابات المصروفات',           color:'#dc2626', bg:'rgba(220,38,38,0.08)'  },
+      treasury : { icon:'🏛️', label:'الخزينة والحسابات العامة', color:'#d97706', bg:'rgba(217,119,6,0.08)'  },
+      revenue  : { icon:'💰', label:'حسابات الإيرادات',          color:'#059669', bg:'rgba(5,150,105,0.08)'  },
+      suspense : { icon:'⏳', label:'الحسابات المعلقة',          color:'#d97706', bg:'rgba(217,119,6,0.08)'  },
     };
 
+    /* ── شريط KPI الإجماليات ── */
+    const totalAccounts = chartData.categories.reduce((s, c) => s + (c.accounts?.length || 0), 0);
+    const totalBalance  = chartData.categories.reduce((s, c) => s + parseFloat(c.total_balance || 0), 0);
+    const kpiBar = document.createElement('div');
+    kpiBar.className = 'acct-kpi-bar';
+    kpiBar.innerHTML = `
+      <div class="acct-kpi-item">
+        <div class="acct-kpi-label">عدد الحسابات</div>
+        <div class="acct-kpi-value" style="color:var(--accent);">${totalAccounts}</div>
+      </div>
+      <div class="acct-kpi-item">
+        <div class="acct-kpi-label">عدد الفئات</div>
+        <div class="acct-kpi-value" style="color:#7c3aed;">${chartData.categories.length}</div>
+      </div>
+      ${chartData.total_assets !== undefined ? `
+      <div class="acct-kpi-item">
+        <div class="acct-kpi-label">إجمالي الأصول (مدين)</div>
+        <div class="acct-kpi-value" style="color:var(--success);">
+          ${Math.round(parseFloat(chartData.total_assets || 0)).toLocaleString('en-US')}
+          <span style="font-size:0.65rem;color:var(--text-muted);"> ${APP_CONFIG.CURRENCY_SYMBOL}</span>
+        </div>
+      </div>
+      <div class="acct-kpi-item">
+        <div class="acct-kpi-label">إجمالي الالتزامات (دائن)</div>
+        <div class="acct-kpi-value" style="color:var(--danger);">
+          ${Math.round(parseFloat(chartData.total_liabilities || 0)).toLocaleString('en-US')}
+          <span style="font-size:0.65rem;color:var(--text-muted);"> ${APP_CONFIG.CURRENCY_SYMBOL}</span>
+        </div>
+      </div>` : `
+      <div class="acct-kpi-item">
+        <div class="acct-kpi-label">صافي الرصيد الكلي</div>
+        <div class="acct-kpi-value" style="color:${totalBalance >= 0 ? 'var(--success)' : 'var(--danger)'};">
+          ${totalBalance >= 0 ? '' : '−'}${Math.abs(Math.round(totalBalance)).toLocaleString('en-US')}
+          <span style="font-size:0.65rem;color:var(--text-muted);"> ${APP_CONFIG.CURRENCY_SYMBOL}</span>
+        </div>
+      </div>`}`;
+    el.appendChild(kpiBar);
+
+    /* ── أقسام الفئات ── */
     for (const cat of chartData.categories) {
       const meta     = categoryMeta[cat.category] || { icon:'📋', label:cat.label||cat.category, color:'var(--text-secondary)', bg:'transparent' };
       const total    = Math.round(parseFloat(cat.total_balance || 0));
@@ -308,31 +375,36 @@ const AccountManagementComponent = {
       const section = document.createElement('div');
       section.className = 'glass-card acct-category';
       section.dataset.category = cat.category;
-      section.style.marginBottom = '16px';
 
-      section.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;
-          margin-bottom:${accounts.length ? '14px' : '0'};padding-bottom:${accounts.length ? '12px' : '0'};
-          ${accounts.length ? 'border-bottom:2px solid ' + meta.color + '22;' : ''}">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:40px;height:40px;border-radius:12px;
-              background:${meta.bg};border:1px solid ${meta.color}22;
-              display:flex;align-items:center;justify-content:center;font-size:1.3rem;">
-              ${meta.icon}
-            </div>
-            <div>
-              <div style="font-weight:700;font-size:0.95rem;color:var(--text-primary);">${escapeHtml(meta.label)}</div>
-              <div style="font-size:0.75rem;color:var(--text-muted);">${accounts.length} حساب</div>
-            </div>
+      const header = document.createElement('div');
+      header.className = 'acct-cat-header';
+      header.style.borderBottom = accounts.length ? `2px solid ${meta.color}22` : 'none';
+      header.innerHTML = `
+        <div class="acct-cat-header-right">
+          <div class="acct-cat-icon" style="background:${meta.bg};border:1px solid ${meta.color}22;">
+            ${meta.icon}
           </div>
-          <div style="text-align:left;direction:ltr;">
-            <div style="font-weight:800;font-size:1.1rem;color:${meta.color};">
+          <div>
+            <div class="acct-cat-title">${escapeHtml(meta.label)}</div>
+            <div class="acct-cat-count">${accounts.length} حساب</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="text-align:left;">
+            <div class="acct-cat-total" style="color:${meta.color};">
               ${total >= 0 ? '' : '−'}${Math.abs(total).toLocaleString('en-US')}
-              <span style="font-size:0.65rem;color:var(--text-muted);">${APP_CONFIG.CURRENCY_SYMBOL}</span>
+              <span style="font-size:0.65rem;color:var(--text-muted);"> ${APP_CONFIG.CURRENCY_SYMBOL}</span>
             </div>
-            <div style="font-size:0.70rem;color:var(--text-muted);">إجمالي الرصيد</div>
+            <div class="acct-cat-total-label">إجمالي الرصيد</div>
           </div>
+          <svg class="acct-cat-chevron open" width="16" height="16" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
         </div>`;
+
+      const body = document.createElement('div');
+      body.className = 'acct-cat-body';
 
       if (accounts.length) {
         const tableWrap = document.createElement('div');
@@ -348,32 +420,26 @@ const AccountManagementComponent = {
             <tbody>
               ${accounts.map(acc => {
                 const bal = Math.round(parseFloat(acc.balance || 0));
-                // Fix #14: عرض اسم الشركة الأم لحسابات البنوك
                 const parentBadge = acc.parent_name
-                  ? `<span style="font-size:0.68rem;color:#7c3aed;background:rgba(124,58,237,0.08);
-                       padding:1px 5px;border-radius:4px;margin-right:4px;">🏢 ${escapeHtml(acc.parent_name)}</span>`
+                  ? `<span class="acct-parent-badge">🏢 ${escapeHtml(acc.parent_name)}</span>`
                   : '';
                 return `<tr class="acct-row" data-name="${escapeHtml((acc.name || acc.account_id).toLowerCase())}">
                   <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
-                  <td style="direction:ltr;font-family:monospace;font-size:0.72rem;color:var(--text-muted);">
-                    ${escapeHtml(acc.account_id)}
-                  </td>
+                  <td style="direction:ltr;font-family:monospace;font-size:0.72rem;color:var(--text-muted);">${escapeHtml(acc.account_id)}</td>
                   <td style="font-weight:700;direction:ltr;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">
-                    ${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ر.س
+                    ${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
                   </td>
                   <td>
                     <div style="display:flex;gap:4px;">
                       <button class="view-stmt-btn btn btn-secondary btn-sm"
                         data-account="${escapeHtml(acc.account_id)}"
                         data-name="${escapeHtml(acc.name || acc.account_id)}"
-                        title="عرض كشف الحساب"
                         style="font-size:0.78rem;">
                         <i data-lucide="file-text" style="width:12px;height:12px;"></i> كشف
                       </button>
                       <button class="quick-entry-btn btn btn-secondary btn-sm"
                         data-account="${escapeHtml(acc.account_id)}"
                         data-name="${escapeHtml(acc.name || acc.account_id)}"
-                        title="قيد سريع على هذا الحساب"
                         style="font-size:0.78rem;">
                         <i data-lucide="pen-line" style="width:12px;height:12px;"></i> قيد
                       </button>
@@ -383,28 +449,36 @@ const AccountManagementComponent = {
               }).join('')}
             </tbody>
           </table>`;
-        section.appendChild(tableWrap);
+        body.appendChild(tableWrap);
       }
 
+      /* toggle collapse */
+      const chevron = header.querySelector('.acct-cat-chevron');
+      header.addEventListener('click', () => {
+        const collapsed = body.classList.toggle('collapsed');
+        chevron.classList.toggle('open', !collapsed);
+      });
+
+      section.appendChild(header);
+      section.appendChild(body);
       el.appendChild(section);
     }
 
-    /* إجمالي عام */
+    /* ── إجمالي عام (إذا كانت البيانات قادمة من RPC) ── */
     if (chartData.total_assets !== undefined) {
       const totals = document.createElement('div');
-      totals.className = 'glass-card';
-      totals.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:14px;';
+      totals.className = 'glass-card acct-totals-grid';
       totals.innerHTML = `
-        <div style="text-align:center;padding:14px;background:rgba(5,150,105,0.08);border-radius:12px;border:1px solid rgba(5,150,105,0.18);">
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:5px;">📈 إجمالي الأصول (مدين)</div>
-          <div style="font-size:1.3rem;font-weight:800;color:var(--success);direction:ltr;">
-            ${Math.round(parseFloat(chartData.total_assets || 0)).toLocaleString('en-US')} ر.س
+        <div class="acct-total-card" style="background:rgba(5,150,105,0.08);border:1px solid rgba(5,150,105,0.18);">
+          <div class="acct-total-card-label">📈 إجمالي الأصول (مدين)</div>
+          <div class="acct-total-card-value" style="color:var(--success);">
+            ${Math.round(parseFloat(chartData.total_assets || 0)).toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
           </div>
         </div>
-        <div style="text-align:center;padding:14px;background:rgba(220,38,38,0.08);border-radius:12px;border:1px solid rgba(220,38,38,0.18);">
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:5px;">📉 إجمالي الالتزامات (دائن)</div>
-          <div style="font-size:1.3rem;font-weight:800;color:var(--danger);direction:ltr;">
-            ${Math.round(parseFloat(chartData.total_liabilities || 0)).toLocaleString('en-US')} ر.س
+        <div class="acct-total-card" style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.18);">
+          <div class="acct-total-card-label">📉 إجمالي الالتزامات (دائن)</div>
+          <div class="acct-total-card-value" style="color:var(--danger);">
+            ${Math.round(parseFloat(chartData.total_liabilities || 0)).toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
           </div>
         </div>`;
       el.appendChild(totals);
@@ -426,6 +500,7 @@ const AccountManagementComponent = {
   // ─────────────────────────────────────────────────────────
   _filterChart(query) {
     const q = query.toLowerCase();
+    let totalVisible = 0;
     document.querySelectorAll('.acct-category').forEach(section => {
       const rows = section.querySelectorAll('.acct-row');
       let visible = 0;
@@ -436,7 +511,22 @@ const AccountManagementComponent = {
         if (match) visible++;
       });
       section.style.display = (!q || visible > 0) ? '' : 'none';
+      /* افتح القسم تلقائياً عند البحث */
+      if (q && visible > 0) {
+        section.querySelector('.acct-cat-body')?.classList.remove('collapsed');
+        section.querySelector('.acct-cat-chevron')?.classList.add('open');
+      }
+      totalVisible += visible;
     });
+    const countEl = document.getElementById('acct-result-count');
+    if (countEl) {
+      if (q) {
+        countEl.style.display = '';
+        countEl.textContent   = `${totalVisible} نتيجة`;
+      } else {
+        countEl.style.display = 'none';
+      }
+    }
   },
 
   // ─────────────────────────────────────────────────────────
@@ -731,33 +821,56 @@ const AccountManagementComponent = {
 
   /* طباعة كشف الحساب */
   _printStatement() {
-    const name  = this._selectedAccountName || '';
-    const from  = document.getElementById('stmt-from')?.value || '';
-    const to    = document.getElementById('stmt-to')?.value   || '';
-    const table = document.getElementById('stmt-print-table')?.outerHTML || '';
+    const name = this._selectedAccountName || '';
+    const from = document.getElementById('stmt-from')?.value || '';
+    const to   = document.getElementById('stmt-to')?.value   || '';
+    const logo = AppStore.getState('logoUrl') || '';
+    const user = AuthService.getCurrentUser();
 
-    const win = window.open('', '_blank');
-    win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
-      <meta charset="utf-8">
-      <title>كشف حساب — ${name}</title>
-      <style>
-        body{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:20px;font-size:13px;}
-        h2{margin-bottom:4px;}p{color:#555;margin-bottom:16px;}
-        table{width:100%;border-collapse:collapse;}
-        th,td{border:1px solid #ddd;padding:6px 8px;text-align:right;}
-        th{background:#f5f5f5;font-weight:700;}
-        tr:nth-child(even){background:#fafafa;}
-        @media print{@page{margin:1cm;}}
-      </style></head><body>
-      <h2>📄 كشف حساب: ${escapeHtml(name)}</h2>
-      <p>الفترة: ${from} إلى ${to} &nbsp;|&nbsp; معرف الحساب: ${escapeHtml(this._selectedAccount || '')}</p>
-      ${table}
-      <p style="margin-top:20px;color:#999;font-size:11px;">
-        طُبع في: ${new Date().toLocaleString('ar-SA')}
-      </p>
-    </body></html>`);
-    win.document.close();
-    win.print();
+    /* استخراج بيانات الصفوف من الجدول الحالي */
+    const tbl     = document.getElementById('stmt-print-table');
+    const headers = tbl ? [...tbl.querySelectorAll('thead th')].map(th => th.textContent.trim()) : [];
+    const rows    = tbl
+      ? [...tbl.querySelectorAll('tbody tr')].map(tr =>
+          [...tr.querySelectorAll('td')].map(td => td.textContent.trim()))
+      : [];
+    const footerCells = tbl
+      ? [...(tbl.querySelector('tfoot tr')?.querySelectorAll('td') || [])].map(td => td.textContent.trim())
+      : [];
+
+    const tableHTML = headers.length
+      ? PrintService.buildTable(headers, rows, footerCells.length ? footerCells : null)
+      : '<p style="color:#64748b;text-align:center;padding:20px;">لا توجد بيانات في الكشف</p>';
+
+    PrintService.print({
+      title      : `كشف حساب: ${name}`,
+      subtitle   : `معرف الحساب: ${this._selectedAccount || ''} &nbsp;|&nbsp; الفترة: ${from} → ${to}`,
+      date       : from ? `${from} — ${to}` : '',
+      userName   : user?.display_name || '',
+      logo,
+      tableHTML,
+      footerExtra: `${name} · ${this._selectedAccount || ''}`,
+    });
+  },
+
+  /* مشاركة كشف الحساب (نص) */
+  _shareStatement(entries) {
+    const name = this._selectedAccountName || '';
+    const from = document.getElementById('stmt-from')?.value || '';
+    const to   = document.getElementById('stmt-to')?.value   || '';
+
+    const lines = [
+      `📄 كشف حساب: ${name}`,
+      `🗓️ الفترة: ${from} → ${to}`,
+      '─'.repeat(30),
+      ...(entries || []).map(e =>
+        `${e.date || ''} | ${e.type || ''} | ${e.amount ? Math.round(e.amount).toLocaleString('en-US') + ' ر.س' : ''} | ${e.description || ''}`
+      ),
+      '─'.repeat(30),
+      `نظام أبو حذيفة للصرافة والتحويلات`,
+    ].join('\n');
+
+    PrintService.share(lines, { title: `كشف حساب ${name}` });
   },
 
   // ─────────────────────────────────────────────────────────

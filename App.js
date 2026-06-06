@@ -150,6 +150,41 @@ function _buildAppShell() {
   root.appendChild(_contentEl);
 
   if (window.lucide) lucide.createIcons();
+
+  // ── scroll → .scrolled على الهيدر + زر الرجوع للأعلى ──
+  const scrollTopBtn = document.createElement('button');
+  scrollTopBtn.id        = 'scroll-to-top';
+  scrollTopBtn.title     = 'رجوع للأعلى';
+  scrollTopBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="18 15 12 9 6 15"/>
+  </svg>`;
+  scrollTopBtn.addEventListener('click', () =>
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  );
+  document.body.appendChild(scrollTopBtn);
+
+  const onScroll = () => {
+    _headerEl.classList.toggle('scrolled', window.scrollY > 8);
+    scrollTopBtn.classList.toggle('visible', window.scrollY > 300);
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  // ── Ripple Effect على كل الأزرار ──
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn');
+    if (!btn || btn.disabled) return;
+    const rect   = btn.getBoundingClientRect();
+    const size   = Math.max(rect.width, rect.height) * 1.8;
+    const ripple = document.createElement('span');
+    ripple.className = 'btn-ripple';
+    ripple.style.cssText = `
+      width:${size}px;height:${size}px;
+      top:${e.clientY - rect.top - size/2}px;
+      left:${e.clientX - rect.left - size/2}px;`;
+    btn.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
+  }, { passive: true });
 }
 
 // ============================================================
@@ -418,6 +453,7 @@ function _buildNav() {
   const nav  = document.createElement('nav');
   nav.id        = 'app-nav';
   nav.className = 'app-nav';
+  nav.setAttribute('aria-label', 'التنقل الرئيسي');
   nav.style.overflowX = 'auto';
 
   const icons = {
@@ -441,6 +477,7 @@ function _buildNav() {
     btn.className = 'nav-tab';
     btn.dataset.tab = tabId;
     btn.setAttribute('aria-selected', 'false');
+    btn.setAttribute('role', 'tab');
 
     const label = TAB_LABELS[tabId] || tabId;
     const icon  = icons[tabId] || 'circle';
@@ -496,6 +533,16 @@ async function _navigateTo(tabId) {
   const renderer = componentMap[tabId];
   if (renderer) await renderer();
   if (window.lucide) lucide.createIcons();
+
+  // ── انتقال التبويب: fade-in ──
+  _contentEl.classList.remove('tab-enter');
+  void _contentEl.offsetWidth; // إعادة التدفق لإعادة تشغيل الأنيميشن
+  _contentEl.classList.add('tab-enter');
+
+  // ── stagger لأول 8 بطاقات ──
+  _contentEl.querySelectorAll('.glass-card').forEach((card, i) => {
+    card.style.setProperty('--card-index', Math.min(i, 7));
+  });
 }
 
 function _updateNavHighlight(activeTabId) {
@@ -503,6 +550,13 @@ function _updateNavHighlight(activeTabId) {
     const isActive = btn.dataset.tab === activeTabId;
     btn.classList.toggle('active', isActive);
     btn.setAttribute('aria-selected', String(isActive));
+    if (isActive) {
+      btn.setAttribute('aria-current', 'page');
+      // مرّر للتبويب النشط داخل شريط التنقل
+      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    } else {
+      btn.removeAttribute('aria-current');
+    }
   });
 }
 
@@ -646,6 +700,9 @@ function _showLoginScreen() {
   _hideLoadingScreen();
   _stopDateClock();
   _destroyActiveComponent();
+
+  // تنظيف LoginComponent السابق إذا وُجد
+  try { window.LoginComponent?.destroy?.(); } catch {}
 
   const root = document.getElementById('app-root');
   root.innerHTML = '';
