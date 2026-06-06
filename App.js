@@ -608,6 +608,14 @@ function _buildNav() {
 // التنقل بين التبويبات
 // ============================================================
 async function _navigateTo(tabId) {
+  const activeResult = await AuthService.verifyIsActive();
+  if (!isOk(activeResult)) {
+    showToast('تم تعطيل حسابك. يرجى التواصل مع المدير.', 'error');
+    await AuthService.logout();
+    _showLoginScreen();
+    return;
+  }
+
   if (!AuthService.canAccessTab(tabId)) {
     showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
     return;
