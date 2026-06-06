@@ -404,16 +404,10 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
 
     let openingBalance = 0;
     if (isOnline()) {
-      const { data: priorEntries } = await supabaseClient
-        .from(TABLES.ACCOUNT_LEDGER)
-        .select('debit, credit')
-        .eq('account_id', accountId)
-        .lt('date', fromDate);
-
-      if (priorEntries) {
-        for (const e of priorEntries) {
-          openingBalance += parseFloat(e.debit || 0) - parseFloat(e.credit || 0);
-        }
+      const { data: balanceData, error: balanceErr } = await supabaseClient
+        .rpc(RPC.GET_OPENING_BALANCE, { p_account_id: accountId, p_from_date: fromDate });
+      if (!balanceErr && balanceData !== null) {
+        openingBalance = parseFloat(balanceData) || 0;
       }
     }
 
