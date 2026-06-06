@@ -267,7 +267,7 @@ const SyncQueue = {
   async _executeCreate(tableName, data, tempId) {
     try {
       // إزالة الحقول الداخلية قبل الإرسال
-      const cleanData = this._cleanRecord(data);
+      const cleanData = this._cleanRecord(data, tableName);
 
       const { data: saved, error } = await supabaseClient
         .from(tableName)
@@ -317,21 +317,23 @@ const SyncQueue = {
         return err(fetchError.message);
       }
 
-      // مقارنة updated_at لكشف ما إذا عدّل شخص آخر السجل
+      // كشف التعارض الحقيقي: مقارنة لقطة ما قبل التعديل بقيمة الخادم الحالية
+      const preEditUpdatedAt = changes?._preEditUpdatedAt;
       if (
         current?.updated_at &&
-        changes?.updated_at &&
-        current.updated_at !== changes.updated_at
+        preEditUpdatedAt &&
+        current.updated_at !== preEditUpdatedAt
       ) {
         return err(
           `تعارض: السجل عُدِّل من مصدر آخر ` +
-          `(خادم: ${current.updated_at} | محلي: ${changes.updated_at})`
+          `(خادم: ${current.updated_at} | قبل التعديل: ${preEditUpdatedAt})`
         );
       }
 
+      const hasUpdatedAt = !this._TABLES_WITHOUT_UPDATED_AT.has(tableName);
       const cleanChanges = {
-        ...this._cleanRecord(changes),
-        updated_at: new Date().toISOString(), // تحديث الطابع الزمني دائماً
+        ...this._cleanRecord(changes, tableName),
+        ...(hasUpdatedAt ? { updated_at: new Date().toISOString() } : {}),
       };
 
       const { data: saved, error } = await supabaseClient
@@ -678,11 +680,24 @@ const SyncQueue = {
    * @returns {object}
    * @private
    */
-  _cleanRecord(record) {
+  // الجداول التي لا تحتوي على عمود updated_at
+  _TABLES_WITHOUT_UPDATED_AT: new Set([
+    'account_balances',
+    'accounts',
+    'audit_logs',
+    'daily_closings',
+    'quick_login_rate_limit',
+  ]),
+
+  _cleanRecord(record, tableName) {
     const cleaned = { ...record };
     delete cleaned.sync_status;
     delete cleaned._local_only;
     delete cleaned.error_message;
+    delete cleaned._preEditUpdatedAt;
+    if (tableName && this._TABLES_WITHOUT_UPDATED_AT.has(tableName)) {
+      delete cleaned.updated_at;
+    }
     return cleaned;
   },
 
