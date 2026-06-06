@@ -653,13 +653,15 @@ async function getAgentDailySummary(agentId, date) {
         .toArray();
     }
 
-    const summary = { collection: 0, deposit: 0, expense: 0, receipt: 0, delivery: 0 };
+    const summary = { collection: 0, deposit: 0, bank_withdrawal: 0, expense: 0, receipt: 0, delivery: 0 };
     for (const tx of transactions) {
-      if (summary.hasOwnProperty(tx.type)) {
+      if (Object.prototype.hasOwnProperty.call(summary, tx.type)) {
         summary[tx.type] += parseFloat(tx.amount || 0);
       }
     }
-    summary.net = summary.collection + summary.receipt - summary.deposit - summary.expense - summary.delivery;
+    // Fix #18: bank_withdrawal يدخل الصندوق مثل التحصيل
+    summary.net = summary.collection + summary.receipt + summary.bank_withdrawal
+                - summary.deposit - summary.expense - summary.delivery;
 
     return ok(summary);
 

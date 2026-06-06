@@ -837,6 +837,25 @@ const DataEntryComponent = {
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
     const rounded = roundAmount(amount);
+
+    // Fix #15 — BR-002: تحقق من مبلغ التحصيل مقابل الدين المتبقي
+    if (customerId) {
+      const debtor = AppStore.getState('debtors')?.find(d => d.id === customerId);
+      const debtRemaining = parseFloat(debtor?.debt_amount || 0);
+      if (debtRemaining > 0 && rounded > debtRemaining) {
+        const overage = formatCurrency(rounded - debtRemaining);
+        const confirmed = await confirmDialog(
+          `⚠️ المبلغ يتجاوز الدين المسجَّل!\n`
+          + `الدين المتبقي: ${formatCurrency(debtRemaining)}\n`
+          + `المبلغ المُدخَل: ${formatCurrency(rounded)}\n`
+          + `الزيادة: ${overage}\n\n`
+          + `قد تكون دفعة مقدَّمة أو خطأ في المبلغ. هل تريد المتابعة؟`,
+          'متابعة', 'مراجعة', 'warning'
+        );
+        if (!confirmed) return;
+      }
+    }
+
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn     = document.getElementById('col-save-btn');
     const restore = setButtonLoading(btn);
@@ -968,7 +987,37 @@ const DataEntryComponent = {
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
     if (!fromAgentId && !toAgentId && !companyId) { showToast('حدد المصدر أو الوجهة', 'error'); return; }
 
-    const rounded = roundAmount(amount);
+    const rounded   = roundAmount(amount);
+    const txDate    = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const myAgentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+
+    // Fix #17 — BR-021: كشف تكرار محتمل لنفس المبلغ والتاريخ والطرفين
+    if (isOnline()) {
+      try {
+        const otherAgent = fromAgentId || toAgentId;
+        let q = supabaseClient
+          .from('transactions')
+          .select('id,type,amount,agent_id')
+          .eq('type', txType)
+          .eq('date', txDate)
+          .eq('is_reversed', false)
+          .eq('amount', rounded);
+
+        if (txType === 'receipt') q = q.eq('agent_id', myAgentId);
+        if (txType === 'delivery') q = q.eq('from_agent_id', otherAgent);
+
+        const { data: dups } = await q.limit(3);
+        if (dups && dups.length > 0) {
+          const confirmed = await confirmDialog(
+            `⚠️ تنبيه: يوجد ${dups.length} عملية ${txType === 'receipt' ? 'استلام' : 'تسليم'} مشابهة\n`
+            + `بنفس المبلغ (${formatCurrency(rounded)}) وتاريخ اليوم.\n\n`
+            + `هل أنت متأكد أن هذه ليست عملية مكررة؟`,
+            'متابعة', 'مراجعة', 'warning'
+          );
+          if (!confirmed) return;
+        }
+      } catch { /* لا نمنع العملية إذا فشل الفحص */ }
+    }
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn     = document.getElementById('tr-save-btn');
     const restore = setButtonLoading(btn);
