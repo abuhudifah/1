@@ -17,7 +17,8 @@ let _contentEl = null;
 let _dateTimer = null;
 let _dexieOk   = false;
 
-let _activeComponentId = null;
+let _activeComponentId  = null;
+let _storeEventsBound   = false;
 const _loadedComponents = new Map();
 
 // ============================================================
@@ -702,6 +703,9 @@ function _destroyActiveComponent() {
 // ربط أحداث AppStore
 // ============================================================
 function _bindStoreEvents() {
+  if (_storeEventsBound) return;
+  _storeEventsBound = true;
+
   AppStore.addEventListener('store:settingsLoaded', () => {
     _updateHeaderLogo();
   });
