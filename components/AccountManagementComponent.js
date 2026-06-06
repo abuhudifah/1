@@ -1357,8 +1357,30 @@ const AccountManagementComponent = {
         const name   = document.getElementById('add-company-name')?.value.trim();
         const prefix = document.getElementById('add-company-prefix')?.value.trim().toUpperCase();
         if (!name || !prefix) { errEl.textContent = 'الاسم والبادئة مطلوبان'; restore(); return; }
-        result = await repo.create('companies', { name, account_prefix: prefix });
-        if (isOk(result)) await AppStore.refreshData();
+        if (!/^[A-Z0-9_]{2,20}$/.test(prefix)) {
+          errEl.textContent = 'البادئة: أحرف إنجليزية كبيرة وأرقام فقط (2-20 حرف)';
+          restore(); return;
+        }
+
+        /* ── حفظ مباشر عبر Supabase للتحقق الفوري ── */
+        if (isOnline()) {
+          const { data: saved, error } = await supabaseClient
+            .from('companies')
+            .insert({ name, account_prefix: prefix })
+            .select()
+            .single();
+          if (error) {
+            const msg = error.code === '23505'
+              ? `البادئة "${prefix}" مستخدمة مسبقاً — اختر بادئة مختلفة`
+              : `فشل الحفظ: ${error.message}`;
+            errEl.textContent = msg; restore(); return;
+          }
+          result = ok(saved);
+          await AppStore.refreshData();
+        } else {
+          result = await repo.create('companies', { name, account_prefix: prefix });
+          if (isOk(result)) await AppStore.refreshData();
+        }
 
       } else if (type === 'bank') {
         const name    = document.getElementById('add-bank-name')?.value.trim();
@@ -1375,7 +1397,14 @@ const AccountManagementComponent = {
       } else if (type === 'expense') {
         const name = document.getElementById('add-expense-name')?.value.trim();
         if (!name) { errEl.textContent = 'اسم نوع المصروف مطلوب'; restore(); return; }
-        result = await repo.create('expense_accounts', { name });
+        /* توليد code من الاسم: حروف/أرقام فقط + طابع زمني مختصر */
+        const code = name
+          .replace(/[\s\-–—]+/g, '_')
+          .replace(/[^\w؀-ۿ]/g, '')
+          .toUpperCase()
+          .slice(0, 15)
+          + '_' + Date.now().toString(36).slice(-4).toUpperCase();
+        result = await repo.create('expense_accounts', { name, code });
         if (isOk(result)) await AppStore.refreshData();
 
       } else if (type === 'custom') {
