@@ -397,7 +397,9 @@ async function _fetchUserProfile(userId) {
   if (isOnline()) {
     try {
       const { data, error } = await supabaseClient
-        .from(TABLES.USERS).select('*').eq('id', userId).single();
+        .from(TABLES.USERS)
+        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, phone, email')
+        .eq('id', userId).single();
       if (!error && data) return ok(data);
       console.warn('⚠️ _fetchUserProfile Supabase فشل:', error?.message);
     } catch (e) {
@@ -445,7 +447,7 @@ function _preloadEssentialData(profile) {
       if (profile.role === ROLES.ADMIN || profile.role === ROLES.ADMIN_ASSISTANT) {
         tasks.push(
           supabaseClient.from(TABLES.USERS)
-            .select('id,username,display_name,role,is_active,allowed_tabs,quick_equation_hash')
+            .select('id,username,display_name,role,is_active,allowed_tabs')
             .order('display_name')
             .then(({ data }) => {
               if (data && typeof db !== 'undefined' && db.isOpen())
