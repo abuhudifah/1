@@ -480,81 +480,46 @@ const DailySummaryComponent = {
   },
 
   _printSummary() {
-    const txs  = AppStore.getState('transactions').filter(t=>!t.is_reversed);
-    const date = AppStore.getState('selectedDate')||getCurrentSaudiDate();
+    const txs  = AppStore.getState('transactions').filter(t => !t.is_reversed);
+    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
     const user = AuthService.getCurrentUser();
-    const logo = AppStore.getState('logoUrl')||'';
-    const s    = {collection:0,deposit:0,expense:0,receipt:0,delivery:0};
-    txs.forEach(tx=>{if(s.hasOwnProperty(tx.type))s[tx.type]+=Math.round(parseFloat(tx.amount||0));});
-    const net = s.collection+s.receipt-s.deposit-s.expense-s.delivery;
-    const w = window.open('','_blank','width=860,height=650');
-    w.document.write(`<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<title>الملخص اليومي — ${formatDateArabic(date)}</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700;800&display=swap');
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'IBM Plex Sans Arabic',sans-serif;padding:28px;color:#0f172a;direction:rtl;font-size:13pt;}
-  .hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0f172a;padding-bottom:14px;margin-bottom:20px;}
-  .hd h1{font-size:16pt;font-weight:800;} .hd p{font-size:9pt;color:#64748b;margin-top:3px;}
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}
-  .sc{background:#f8fafc;border-radius:10px;padding:12px 16px;border-right:3px solid #0f172a;}
-  .sc label{font-size:8pt;color:#64748b;display:block;margin-bottom:4px;}
-  .sc .v{font-size:13pt;font-weight:800;direction:ltr;text-align:right;}
-  .sc.s .v{color:#059669;} .sc.d .v{color:#dc2626;} .sc.i .v{color:#0284c7;}
-  .sc.n .v{color:${net>=0?'#059669':'#dc2626'};}
-  table{width:100%;border-collapse:collapse;font-size:10pt;}
-  thead{background:#0f172a;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  th,td{padding:8px 10px;text-align:right;}
-  td{border-bottom:1px solid #e2e8f0;}
-  tfoot td{font-weight:800;background:#f1f5f9;border-top:2px solid #0f172a;}
-  .ft{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:8pt;color:#64748b;}
-  @media print{body{padding:15px;}}
-</style>
-</head>
-<body>
-  <div class="hd">
-    <div><h1>الملخص اليومي</h1><p>نظام أبو حذيفة للصرافة والتحويلات</p></div>
-    <div style="text-align:left;">
-      ${logo?`<img src="${logo}" alt="شعار" style="height:48px;object-fit:contain;display:block;margin-bottom:4px;">`:''}
-      <p style="font-size:10pt;font-weight:700;">${formatDateArabic(date)}</p>
-      <p style="font-size:9pt;color:#64748b;">${user?.display_name||''}</p>
-    </div>
-  </div>
-  <div class="stats">
-    <div class="sc s"><label>📥 التحصيلات</label><div class="v">+${s.collection.toLocaleString('en-US')} ر.س</div></div>
-    <div class="sc i"><label>🏦 الإيداعات</label><div class="v">−${s.deposit.toLocaleString('en-US')} ر.س</div></div>
-    <div class="sc d"><label>💸 المصروفات</label><div class="v">−${s.expense.toLocaleString('en-US')} ر.س</div></div>
-    <div class="sc i"><label>📤 الاستلامات</label><div class="v">+${s.receipt.toLocaleString('en-US')} ر.س</div></div>
-    <div class="sc d"><label>📦 التسليمات</label><div class="v">−${s.delivery.toLocaleString('en-US')} ر.س</div></div>
-    <div class="sc n"><label>💰 المتبقي</label><div class="v">${net>=0?'+':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س</div></div>
-  </div>
-  <table>
-    <thead><tr><th>#</th><th>النوع</th><th>المبلغ (ر.س)</th><th>التفاصيل</th><th>الوقت</th></tr></thead>
-    <tbody>
-      ${txs.map((tx,i)=>`<tr>
-        <td>${i+1}</td>
-        <td>${TRANSACTION_TYPE_LABELS[tx.type]||tx.type}</td>
-        <td dir="ltr" style="text-align:left;font-weight:700;">${Math.round(parseFloat(tx.amount||0)).toLocaleString('en-US')}</td>
-        <td>${tx.customer_name||tx.details||'—'}</td>
-        <td style="font-size:9pt;color:#64748b;">${tx.created_at?new Date(tx.created_at).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}):'—'}</td>
-      </tr>`).join('')}
-    </tbody>
-    <tfoot><tr>
-      <td colspan="2" style="text-align:center;">الإجمالي (${txs.length} عملية)</td>
-      <td dir="ltr" style="text-align:left;">${Math.round(txs.reduce((s,t)=>s+parseFloat(t.amount||0),0)).toLocaleString('en-US')}</td>
-      <td colspan="2"></td>
-    </tr></tfoot>
-  </table>
-  <div class="ft">
-    <span>نظام أبو حذيفة — ${user?.display_name||''}</span>
-    <span>طُبع: ${new Date().toLocaleDateString('ar-SA')} ${new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'})}</span>
-  </div>
-  <script>window.onload=()=>window.print();<\/script>
-</body></html>`);
-    w.document.close();
+    const logo = AppStore.getState('logoUrl') || '';
+    const s    = { collection:0, deposit:0, expense:0, receipt:0, delivery:0 };
+    txs.forEach(tx => { if (s.hasOwnProperty(tx.type)) s[tx.type] += Math.round(parseFloat(tx.amount || 0)); });
+    const net   = s.collection + s.receipt - s.deposit - s.expense - s.delivery;
+    const total = Math.round(txs.reduce((acc, t) => acc + parseFloat(t.amount || 0), 0));
+
+    const tableHTML = PrintService.buildTable(
+      ['#', 'النوع', 'المبلغ (ر.س)', 'التفاصيل', 'الوقت'],
+      txs.map((tx, i) => [
+        i + 1,
+        TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
+        Math.round(parseFloat(tx.amount || 0)).toLocaleString('en-US'),
+        tx.customer_name || tx.details || '—',
+        tx.created_at
+          ? new Date(tx.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' })
+          : '—',
+      ]),
+      [`الإجمالي (${txs.length} عملية)`, '', total.toLocaleString('en-US'), '', ''],
+    );
+
+    PrintService.print({
+      title    : 'الملخص اليومي',
+      subtitle : 'نظام أبو حذيفة للصرافة والتحويلات',
+      date     : formatDateArabic(date),
+      userName : user?.display_name || '',
+      logo,
+      statsCards: [
+        { label:'📥 التحصيلات',  value:`+${s.collection.toLocaleString('en-US')} ر.س`, color:'#059669' },
+        { label:'🏦 الإيداعات',   value:`−${s.deposit.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
+        { label:'💸 المصروفات',   value:`−${s.expense.toLocaleString('en-US')} ر.س`,   color:'#dc2626' },
+        { label:'📤 الاستلامات',  value:`+${s.receipt.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
+        { label:'📦 التسليمات',   value:`−${s.delivery.toLocaleString('en-US')} ر.س`,  color:'#dc2626' },
+        { label:'💰 المتبقي',     value:`${net>=0?'+':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س`, color: net>=0?'#059669':'#dc2626' },
+      ],
+      tableHTML,
+      footerExtra: user?.display_name || '',
+    });
   },
 
   _buildEditModal() {
