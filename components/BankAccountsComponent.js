@@ -125,17 +125,65 @@ const BankAccountsComponent = {
       }
     } catch { }
 
-    /* ترتيب حسب آخر نشاط */
-    const sorted = [...bankAccounts].sort((a,b)=>{
-      const aLast = dayDeposits[a.id]?.list?.[0]?.created_at||'';
-      const bLast = dayDeposits[b.id]?.list?.[0]?.created_at||'';
+    el.innerHTML = '';
+    const users     = AppStore.getState('users');
+    const companies = AppStore.getState('companies') || [];
+
+    // تجميع البنوك تحت شركتها الأم
+    const companyMap = {}; // company_id → { company, banks[] }
+    const noBankComp = []; // بنوك بدون شركة
+
+    bankAccounts.forEach(bank => {
+      if (bank.company_id) {
+        if (!companyMap[bank.company_id]) {
+          companyMap[bank.company_id] = {
+            company : companies.find(c => c.id === bank.company_id) || { id: bank.company_id, name: '—' },
+            banks   : [],
+          };
+        }
+        companyMap[bank.company_id].banks.push(bank);
+      } else {
+        noBankComp.push(bank);
+      }
+    });
+
+    // ترتيب البنوك داخل كل شركة حسب آخر نشاط
+    const sortByActivity = (arr) => [...arr].sort((a, b) => {
+      const aLast = dayDeposits[a.id]?.list?.[0]?.created_at || '';
+      const bLast = dayDeposits[b.id]?.list?.[0]?.created_at || '';
       return bLast.localeCompare(aLast);
     });
 
-    el.innerHTML = '';
-    const users = AppStore.getState('users');
+    // بناء قائمة المجموعات
+    const groups = [
+      ...Object.values(companyMap).map(g => ({
+        label  : g.company.name,
+        banks  : sortByActivity(g.banks),
+        isGroup: true,
+        total  : g.banks.reduce((s, b) => s + (dayDeposits[b.id]?.total || 0), 0),
+      })),
+      ...(noBankComp.length ? [{ label: 'بدون شركة', banks: sortByActivity(noBankComp), isGroup: true, total: 0 }] : []),
+    ];
 
-    sorted.forEach(bank=>{
+    groups.forEach(group => {
+      // رأس المجموعة (اسم الشركة + إجمالي الإيداعات)
+      if (groups.length > 1 || group.label !== 'بدون شركة') {
+        const groupHeader = document.createElement('div');
+        groupHeader.style.cssText = `
+          grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;
+          padding:10px 4px 4px;border-bottom:2px solid var(--border-color);margin-bottom:4px;`;
+        groupHeader.innerHTML = `
+          <span style="font-weight:800;font-size:1rem;color:var(--text-primary);">🏢 ${escapeHtml(group.label)}</span>
+          <span style="font-size:0.82rem;color:var(--text-muted);">
+            إجمالي اليوم:
+            <strong style="color:var(--success);direction:ltr;display:inline-block;">
+              ${group.total.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
+            </strong>
+          </span>`;
+        el.appendChild(groupHeader);
+      }
+
+      group.banks.forEach(bank => {
       const info    = dayDeposits[bank.id]||{total:0,list:[]};
       const ceiling = Math.round(bank.financial_ceiling||0);
       const total   = info.total;
@@ -311,7 +359,8 @@ const BankAccountsComponent = {
       stats.appendChild(actRow);
       card.appendChild(stats);
       el.appendChild(card);
-    });
+      }); // نهاية group.banks.forEach
+    }); // نهاية groups.forEach
 
     /* ربط أحداث PIN و "عرض المزيد" */
     el.querySelectorAll('.toggle-pin-btn').forEach(btn=>{

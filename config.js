@@ -87,6 +87,7 @@ const RPC = Object.freeze({
 const TRANSACTION_TYPES = Object.freeze({
   COLLECTION        : 'collection',
   DEPOSIT           : 'deposit',
+  BANK_WITHDRAWAL   : 'bank_withdrawal',
   EXPENSE           : 'expense',
   RECEIPT           : 'receipt',
   DELIVERY          : 'delivery',
@@ -95,7 +96,8 @@ const TRANSACTION_TYPES = Object.freeze({
 
 const TRANSACTION_TYPE_LABELS = Object.freeze({
   collection        : 'تحصيل',
-  deposit           : 'إيداع',
+  deposit           : 'إيداع بنكي',
+  bank_withdrawal   : 'سحب بنكي',
   expense           : 'مصروف',
   receipt           : 'استلام',
   delivery          : 'تسليم',
