@@ -62,11 +62,20 @@ const DEXIE_TABLES = Object.freeze({
 // ============================================================
 
 const RPC = Object.freeze({
-  CREATE_TRANSACTION_WITH_ENTRIES : 'create_transaction_with_entries',
-  PERFORM_DAILY_CLOSE             : 'perform_daily_close',
-  REVERSE_TRANSACTION             : 'reverse_transaction',
-  UPDATE_DEBTOR_BALANCE           : 'update_debtor_balance',
-  VERIFY_QUICK_LOGIN              : 'verify_quick_login',
+  // دوال المعاملات المالية
+  CREATE_TRANSACTION_WITH_ENTRIES : 'create_transaction_with_entries', // params: {tx_data, entries_data}
+  PERFORM_DAILY_CLOSE             : 'perform_daily_close',             // params: {p_date, p_user_id}
+  REVERSE_TRANSACTION             : 'reverse_transaction',             // params: {p_transaction_id}
+  UPDATE_DEBTOR_BALANCE           : 'update_debtor_balance',           // params: {p_debtor_id, p_amount}
+  // دوال المصادقة
+  VERIFY_QUICK_LOGIN              : 'verify_quick_login',              // params: {p_hash} → {user_id, valid}
+  // دوال التقارير والاستعلامات
+  GET_ADMIN_DASHBOARD             : 'get_admin_dashboard',             // params: {p_date} → {kpi, banks, agents}
+  GET_DAILY_SUMMARY               : 'get_daily_summary',               // params: {p_date, p_agent_id?}
+  GET_CHART_OF_ACCOUNTS           : 'get_chart_of_accounts',           // params: {} → [{account_id, name, balance}]
+  GET_ACCOUNT_STATEMENT           : 'get_account_statement',           // params: {p_account_id, p_from, p_to}
+  GET_BANK_STATEMENT              : 'get_bank_statement',              // params: {p_bank_id, p_from, p_to}
+  GET_AUDIT_LOGS                  : 'get_audit_logs',                  // params: {p_from, p_to, p_user_id?}
 });
 
 // ============================================================
@@ -320,19 +329,3 @@ window.NOTIFICATION_TYPES    = NOTIFICATION_TYPES;
 window.ACCOUNT_PREFIXES      = ACCOUNT_PREFIXES;
 
 console.log(`✅ config.js محمّل — ${APP_CONFIG.NAME} v${APP_CONFIG.VERSION}`);
-
-
-// ═══════════════════════════════════════════════════════════════
-// RPC الجديدة — مضافة في التحديث (لوحة المدير، الملخص، الحسابات)
-// ═══════════════════════════════════════════════════════════════
-window.RPC = Object.freeze({
-  ...RPC,
-  GET_ADMIN_DASHBOARD   : 'get_admin_dashboard',
-  GET_DAILY_SUMMARY     : 'get_daily_summary',
-  GET_CHART_OF_ACCOUNTS : 'get_chart_of_accounts',
-  GET_ACCOUNT_STATEMENT : 'get_account_statement',
-  GET_BANK_STATEMENT    : 'get_bank_statement',
-  GET_AUDIT_LOGS        : 'get_audit_logs',
-});
-
-console.log('✅ config.js v2 — RPC الجديدة مضافة');
