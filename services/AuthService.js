@@ -143,6 +143,7 @@ async function checkSession() {
     });
 
     _saveToDexieBackground(profile);
+    _migrateQuickLoginStorage();
     return ok({ user: session.user, profile });
 
   } catch (e) {
@@ -214,7 +215,7 @@ async function enableQuickLogin(equation) {
         localStorage.setItem(`ahu_device_${uid}`, deviceToken);
       }
       sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
-      localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify({ hash, userId: uid, eq: trimmed }));
+      localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify({ hash, userId: uid }));
     } catch {}
 
     saveSession({ ...getSession(), quickLoginEnabled: true });
@@ -458,7 +459,26 @@ function _preloadEssentialData(profile) {
 }
 
 // ============================================================
-// 12. Brute Force
+// 12. تنظيف localStorage من حقل eq المخزَّن (ترحيل أمني)
+// ============================================================
+function _migrateQuickLoginStorage() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('ahu_quick_')) continue;
+      try {
+        const val = JSON.parse(localStorage.getItem(key) || '{}');
+        if ('eq' in val) {
+          delete val.eq;
+          localStorage.setItem(key, JSON.stringify(val));
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+// ============================================================
+// 13. Brute Force
 // ============================================================
 function _checkBruteForce(key) {
   const r = _loginAttempts.get(key);
@@ -484,7 +504,7 @@ function _translateAuthError(msg) {
 }
 
 // ============================================================
-// 13. الدوال العامة
+// 14. الدوال العامة
 // ============================================================
 function getCurrentUser()    { return AuthState.currentUser; }
 function getCurrentRole()    { return AuthState.currentUser?.role || null; }
