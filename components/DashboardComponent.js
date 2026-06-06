@@ -353,11 +353,14 @@ const DashboardComponent = {
         cData = days7.map(d => (data||[]).filter(t=>t.date===d&&t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
         dData = days7.map(d => (data||[]).filter(t=>t.date===d&&t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
       } else if (typeof db !== 'undefined' && db.isOpen()) {
-        for (const d of days7) {
-          const txs = await db.transactions.where('date').equals(d).filter(t=>!t.is_reversed).toArray();
-          cData.push(txs.filter(t=>t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
-          dData.push(txs.filter(t=>t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
-        }
+        const weekStart = days7[0];
+        const weekEnd   = days7[days7.length - 1];
+        const allTxs    = await db.transactions
+          .where('date').between(weekStart, weekEnd, true, true)
+          .filter(t => !t.is_reversed)
+          .toArray();
+        cData = days7.map(d => allTxs.filter(t=>t.date===d&&t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
+        dData = days7.map(d => allTxs.filter(t=>t.date===d&&t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
       }
     } catch { cData = days7.map(()=>0); dData = days7.map(()=>0); }
 
