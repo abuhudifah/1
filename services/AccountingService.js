@@ -199,7 +199,7 @@ function _buildRefundSettlementEntries(tx, voucher) {
 // الدالة الرئيسية: buildEntries
 // ============================================================
 
-function buildEntries(tx) {
+async function buildEntries(tx) {
   try {
     if (!tx.type)     return err('نوع العملية مطلوب');
     if (!tx.amount)   return err('المبلغ مطلوب');
@@ -274,7 +274,7 @@ async function createTransactionWithEntries(txData) {
         || (isReceiptByAgent ? APPROVAL_STATUS.PENDING : APPROVAL_STATUS.APPROVED),
     };
 
-    const entriesResult = buildEntries(transaction);
+    const entriesResult = await buildEntries(transaction);
     if (!isOk(entriesResult)) return entriesResult;
     const entries = entriesResult.data;
 
