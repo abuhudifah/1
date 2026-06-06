@@ -26,18 +26,16 @@ const GENERAL_ACCOUNT_ID = 'GENERAL_FUND';
 // مولّد أرقام القيود
 // ============================================================
 
-let _voucherCounter = null;
-let _voucherDate    = null;
-
-function _generateVoucherNumber() {
-  const today = getCurrentSaudiDate().replace(/-/g, '');
-  if (_voucherDate !== today) {
-    _voucherDate    = today;
-    _voucherCounter = 1;
-  } else {
-    _voucherCounter = (_voucherCounter || 0) + 1;
+async function _generateVoucherNumber() {
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabaseClient.rpc(RPC.GET_NEXT_VOUCHER_NUMBER);
+      if (!error && data) return data;
+    } catch {}
   }
-  return `V${today}${String(_voucherCounter).padStart(4, '0')}`;
+  // Fallback offline: timestamp فريد لكل جلسة
+  const today = getCurrentSaudiDate().replace(/-/g, '');
+  return `V${today}-LOCAL-${Date.now()}`;
 }
 
 // ============================================================
@@ -56,8 +54,7 @@ const AccountId = {
 // بناء القيود لكل نوع عملية
 // ============================================================
 
-function _buildCollectionEntries(tx) {
-  const voucher  = _generateVoucherNumber();
+function _buildCollectionEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   const entries  = [];
@@ -92,15 +89,12 @@ function _buildCollectionEntries(tx) {
   return entries;
 }
 
-function _buildDepositEntries(tx) {
+function _buildDepositEntries(tx, voucher2, voucher3) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   const bankAcc  = AccountId.bank(tx.bank_account_id);
   // FIX-5a: كان 'COMP_GENERAL' — استبدلناه بـ GENERAL_ACCOUNT_ID عند غياب company_id
   const compAcc  = tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID;
-
-  const voucher2 = _generateVoucherNumber();
-  const voucher3 = _generateVoucherNumber();
 
   return [
     { voucher_number: voucher2, date, account_id: bankAcc,  debit: tx.amount, credit: 0,
@@ -114,8 +108,7 @@ function _buildDepositEntries(tx) {
   ];
 }
 
-function _buildExpenseEntries(tx) {
-  const voucher  = _generateVoucherNumber();
+function _buildExpenseEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   const expCode  = tx.expense_type || 'MISC';
@@ -129,8 +122,7 @@ function _buildExpenseEntries(tx) {
   ];
 }
 
-function _buildReceiptEntries(tx) {
-  const voucher     = _generateVoucherNumber();
+function _buildReceiptEntries(tx, voucher) {
   const date        = tx.date || getCurrentSaudiDate();
   const receiverAcc = AccountId.agent(tx.agent_id);
   // FIX-5a: كان يستخدم 'GENERAL_FUND' مباشرة بدون ثابت — الآن موحَّد
@@ -146,8 +138,7 @@ function _buildReceiptEntries(tx) {
   ];
 }
 
-function _buildDeliveryEntries(tx) {
-  const voucher     = _generateVoucherNumber();
+function _buildDeliveryEntries(tx, voucher) {
   const date        = tx.date || getCurrentSaudiDate();
   const giverAcc    = AccountId.agent(tx.agent_id);
   // FIX-5a: موحَّد باستخدام GENERAL_ACCOUNT_ID
@@ -163,8 +154,7 @@ function _buildDeliveryEntries(tx) {
   ];
 }
 
-function _buildRefundSettlementEntries(tx) {
-  const voucher  = _generateVoucherNumber();
+function _buildRefundSettlementEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   // FIX-5a: موحَّد باستخدام GENERAL_ACCOUNT_ID
@@ -192,23 +182,23 @@ function buildEntries(tx) {
 
     switch (tx.type) {
       case TRANSACTION_TYPES.COLLECTION:
-        entries = _buildCollectionEntries(tx);
+        entries = _buildCollectionEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.DEPOSIT:
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للإيداع');
-        entries = _buildDepositEntries(tx);
+        entries = _buildDepositEntries(tx, await _generateVoucherNumber(), await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.EXPENSE:
-        entries = _buildExpenseEntries(tx);
+        entries = _buildExpenseEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.RECEIPT:
-        entries = _buildReceiptEntries(tx);
+        entries = _buildReceiptEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.DELIVERY:
-        entries = _buildDeliveryEntries(tx);
+        entries = _buildDeliveryEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.REFUND_SETTLEMENT:
-        entries = _buildRefundSettlementEntries(tx);
+        entries = _buildRefundSettlementEntries(tx, await _generateVoucherNumber());
         break;
       default:
         return err(`نوع عملية غير معروف: ${tx.type}`);
