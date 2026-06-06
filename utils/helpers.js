@@ -838,6 +838,15 @@ function getTransactionIcon(type) {
 }
 
 // ============================================================
+// TASK-4.2: مساعد Dexie الموحّد
+// ============================================================
+
+async function withDexie(fn) {
+  if (typeof db === 'undefined' || !db.isOpen()) return null;
+  try { return await fn(db); } catch (e) { console.warn('⚠️ Dexie:', e.message); return null; }
+}
+
+// ============================================================
 // تصدير جميع الدوال للاستخدام في بقية الملفات
 // ============================================================
 
@@ -875,6 +884,7 @@ Object.assign(window, {
 
   // أداء
   sleep, calcBackoffDelay,
+  withDexie,
 
   // أزرار
   setButtonLoading,
