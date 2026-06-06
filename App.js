@@ -150,6 +150,12 @@ function _buildAppShell() {
   root.appendChild(_contentEl);
 
   if (window.lucide) lucide.createIcons();
+
+  // ── scroll → .scrolled على الهيدر ──
+  const onScroll = () => {
+    _headerEl.classList.toggle('scrolled', window.scrollY > 8);
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
 }
 
 // ============================================================
@@ -418,6 +424,7 @@ function _buildNav() {
   const nav  = document.createElement('nav');
   nav.id        = 'app-nav';
   nav.className = 'app-nav';
+  nav.setAttribute('aria-label', 'التنقل الرئيسي');
   nav.style.overflowX = 'auto';
 
   const icons = {
@@ -441,6 +448,7 @@ function _buildNav() {
     btn.className = 'nav-tab';
     btn.dataset.tab = tabId;
     btn.setAttribute('aria-selected', 'false');
+    btn.setAttribute('role', 'tab');
 
     const label = TAB_LABELS[tabId] || tabId;
     const icon  = icons[tabId] || 'circle';
@@ -503,6 +511,13 @@ function _updateNavHighlight(activeTabId) {
     const isActive = btn.dataset.tab === activeTabId;
     btn.classList.toggle('active', isActive);
     btn.setAttribute('aria-selected', String(isActive));
+    if (isActive) {
+      btn.setAttribute('aria-current', 'page');
+      // مرّر للتبويب النشط داخل شريط التنقل
+      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    } else {
+      btn.removeAttribute('aria-current');
+    }
   });
 }
 
