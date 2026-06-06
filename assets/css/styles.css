@@ -2729,5 +2729,126 @@ body.dark-mode .login-page-wrap {
 /* تحسين نص "الحسابات البنكية" */
 body.dark-mode .bank-card-name { color: var(--text-primary); }
 
+/* ============================================================
+   Phase 7: Animations & Final Polish
+   ============================================================ */
+
+/* ── انتقال التبويبات ── */
+@keyframes tab-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.app-content.tab-enter {
+  animation: tab-fade-in 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ── دخول البطاقات بالتتالي (stagger) ── */
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.glass-card {
+  animation: card-rise 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: calc(var(--card-index, 0) * 55ms);
+}
+
+/* ── ضغط الأزرار ── */
+.btn:active:not(:disabled) {
+  transform : scale(0.96);
+  transition: transform 80ms ease;
+}
+.header-icon-btn:active {
+  transform : scale(0.90) !important;
+}
+
+/* ── تأثير ripple على الأزرار ── */
+.btn {
+  overflow: hidden;
+  position: relative;
+}
+.btn-ripple {
+  position      : absolute;
+  border-radius : 50%;
+  transform     : scale(0);
+  background    : rgba(255,255,255,0.30);
+  pointer-events: none;
+  animation     : ripple-expand 0.50s linear;
+}
+@keyframes ripple-expand {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* ── زر الرجوع للأعلى ── */
+#scroll-to-top {
+  position      : fixed;
+  bottom        : 28px;
+  left          : 24px;
+  width         : 42px;
+  height        : 42px;
+  border-radius : 50%;
+  background    : var(--accent);
+  border        : none;
+  color         : #fff;
+  display       : flex;
+  align-items   : center;
+  justify-content: center;
+  cursor        : pointer;
+  box-shadow    : 0 4px 16px rgba(37,99,235,0.40);
+  z-index       : 990;
+  opacity       : 0;
+  transform     : translateY(12px) scale(0.85);
+  transition    : opacity 0.22s ease, transform 0.22s ease, box-shadow 0.2s ease;
+  pointer-events: none;
+}
+#scroll-to-top.visible {
+  opacity       : 1;
+  transform     : translateY(0) scale(1);
+  pointer-events: auto;
+}
+#scroll-to-top:hover {
+  box-shadow: 0 6px 22px rgba(37,99,235,0.55);
+  transform : translateY(-2px) scale(1.06);
+}
+
+/* ── تحسين focus للوصولية ── */
+:focus-visible {
+  outline       : 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius : 4px;
+}
+
+/* ── تحسين حركة nav-tab ── */
+.nav-tab {
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nav-tab::after {
+  transition: right 0.2s ease, left 0.2s ease;
+}
+
+/* ── skeleton متحرك أفضل ── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    var(--bg-hover)     50%,
+    var(--bg-secondary) 75%
+  );
+  background-size: 300% 100%;
+  animation: skeleton-wave 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-wave {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: -100% 50%; }
+}
+
+/* ── احترام تفضيل تقليل الحركة ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration  : 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration : 0.01ms !important;
+  }
+}
+
 /* ══ نهاية ملف التحسينات ══ */
 
