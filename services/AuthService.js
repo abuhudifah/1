@@ -247,7 +247,12 @@ async function quickLogin(equation) {
 
     // ─── وضع الاتصال ───
     if (isOnline()) {
-      const result = await callRPC(RPC.VERIFY_QUICK_LOGIN, { p_equation_hash: hash });
+      // timeout 6 ثوانٍ على RPC لمنع التجمد عند بطء الشبكة
+      const rpcPromise = callRPC(RPC.VERIFY_QUICK_LOGIN, { p_equation_hash: hash });
+      const timeoutPromise = new Promise(resolve =>
+        setTimeout(() => resolve(err('انتهت مهلة الاتصال — جرّب مجدداً')), 6000)
+      );
+      const result = await Promise.race([rpcPromise, timeoutPromise]);
       console.log('[QuickLogin] RPC result:', JSON.stringify(result?.data));
 
       if (!isOk(result) || !result.data?.success) {

@@ -647,6 +647,9 @@ function _showLoginScreen() {
   _stopDateClock();
   _destroyActiveComponent();
 
+  // تنظيف LoginComponent السابق إذا وُجد
+  try { window.LoginComponent?.destroy?.(); } catch {}
+
   const root = document.getElementById('app-root');
   root.innerHTML = '';
 
