@@ -114,9 +114,6 @@
   --state-online  : #10b981;
   --state-offline : #94a3b8;
   --state-error   : #ef4444;
-  /* --- أبعاد ثابتة --- */
-  --header-height-mobile : 58px;
-  --nav-height-mobile    : 46px;
 }
 
 /* ============================================================
@@ -1720,11 +1717,6 @@ body.dark-mode input[type="time"]        {
   50%    { transform:scale(1.08);opacity:1;   }
 }
 
-@keyframes spin {
-  from{ transform:rotate(0deg); }
-  to  { transform:rotate(360deg); }
-}
-
 /* بطاقة بنكية — hover lift */
 .bank-card-hover {
   transition: transform var(--transition-normal),
@@ -2549,22 +2541,6 @@ body.dark-mode .sync-dot.conflict{ box-shadow: 0 0 8px var(--danger);  }
    تحسينات بصرية عامة (فاتح + داكن)
    ════════════════════════════════════════════════ */
 
-/* Toast في الأسفل */
-#toast-container {
-  position: fixed !important;
-  bottom  : 24px !important;
-  top     : auto !important;
-  left    : 50% !important;
-  transform: translateX(-50%) !important;
-  z-index : 99999;
-  display : flex;
-  flex-direction: column-reverse;
-  align-items: center;
-  gap: 8px;
-  pointer-events: none;
-  width: max-content;
-  max-width: 92vw;
-}
 
 /* بطاقات KPI مع أنيميشن متتالي */
 .kpi-grid .kpi-card { animation: fadeIn 0.35s ease both; }
@@ -2633,23 +2609,6 @@ input[type="number"].form-control::-webkit-inner-spin-button { opacity: 0.4; }
   transition: width 0.7s cubic-bezier(0.4,0,0.2,1) !important;
 }
 
-/* شارة الإشعارات */
-.notif-badge {
-  animation: badgePop 0.4s cubic-bezier(0.34,1.56,0.64,1);
-}
-@keyframes badgePop {
-  0%   { transform: scale(0); }
-  100% { transform: scale(1); }
-}
-
-/* حالة فارغة */
-.empty-state-icon {
-  animation: floatIcon 3s ease-in-out infinite;
-}
-@keyframes floatIcon {
-  0%,100% { transform: translateY(0); }
-  50%      { transform: translateY(-8px); }
-}
 
 /* spinner محسّن */
 .spinner { will-change: transform; }
@@ -2849,6 +2808,34 @@ body.dark-mode .bank-card-name { color: var(--text-primary); }
     transition-duration : 0.01ms !important;
   }
 }
+
+/* ── Dark mode: Chart of Accounts ── */
+body.dark-mode .acct-kpi-item {
+  background  : rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.08);
+}
+body.dark-mode .acct-cat-header:hover {
+  background: rgba(255,255,255,0.05);
+}
+body.dark-mode .acct-search-input {
+  background  : rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.10);
+  color       : var(--text-primary);
+}
+body.dark-mode .acct-search-input:focus {
+  border-color: var(--accent);
+  box-shadow  : 0 0 0 3px rgba(37,99,235,0.18);
+}
+body.dark-mode .acct-total-card {
+  filter: brightness(1.1);
+}
+
+/* ── Dark mode: Bank cards ── */
+body.dark-mode .bank-card {
+  background  : rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+body.dark-mode .bank-card-name { color: var(--text-primary); }
 
 /* ══ نهاية ملف التحسينات ══ */
 
