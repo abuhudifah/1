@@ -120,6 +120,13 @@ const AccountManagementComponent = {
             <p style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;font-family:monospace;" id="stmt-account-id"></p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="stmt-share-btn" class="btn btn-secondary btn-sm"
+              style="background:rgba(37,211,102,0.10);border-color:rgba(37,211,102,0.30);color:#25d366;">
+              <i data-lucide="share-2" style="width:13px;height:13px;"></i> مشاركة
+            </button>
+            <button id="stmt-copy-btn" class="btn btn-secondary btn-sm">
+              <i data-lucide="copy" style="width:13px;height:13px;"></i> نسخ
+            </button>
             <button id="stmt-print-btn" class="btn btn-secondary btn-sm">
               <i data-lucide="printer" style="width:13px;height:13px;"></i> طباعة
             </button>
@@ -160,6 +167,19 @@ const AccountManagementComponent = {
       this._selectedAccount = null;
     });
     document.getElementById('stmt-print-btn')?.addEventListener('click', () => this._printStatement());
+    document.getElementById('stmt-share-btn')?.addEventListener('click', () => this._shareStatement());
+    document.getElementById('stmt-copy-btn')?.addEventListener('click', () => {
+      const name = this._selectedAccountName || '';
+      const from = document.getElementById('stmt-from')?.value || '';
+      const to   = document.getElementById('stmt-to')?.value   || '';
+      const rows = [...document.querySelectorAll('#stmt-print-table tbody tr')]
+        .map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()).join(' | '))
+        .join('\n');
+      PrintService.copyText(
+        `كشف حساب: ${name}\nالفترة: ${from} → ${to}\n${'─'.repeat(30)}\n${rows}`,
+        'تم نسخ كشف الحساب'
+      );
+    });
 
     let _searchTimer = null;
     document.getElementById('acct-search')?.addEventListener('input', (e) => {
@@ -801,33 +821,56 @@ const AccountManagementComponent = {
 
   /* طباعة كشف الحساب */
   _printStatement() {
-    const name  = this._selectedAccountName || '';
-    const from  = document.getElementById('stmt-from')?.value || '';
-    const to    = document.getElementById('stmt-to')?.value   || '';
-    const table = document.getElementById('stmt-print-table')?.outerHTML || '';
+    const name = this._selectedAccountName || '';
+    const from = document.getElementById('stmt-from')?.value || '';
+    const to   = document.getElementById('stmt-to')?.value   || '';
+    const logo = AppStore.getState('logoUrl') || '';
+    const user = AuthService.getCurrentUser();
 
-    const win = window.open('', '_blank');
-    win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
-      <meta charset="utf-8">
-      <title>كشف حساب — ${name}</title>
-      <style>
-        body{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:20px;font-size:13px;}
-        h2{margin-bottom:4px;}p{color:#555;margin-bottom:16px;}
-        table{width:100%;border-collapse:collapse;}
-        th,td{border:1px solid #ddd;padding:6px 8px;text-align:right;}
-        th{background:#f5f5f5;font-weight:700;}
-        tr:nth-child(even){background:#fafafa;}
-        @media print{@page{margin:1cm;}}
-      </style></head><body>
-      <h2>📄 كشف حساب: ${escapeHtml(name)}</h2>
-      <p>الفترة: ${from} إلى ${to} &nbsp;|&nbsp; معرف الحساب: ${escapeHtml(this._selectedAccount || '')}</p>
-      ${table}
-      <p style="margin-top:20px;color:#999;font-size:11px;">
-        طُبع في: ${new Date().toLocaleString('ar-SA')}
-      </p>
-    </body></html>`);
-    win.document.close();
-    win.print();
+    /* استخراج بيانات الصفوف من الجدول الحالي */
+    const tbl     = document.getElementById('stmt-print-table');
+    const headers = tbl ? [...tbl.querySelectorAll('thead th')].map(th => th.textContent.trim()) : [];
+    const rows    = tbl
+      ? [...tbl.querySelectorAll('tbody tr')].map(tr =>
+          [...tr.querySelectorAll('td')].map(td => td.textContent.trim()))
+      : [];
+    const footerCells = tbl
+      ? [...(tbl.querySelector('tfoot tr')?.querySelectorAll('td') || [])].map(td => td.textContent.trim())
+      : [];
+
+    const tableHTML = headers.length
+      ? PrintService.buildTable(headers, rows, footerCells.length ? footerCells : null)
+      : '<p style="color:#64748b;text-align:center;padding:20px;">لا توجد بيانات في الكشف</p>';
+
+    PrintService.print({
+      title      : `كشف حساب: ${name}`,
+      subtitle   : `معرف الحساب: ${this._selectedAccount || ''} &nbsp;|&nbsp; الفترة: ${from} → ${to}`,
+      date       : from ? `${from} — ${to}` : '',
+      userName   : user?.display_name || '',
+      logo,
+      tableHTML,
+      footerExtra: `${name} · ${this._selectedAccount || ''}`,
+    });
+  },
+
+  /* مشاركة كشف الحساب (نص) */
+  _shareStatement(entries) {
+    const name = this._selectedAccountName || '';
+    const from = document.getElementById('stmt-from')?.value || '';
+    const to   = document.getElementById('stmt-to')?.value   || '';
+
+    const lines = [
+      `📄 كشف حساب: ${name}`,
+      `🗓️ الفترة: ${from} → ${to}`,
+      '─'.repeat(30),
+      ...(entries || []).map(e =>
+        `${e.date || ''} | ${e.type || ''} | ${e.amount ? Math.round(e.amount).toLocaleString('en-US') + ' ر.س' : ''} | ${e.description || ''}`
+      ),
+      '─'.repeat(30),
+      `نظام أبو حذيفة للصرافة والتحويلات`,
+    ].join('\n');
+
+    PrintService.share(lines, { title: `كشف حساب ${name}` });
   },
 
   // ─────────────────────────────────────────────────────────
