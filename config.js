@@ -76,6 +76,7 @@ const RPC = Object.freeze({
   GET_ACCOUNT_STATEMENT           : 'get_account_statement',           // params: {p_account_id, p_from, p_to}
   GET_BANK_STATEMENT              : 'get_bank_statement',              // params: {p_bank_id, p_from, p_to}
   GET_AUDIT_LOGS                  : 'get_audit_logs',                  // params: {p_from, p_to, p_user_id?}
+  GET_OPENING_BALANCE             : 'get_opening_balance',             // params: {p_account_id, p_from_date} → numeric
 });
 
 // ============================================================
