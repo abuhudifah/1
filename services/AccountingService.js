@@ -155,6 +155,19 @@ function _buildDeliveryEntries(tx, voucher) {
   ];
 }
 
+function _buildBankWithdrawalEntries(tx, voucher) {
+  const date     = tx.date || getCurrentSaudiDate();
+  const agentAcc = AccountId.agent(tx.agent_id);
+  const bankAcc  = AccountId.bank(tx.bank_account_id);
+
+  return [
+    { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
+      description: `سحب بنكي — دخل الصندوق` },
+    { voucher_number: voucher, date, account_id: bankAcc,  debit: 0, credit: tx.amount,
+      description: `سحب بنكي — خرج من الحساب البنكي` },
+  ];
+}
+
 function _buildRefundSettlementEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
@@ -188,6 +201,10 @@ function buildEntries(tx) {
       case TRANSACTION_TYPES.DEPOSIT:
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للإيداع');
         entries = _buildDepositEntries(tx, await _generateVoucherNumber(), await _generateVoucherNumber());
+        break;
+      case TRANSACTION_TYPES.BANK_WITHDRAWAL:
+        if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للسحب البنكي');
+        entries = _buildBankWithdrawalEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.EXPENSE:
         entries = _buildExpenseEntries(tx, await _generateVoucherNumber());
@@ -375,6 +392,16 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
   try {
     const { page = 1, pageSize = PAGINATION_CONFIG.DEFAULT_PAGE_SIZE } = options;
 
+    // جلب الرصيد الافتتاحي مستقلاً عن الصفحة الحالية — يجب أن يكون ثابتاً لكل صفحات الفترة
+    let openingBalance = 0;
+    if (isOnline()) {
+      const { data: balanceData, error: balanceErr } = await supabaseClient
+        .rpc(RPC.GET_OPENING_BALANCE, { p_account_id: accountId, p_from_date: fromDate });
+      if (!balanceErr && balanceData !== null) {
+        openingBalance = parseFloat(balanceData) || 0;
+      }
+    }
+
     const result = await repo.query(
       TABLES.ACCOUNT_LEDGER,
       {
@@ -387,24 +414,42 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
     if (!isOk(result)) return result;
 
     const entries = result.data.data || [];
-    let totalDebit = 0, totalCredit = 0;
+    const totalCount = result.data.count || entries.length;
+
+    // إجماليات الصفحة الحالية فقط (للعرض)
+    let pageDebit = 0, pageCredit = 0;
     for (const entry of entries) {
-      totalDebit  += parseFloat(entry.debit  || 0);
-      totalCredit += parseFloat(entry.credit || 0);
+      pageDebit  += parseFloat(entry.debit  || 0);
+      pageCredit += parseFloat(entry.credit || 0);
     }
 
-    let openingBalance = 0;
-    if (isOnline()) {
-      const { data: balanceData, error: balanceErr } = await supabaseClient
-        .rpc(RPC.GET_OPENING_BALANCE, { p_account_id: accountId, p_from_date: fromDate });
-      if (!balanceErr && balanceData !== null) {
-        openingBalance = parseFloat(balanceData) || 0;
-      }
+    // الرصيد الختامي = الافتتاحي + صافي كامل الفترة (ليس الصفحة فقط)
+    // عند page=1 يكفي openingBalance + صافي الصفحة
+    // عند page>1: نحتاج مجموع ما سبق — نستخدم get_account_statement RPC إن كان متاحاً
+    let closingBalance = openingBalance + pageDebit - pageCredit;
+    if (isOnline() && page > 1) {
+      try {
+        const { data: stmtData } = await supabaseClient.rpc(RPC.GET_ACCOUNT_STATEMENT, {
+          p_account_id : accountId,
+          p_from_date  : fromDate,
+          p_to_date    : toDate,
+          p_page       : page - 1,
+          p_limit      : pageSize,
+        });
+        if (stmtData?.closing_balance !== undefined) {
+          closingBalance = parseFloat(stmtData.closing_balance) + pageDebit - pageCredit;
+        }
+      } catch { /* الـ RPC قد لا يسمح للوكيل — نبقى على التقدير */ }
     }
 
-    const closingBalance = openingBalance + totalDebit - totalCredit;
-
-    return ok({ entries, count: result.data.count || entries.length, openingBalance, closingBalance, totalDebit, totalCredit });
+    return ok({
+      entries,
+      count         : totalCount,
+      openingBalance,
+      closingBalance,
+      totalDebit    : pageDebit,
+      totalCredit   : pageCredit,
+    });
 
   } catch (e) {
     return err(`فشل جلب كشف الحساب: ${e.message}`);
