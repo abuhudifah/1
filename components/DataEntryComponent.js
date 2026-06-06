@@ -65,6 +65,10 @@ const DataEntryComponent = {
     } catch {}
 
     this._sortedBanks = [...allBanks].sort((a, b) => {
+      const favs = this._getFavoriteBanks();
+      const aFav = favs.includes(a.id) ? 1 : 0;
+      const bFav = favs.includes(b.id) ? 1 : 0;
+      if (bFav !== aFav) return bFav - aFav;           // المفضلة أولاً
       const aT = lastActivityMap[a.id] || '';
       const bT = lastActivityMap[b.id] || '';
       if (aT && bT) return bT.localeCompare(aT);
@@ -72,6 +76,21 @@ const DataEntryComponent = {
       if (bT) return  1;
       return (a.name || '').localeCompare(b.name || '');
     });
+  },
+
+  /* ── إدارة المفضلة — localStorage لكل مستخدم ── */
+  _favKey() {
+    return `favBanks_${AuthService.getCurrentUserId() || 'anon'}`;
+  },
+  _getFavoriteBanks() {
+    try { return JSON.parse(localStorage.getItem(this._favKey()) || '[]'); } catch { return []; }
+  },
+  _toggleFavoriteBank(bankId) {
+    const favs = this._getFavoriteBanks();
+    const idx  = favs.indexOf(bankId);
+    if (idx === -1) favs.push(bankId); else favs.splice(idx, 1);
+    localStorage.setItem(this._favKey(), JSON.stringify(favs));
+    return favs.includes(bankId);
   },
 
   async _buildPage() {
@@ -256,6 +275,7 @@ const DataEntryComponent = {
 
   /* ── بناء قائمة الحسابات البنكية مع السقف ── */
   _buildBankSelect(selectId, placeholder = '— اختر الحساب البنكي —') {
+    const favs   = this._getFavoriteBanks();
     const select = document.createElement('select');
     select.id = selectId;
     select.className = 'form-control';
@@ -265,16 +285,55 @@ const DataEntryComponent = {
     defaultOpt.textContent = placeholder;
     select.appendChild(defaultOpt);
 
-    this._sortedBanks.forEach((b, idx) => {
-      const opt = document.createElement('option');
-      opt.value = b.id;
-      const star  = (idx === 0 && this._sortedBanks.length > 1) ? '★ ' : '';
-      const ceil  = b.financial_ceiling ? ` — سقف: ${Math.round(b.financial_ceiling).toLocaleString('en-US')}` : '';
+    this._sortedBanks.forEach(b => {
+      const opt  = document.createElement('option');
+      opt.value  = b.id;
+      const star = favs.includes(b.id) ? '★ ' : '';
+      const ceil = b.financial_ceiling ? ` — سقف: ${Math.round(b.financial_ceiling).toLocaleString('en-US')}` : '';
       opt.textContent = `${star}${b.name}${ceil}`;
       select.appendChild(opt);
     });
 
     return select;
+  },
+
+  /* زر صغير أسفل قائمة البنوك لتثبيت/إلغاء التثبيت */
+  _buildBankPinBtn(getSelectId) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = 'background:none;border:none;font-size:0.78rem;color:var(--text-muted);cursor:pointer;padding:2px 0;margin-top:3px;';
+    const refresh = () => {
+      const sel   = document.getElementById(getSelectId);
+      const bankId = sel?.value;
+      if (!bankId) { btn.textContent = ''; return; }
+      const isFav = this._getFavoriteBanks().includes(bankId);
+      btn.textContent = isFav ? '★ إلغاء التثبيت' : '☆ تثبيت هذا الحساب';
+      btn.style.color = isFav ? 'var(--warning)' : 'var(--text-muted)';
+    };
+    btn.addEventListener('click', () => {
+      const sel    = document.getElementById(getSelectId);
+      const bankId = sel?.value;
+      if (!bankId) return;
+      this._toggleFavoriteBank(bankId);
+      refresh();
+      // تحديث علامة ★ في القائمة المنسدلة فوراً
+      const favs = this._getFavoriteBanks();
+      sel.querySelectorAll('option').forEach(opt => {
+        if (!opt.value) return;
+        const bank = this._sortedBanks.find(b => b.id === opt.value);
+        if (!bank) return;
+        const star = favs.includes(bank.id) ? '★ ' : '';
+        const ceil = bank.financial_ceiling ? ` — سقف: ${Math.round(bank.financial_ceiling).toLocaleString('en-US')}` : '';
+        opt.textContent = `${star}${bank.name}${ceil}`;
+      });
+    });
+    // تحديث تلقائي عند تغيير الاختيار
+    setTimeout(() => {
+      const sel = document.getElementById(getSelectId);
+      if (sel) sel.addEventListener('change', refresh);
+      refresh();
+    }, 50);
+    return btn;
   },
 
   /* ═══════════════════════════════════════════════
@@ -341,6 +400,7 @@ const DataEntryComponent = {
     const bankField = this._field('wd-bank', 'الحساب البنكي للسحب', true);
     const bankSelect = this._buildBankSelect('wd-bank', '— اختر الحساب البنكي —');
     bankField.appendChild(bankSelect);
+    bankField.appendChild(this._buildBankPinBtn('wd-bank'));
     bankField.appendChild(this._errMsg('wd-bank-err'));
     frag.appendChild(bankField);
 
@@ -485,6 +545,7 @@ const DataEntryComponent = {
     const bankField = this._field('dep-bank', 'الحساب البنكي للإيداع', true);
     const bankSelect = this._buildBankSelect('dep-bank', '— اختر الحساب البنكي —');
     bankField.appendChild(bankSelect);
+    bankField.appendChild(this._buildBankPinBtn('dep-bank'));
     bankField.appendChild(this._errMsg('dep-bank-err'));
     frag.appendChild(bankField);
 

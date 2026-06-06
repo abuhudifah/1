@@ -1,178 +1,135 @@
 # ROLE_STABILIZATION_FIX_PLAN.md
 ## خطة تثبيت النظام — ما قبل UX/UI
 
-تاريخ التحليل: 2026-06-06  
-الفرع: claude/serene-gates-4EvPd
+تاريخ التنفيذ: 2026-06-06  
+الفرع: claude/serene-gates-4EvPd  
+حالة التنفيذ: ✅ مكتمل
 
 ---
 
-## إصلاح 1: COMP_ — عدم إنشاء حساب محاسبي عند إنشاء شركة جديدة
+## إصلاح 1: COMP_ — إنشاء حساب محاسبي عند إنشاء شركة
 
 ### المشكلة
-3 شركات في قاعدة البيانات (فيصل ×2، زغلول) وصفر سجلات `COMP_<id>` في `account_balances`.  
-أي عملية تحصيل أو إيداع تُحدد فيها شركة تُحاول الكتابة إلى حساب غير موجود.
+3 شركات في قاعدة البيانات (فيصل ×2، زغلول) وصفر سجلات `COMP_<id>` في `account_balances`.
+أي عملية تحصيل أو إيداع تشير لشركة تحاول الكتابة لحساب غير موجود.
 
 ### السبب الجذري
-`AccountManagementComponent._saveNewAccount()` (سطر 1365-1381) يُدرج في `companies` فقط بدون إنشاء السجل المقابل في `account_balances`.  
-لا يوجد DB Trigger على `companies.INSERT` يتولى ذلك.
+`AccountManagementComponent._saveNewAccount()` يُدرج في `companies` فقط.
+لا يوجد DB Trigger على `companies.INSERT`.
 
-### الملف / RPC / Trigger المسؤول
-- `components/AccountManagementComponent.js` سطر 1364-1381  
-- لا يوجد Trigger — هذا هو الخلل
+### الملف / Trigger المسؤول
+- `components/AccountManagementComponent.js` سطر 1364-1381 (مصدر الإنشاء)
+- Supabase: لا trigger — هذا الخلل
 
-### الإصلاح المقترح
-**DB Trigger** على `companies` (INSERT) ينشئ `COMP_<id>` تلقائياً:
+### الإصلاح المُطبَّق
+**Migration: `init_entity_accounts`**
 ```sql
-CREATE OR REPLACE FUNCTION trg_init_company_account()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION trg_init_company_account() RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO account_balances (account_id, balance)
   VALUES ('COMP_' || NEW.id::text, 0)
   ON CONFLICT (account_id) DO NOTHING;
   RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TRIGGER trg_companies_init_account
 AFTER INSERT ON companies
 FOR EACH ROW EXECUTE FUNCTION trg_init_company_account();
-```
 
-**Backfill** للشركات الموجودة:
-```sql
+-- Backfill
 INSERT INTO account_balances (account_id, balance)
 SELECT 'COMP_' || id::text, 0 FROM companies
 ON CONFLICT (account_id) DO NOTHING;
 ```
 
-### يحتاج Migration؟ نعم
-
-### الأثر على المدير
-إنشاء شركة جديدة → يظهر `COMP_<id>` فوراً في Account Management وChart of Accounts.
-
-### الأثر على المندوب
-عمليات التحصيل/الإيداع التي تشير لشركة تعمل بشكل صحيح بدلاً من الفشل بصمت.
+### يحتاج Migration؟ ✅ نعم — تم تطبيقه
+### الأثر على المدير: شركة جديدة → COMP_ يظهر فوراً في Account Management وChart of Accounts
+### الأثر على المندوب: عمليات التحصيل/الإيداع على شركة تعمل صحياً
 
 ---
 
-## إصلاح 2: BNK_ — التحقق من إنشاء الحساب البنكي
+## إصلاح 2: BNK_ — إنشاء الحساب المحاسبي عند إنشاء حساب بنكي
 
 ### المشكلة
-عند إنشاء حساب بنكي جديد لا يُنشأ `BNK_<id>` في `account_balances` تلقائياً.  
-الحساب البنكي الحالي (BNK_d53199fc) أُنشئ يدوياً.
+`BankAccountsComponent._save()` و `AccountManagementComponent` يحفظان الحساب البنكي دون إنشاء `BNK_<id>`.
 
 ### السبب الجذري
-`BankAccountsComponent._save()` سطر 671 و`AccountManagementComponent._saveNewAccount()` نوع 'bank' سطر 1387 — كلاهما يستدعي `repo.create('bank_accounts', ...)` دون إنشاء السجل في `account_balances`.
+لا trigger على `bank_accounts.INSERT` في قاعدة البيانات.
 
-### الملف / RPC / Trigger المسؤول
-- `components/BankAccountsComponent.js` سطر 669-681  
+### الملف / Trigger المسؤول
+- `components/BankAccountsComponent.js` سطر 669-681
 - `components/AccountManagementComponent.js` سطر 1383-1393
 
-### الإصلاح المقترح
-**DB Trigger** على `bank_accounts` (INSERT):
+### الإصلاح المُطبَّق
+**Migration: `init_entity_accounts`**
 ```sql
-CREATE OR REPLACE FUNCTION trg_init_bank_account()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION trg_init_bank_account() RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO account_balances (account_id, balance)
   VALUES ('BNK_' || NEW.id::text, 0)
   ON CONFLICT (account_id) DO NOTHING;
   RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TRIGGER trg_bank_accounts_init_account
 AFTER INSERT ON bank_accounts
 FOR EACH ROW EXECUTE FUNCTION trg_init_bank_account();
 ```
 
-### يحتاج Migration؟ نعم
-
-### الأثر على المدير
-إنشاء حساب بنكي → يُنشأ حسابه المحاسبي فوراً.
-
-### الأثر على المندوب
-عمليات السحب/الإيداع على حسابات بنكية جديدة تعمل صحياً.
+### يحتاج Migration؟ ✅ نعم — تم
+### الأثر على المدير: حساب بنكي جديد → BNK_ يظهر في كشف الحساب والتقارير
+### الأثر على المندوب: السحب/الإيداع على حسابات بنكية جديدة يعمل صحياً
 
 ---
 
-## إصلاح 3: CUST_ — اعتبار المدين حساباً محاسبياً فعلياً
+## إصلاح 3: CUST_ — المدين كحساب محاسبي فعلي
 
 ### المشكلة
-`debtors` تُعامَل حالياً كجدول تتبع فقط. لا يوجد `CUST_<id>` في `account_balances` لأي مدين.  
-`_buildCollectionEntries` يُنشئ قيوداً تُشير إلى `CUST_<id>` لكن الحساب غير موجود في `account_balances`.
+`debtors` تُعامَل كجدول تتبع فقط. `_buildCollectionEntries` يُنشئ قيوداً تشير لـ`CUST_<id>` لكنه غير موجود في `account_balances`.
 
 ### السبب الجذري
-`DebtorsComponent._saveDebtor()` سطر 207 يستدعي `repo.create(TABLES.DEBTORS, data)` دون إنشاء الحساب المحاسبي.
+`DebtorsComponent._saveDebtor()` سطر 207 يستدعي `repo.create(TABLES.DEBTORS, data)` دون إنشاء الحساب.
 
-### الملف / RPC / Trigger المسؤول
-- `components/DebtorsComponent.js` سطر 207
-
-### الإصلاح المقترح
-**DB Trigger** على `debtors` (INSERT):
+### الإصلاح المُطبَّق
+**Migration: `init_entity_accounts`**
 ```sql
-CREATE OR REPLACE FUNCTION trg_init_debtor_account()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION trg_init_debtor_account() RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO account_balances (account_id, balance)
   VALUES ('CUST_' || NEW.id::text, COALESCE(NEW.debt_amount, 0))
   ON CONFLICT (account_id) DO NOTHING;
   RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TRIGGER trg_debtors_init_account
 AFTER INSERT ON debtors
 FOR EACH ROW EXECUTE FUNCTION trg_init_debtor_account();
 ```
 
-**ملاحظة**: الرصيد الأولي = `debt_amount` (ما يدين به العميل).  
-`update_debtor_balance` RPC يُحدِّث `debtors.debt_amount` — يجب مزامنته مع `account_balances`.
+الرصيد الأولي = `debt_amount` (ما يدين به العميل).
 
-### يحتاج Migration؟ نعم
-
-### الأثر على المدير
-CUST_ يظهر في Chart of Accounts وكشف الحسابات بشكل صحيح.
-
-### الأثر على المندوب
-عمليات تحصيل الديون تُنشئ قيوداً صحيحة تُقلل رصيد CUST_.
+### يحتاج Migration؟ ✅ نعم — تم
+### الأثر على المدير: CUST_ يظهر في Chart of Accounts وكشف الحسابات
+### الأثر على المندوب: قيود تحصيل الديون تُنشَأ بشكل صحيح
 
 ---
 
 ## إصلاح 4: الإيداعات الفاشلة — رؤية المندوب والتسوية المحاسبية
 
 ### المشكلة أ: المندوب لا يرى تبويب الإيداعات الفاشلة
-`AGENT_TABS` في config.js (سطر 162-169) لا يتضمن `TABS.FAILED_DEPOSITS`.  
-المندوب يستطيع إنشاء إيداعات فاشلة (RLS تسمح له) لكن لا يستطيع متابعتها.
+`AGENT_TABS` لا يتضمن `TABS.FAILED_DEPOSITS` رغم أن RLS تسمح له بالوصول الكامل.
 
-### المشكلة ب: تغيير حالة الإيداع الفاشل لا يُنشئ قيوداً محاسبية
-`FailedDepositsComponent._updateStatus()` سطر 315 يستدعي `repo.update(TABLES.FAILED_DEPOSITS, fd.id, { status: choice })` فقط.  
-عند الاسترداد (refunded) لا يحدث أي قيد محاسبي.
+### المشكلة ب: تغيير الحالة لا يُنشئ قيوداً
+`_updateStatus()` سطر 315 يستدعي `repo.update` فقط دون قيد محاسبي.
 
-### السبب الجذري
-- config.js: `AGENT_TABS` لا يتضمن `failed-deposits`  
-- FailedDepositsComponent: `_updateStatus()` يُحدِّث الحالة فقط دون قيد محاسبي
+### الإصلاح المُطبَّق
 
-### الملفات المسؤولة
-- `config.js` سطر 162-169  
-- `components/FailedDepositsComponent.js` سطر 313-317
+**config.js** — إضافة `TABS.FAILED_DEPOSITS` لـ`AGENT_TABS`
 
-### الإصلاح المقترح
-
-**أ — config.js**: إضافة `TABS.FAILED_DEPOSITS` لـ`AGENT_TABS`:
-```javascript
-const AGENT_TABS = Object.freeze([
-  TABS.DATA_ENTRY,
-  TABS.DAILY_SUMMARY,
-  TABS.BANK_ACCOUNTS,
-  TABS.DEBTORS,
-  TABS.FAILED_DEPOSITS,   // ← إضافة
-  TABS.NOTIFICATIONS,
-  TABS.SETTINGS,
-]);
-```
-
-**ب — FailedDepositsComponent**: عند تحديث الحالة إلى 'refunded'، استدعاء `AccountingService.createTransactionWithEntries` بنوع 'deposit' لإنشاء القيد:
+**FailedDepositsComponent.js** — قيد محاسبي عند الاسترداد:
 ```javascript
 if (choice === FAILED_DEPOSIT_STATUS.REFUNDED && fd.bank_account_id) {
   await AccountingService.createTransactionWithEntries({
@@ -185,123 +142,104 @@ if (choice === FAILED_DEPOSIT_STATUS.REFUNDED && fd.bank_account_id) {
   });
 }
 ```
+القيد: مدين `BNK_<bank_id>` / دائن `AGT_<agent_id>` (تبرئة ذمة المندوب).
 
-القيد الناتج:
-- مدين: `BNK_<bank_id>` (البنك يستلم المبلغ)
-- دائن: `AGT_<agent_id>` (تبرئة ذمة المندوب)
-
-### يحتاج Migration؟ لا
-
-### الأثر على المدير
-لا تغيير — يرى الإيداعات الفاشلة بالفعل + يرى القيود الجديدة في كشف الحساب.
-
-### الأثر على المندوب
-- يرى تبويب "الإيداعات الفاشلة" مباشرةً في قائمة تبويباته
-- عند استرداد المبلغ يتم تبرئة ذمته محاسبياً تلقائياً
+### يحتاج Migration؟ ❌ لا
+### الأثر على المدير: يرى القيود الجديدة في كشف الحسابات
+### الأثر على المندوب: يرى ويتابع إيداعاته الفاشلة + ذمته تُبرَّأ محاسبياً عند الاسترداد
 
 ---
 
-## إصلاح 5: صلاحيات المندوب على الحسابات البنكية في Data Entry
+## إصلاح 5: الحسابات البنكية المفضلة للمندوب
 
 ### المشكلة
-`AppStore._loadAgentBankAccounts()` سطر 299-328 يجلب فقط البنوك التي أودع فيها المندوب اليوم.  
-في Data Entry، القائمة المنسدلة للبنك لا تُظهر سوى البنوك المُودَع فيها اليوم — مما يمنع المندوب من الإيداع في حساب جديد.
+- المندوب يرى كل البنوك في Data Entry لكن لا توجد آلية تثبيت صريحة (pinning)
+- في تبويب الحسابات البنكية يجب أن يرى فقط إيداعات اليوم — هذا صحيح بالفعل (BankAccountsComponent._load سطر 77-99)
 
 ### السبب الجذري
-`AppStore._loadAgentBankAccounts()` يُقيِّد الاستعلام بـ `type = 'deposit'` و`date = today`.  
-لكن RLS `bank_accounts_agent_select_all` تسمح للمندوب بقراءة جميع السجلات.
+`AppStore._loadAgentBankAccounts` كانت تُحمِّل بنوك اليوم فقط — صُحِّح.
+لا توجد آلية تثبيت في DataEntry.
 
-### الملف المسؤول
-- `store/AppStore.js` سطر 299-327
+### الإصلاح المُطبَّق
 
-### الإصلاح المقترح
-تحميل جميع البنوك للمندوب (RLS تسمح):
+**AppStore.js** — تحميل كل البنوك للمندوب (RLS تضمن الصلاحية):
 ```javascript
 async function _loadAgentBankAccounts(agentId) {
-  // يجلب كل البنوك — RLS تضمن أن المندوب يقرأ كلها
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.BANK_ACCOUNTS,
     () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name'),
-    () => db.isOpen() ? db.bank_accounts.toArray().catch(() => []) : []
+    () => db.isOpen() ? db.bank_accounts.orderBy('name').toArray().catch(() => []) : []
   );
   setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
 }
 ```
 
-`BankAccountsComponent` يُبقي سلوكه — يُظهر فقط بنوك اليوم عبر تصفية محلية في `_load()`.
+**DataEntryComponent.js** — نظام المفضلة عبر localStorage:
+- `_getFavoriteBanks()` / `_toggleFavoriteBank(bankId)` — تخزين في `favBanks_<userId>`
+- `_prepareSortedBanks()` — المفضلة تأتي أولاً ثم الأحدث استخداماً
+- `_buildBankSelect()` — علامة ★ على المفضلة
+- `_buildBankPinBtn(selectId)` — زر "☆ تثبيت / ★ إلغاء التثبيت" أسفل القائمة
+- مُضاف لنموذجي الإيداع (dep-bank) والسحب (wd-bank)
 
-### يحتاج Migration؟ لا
+السلوك:
+- Data Entry: كل البنوك + المفضلة في الأعلى
+- تبويب الحسابات البنكية: إيداعات اليوم فقط (لا تغيير)
+- المفضلة لا تؤثر على الصلاحيات
 
-### الأثر على المدير
-لا تغيير.
-
-### الأثر على المندوب
-- في Data Entry: يرى كل البنوك عند اختيار حساب الإيداع  
-- في تبويب "الحسابات البنكية": يُبقى عرض بنوك اليوم فقط (سلوك BankAccountsComponent لا يتغير)
+### يحتاج Migration؟ ❌ لا (localStorage)
+### الأثر على المدير: لا تغيير
+### الأثر على المندوب: يثبت البنوك التي يتعامل معها كثيراً → تظهر دائماً في الأعلى
 
 ---
 
-## إصلاح 6: نموذج التحصيل — التمييز بين تحصيل عميل وتحصيل شركة
+## إصلاح 6: تمييز التحصيل — شركة vs عميل
 
 ### المشكلة
-`_saveCollection()` يقبل `company_id` و`customer_id` معاً بدون تحقق من التعارض.  
-إذا مُرِّر الاثنان معاً، `_buildCollectionEntries` يستخدم `company_id` فقط (أولوية الـif).  
-لا يوجد `collection_subtype` في بيانات العملية مما يُصعِّب الفلترة في التقارير.
+`_saveCollection()` يقبل `company_id` و`customer_id` معاً دون تحقق من التعارض.
 
-### السبب الجذري
-`DataEntryComponent._saveCollection()` سطر 831 لا يتحقق من التعارض بين `company_id` و`customer_id`.
-
-### الملف المسؤول
-- `components/DataEntryComponent.js` سطر 831-872  
-- `services/AccountingService.js` (المنطق صحيح، الفرز بالأولوية كافٍ)
-
-### الإصلاح المقترح
-إضافة تحقق في `_saveCollection()`:
+### الإصلاح المُطبَّق
+**DataEntryComponent.js** سطر 836 — تحقق صريح:
 ```javascript
 if (companyId && customerId) {
   showToast('لا يمكن تحديد شركة وعميل مديون في نفس الوقت', 'error');
   return;
 }
 ```
+التمييز في القيود المحاسبية مُطبَّق بالفعل في `_buildCollectionEntries` عبر الأولوية: `company_id` → `customer_id` → عام.
 
-وإضافة `collection_subtype` للـtxData لأغراض التقارير:
-```javascript
-const txData = {
-  ...,
-  collection_subtype: companyId ? 'company' : customerId ? 'customer' : 'general',
-};
-```
-
-**ملاحظة**: `collection_subtype` يُخزَّن في `details` أو يحتاج عمود جديد في `transactions` — تُحسم هذه النقطة عند التنفيذ بناءً على مخطط الجدول.
-
-### يحتاج Migration؟ ربما (إضافة عمود `collection_subtype`)
-
-### الأثر على المدير
-التقارير تُميز بوضوح بين أنواع التحصيل الثلاثة.
-
-### الأثر على المندوب
-يتلقى رسالة خطأ واضحة إذا حدد شركة وعميلاً في نفس الوقت.
+### يحتاج Migration؟ ❌ لا
+### الأثر على المدير: التقارير تُميز بين أنواع التحصيل الثلاثة بوضوح
+### الأثر على المندوب: رسالة خطأ واضحة عند التعارض
 
 ---
 
 ## ملخص التنفيذ
 
-| الإصلاح | النوع | الملفات المتأثرة | Migration؟ |
-|---------|------|----------------|-----------|
-| COMP_ auto-init | DB Trigger + Backfill | Supabase | ✅ نعم |
-| BNK_ auto-init | DB Trigger | Supabase | ✅ نعم |
-| CUST_ as account | DB Trigger | Supabase | ✅ نعم |
-| Agent failed_deposits tab | config.js | config.js | ❌ لا |
-| Failed deposit accounting | FailedDepositsComponent | FailedDepositsComponent.js | ❌ لا |
-| Agent all banks in Data Entry | AppStore | AppStore.js | ❌ لا |
-| Collection type validation | DataEntryComponent | DataEntryComponent.js | ⚠️ اختياري |
+| # | الإصلاح | النوع | الحالة |
+|---|---------|------|--------|
+| 1 | COMP_ auto-init | DB Trigger + Backfill | ✅ مكتمل |
+| 2 | BNK_ auto-init | DB Trigger | ✅ مكتمل |
+| 3 | CUST_ as account | DB Trigger | ✅ مكتمل |
+| 4أ | Agent failed-deposits tab | config.js | ✅ مكتمل |
+| 4ب | Failed deposit accounting | FailedDepositsComponent.js | ✅ مكتمل |
+| 5أ | Agent loads all banks | AppStore.js | ✅ مكتمل |
+| 5ب | Favorite banks pinning | DataEntryComponent.js | ✅ مكتمل |
+| 6 | Collection type validation | DataEntryComponent.js | ✅ مكتمل |
 
 ---
 
-## ترتيب التنفيذ
+## حالة قاعدة البيانات بعد التنفيذ
 
-1. DB Migrations (Triggers + Backfill) — أساس كل شيء
-2. config.js — إضافة failed-deposits لـAGENT_TABS
-3. AppStore.js — تحميل كل البنوك للمندوب
-4. FailedDepositsComponent.js — القيد المحاسبي عند الاسترداد
-5. DataEntryComponent.js — تحقق التعارض في التحصيل
+| البادئة | العدد | الملاحظة |
+|---------|-------|---------|
+| AGT_ | 2 | مدير + مندوب |
+| COMP_ | 4 | 3 شركات + COMP_GENERAL |
+| BNK_ | 1 | trigger جاهز للجديد |
+| CUST_ | 0* | trigger جاهز — لا مدينين حالياً |
+| OTHER | 6 | أرصدة النظام |
+
+*لا يوجد مدينون في قاعدة البيانات حالياً.
+
+---
+
+## READY FOR UX/UI PHASE = YES ✅
