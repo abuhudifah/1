@@ -529,7 +529,16 @@ const SyncQueue = {
           .toArray();
 
         for (const qi of queueItems) {
-          await db.sync_queue.update(qi.id, { record_id: realId });
+          // BR-040: تحديث reference_id داخل JSON أيضاً لمنع FK violation عند مزامنة قيود account_ledger
+          let updatedFields = { record_id: realId };
+          try {
+            const parsed = typeof qi.data === 'string' ? JSON.parse(qi.data) : qi.data;
+            if (parsed && parsed.reference_id === tempId) {
+              parsed.reference_id = realId;
+              updatedFields.data  = JSON.stringify(parsed);
+            }
+          } catch { /* إذا فشل parse نُحدِّث record_id فقط */ }
+          await db.sync_queue.update(qi.id, updatedFields);
         }
 
       }); // نهاية db.transaction()

@@ -585,7 +585,8 @@ const DataEntryComponent = {
       if (expType === '__new__') {
         const name = newTypeInput.value.trim();
         if (!name) { showToast('أدخل اسم النوع', 'warning'); return; }
-        expType = 'EXP_' + name.toUpperCase().replace(/\s/g, '_');
+        // منع double prefix: expense_code يُخزَّن بدون بادئة EXP_ — البادئة تُضاف تلقائياً في AccountId.expense()
+        expType = name.toUpperCase().replace(/\s/g, '_').replace(/^EXP_/, '');
         await repo.create(TABLES.EXPENSE_ACCOUNTS, { name, code: expType });
       }
       await this._saveExpense({ expenseType:expType, amount:amtInput.value, details:detInput.value.trim() });

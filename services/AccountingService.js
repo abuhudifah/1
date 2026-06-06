@@ -69,11 +69,12 @@ function _buildCollectionEntries(tx, voucher) {
     );
   } else if (tx.customer_id) {
     const custAcc = AccountId.customer(tx.customer_id);
+    // BR-001: تحصيل من مدين = صندوق المندوب يرتفع (DR) + ذمة المدين تنخفض (CR)
     entries.push(
-      { voucher_number: voucher, date, account_id: custAcc,  debit: tx.amount, credit: 0,
-        description: `تخفيض دين العميل: ${tx.customer_name || tx.customer_id}` },
-      { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
-        description: 'استلام من عميل مديون' }
+      { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
+        description: `تحصيل من مدين: ${tx.customer_name || tx.customer_id}` },
+      { voucher_number: voucher, date, account_id: custAcc,  debit: 0, credit: tx.amount,
+        description: `تخفيض دين العميل: ${tx.customer_name || tx.customer_id}` }
     );
   } else {
     // FIX-5a: كان account_id: 'CASH_GENERAL' ← غير موجود في account_balances
