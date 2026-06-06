@@ -617,9 +617,10 @@ const SyncQueue = {
       if (resolution === 'server') {
         // قبول نسخة الخادم — تحديث Dexie بالبيانات من الخادم
         if (conflict.server_data) {
-          const serverObj = JSON.parse(conflict.server_data);
+          const serverObj  = JSON.parse(conflict.server_data);
           const dexieTable = db[conflict.table_name];
-          if (dexieTable && serverObj?.id) {
+          const pkCol      = _sqGetPKColumn(conflict.table_name);
+          if (dexieTable && serverObj?.[pkCol]) {
             await dexieTable.put({ ...serverObj, sync_status: SYNC_STATUS.SYNCED });
           }
         }
@@ -628,15 +629,17 @@ const SyncQueue = {
       } else if (resolution === 'client') {
         // فرض نسخة العميل — إعادة الإرسال لـ Supabase
         const clientData = JSON.parse(conflict.client_data || '{}');
+        const pkCol = _sqGetPKColumn(conflict.table_name);
         const { error } = await supabaseClient
           .from(conflict.table_name)
-          .upsert({ ...clientData, updated_at: new Date().toISOString() })
+          .upsert({ ...clientData, updated_at: new Date().toISOString() }, { onConflict: pkCol })
           .select();
 
         if (error) return err(`فشل فرض نسخة العميل: ${error.message}`);
 
         const dexieTable = db[conflict.table_name];
-        if (dexieTable && clientData?.id) {
+        const pkVal = clientData?.[pkCol];
+        if (dexieTable && pkVal) {
           await dexieTable.put({ ...clientData, sync_status: SYNC_STATUS.SYNCED });
         }
         console.log(`✅ التعارض ${conflictId}: تم فرض نسخة العميل`);
