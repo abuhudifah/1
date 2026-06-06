@@ -492,11 +492,21 @@ function _checkBruteForce(key) {
   return ok(true);
 }
 function _recordFailedAttempt(key) {
-  const r = _loginAttempts.get(key) || { count: 0 };
+  const now = Date.now();
+  const r   = _loginAttempts.get(key) || { count: 0, lastAttempt: now };
   r.count++;
+  r.lastAttempt = now;
   if (r.count >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS)
-    r.lockedUntil = Date.now() + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
+    r.lockedUntil = now + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
   _loginAttempts.set(key, r);
+
+  // تنظيف دوري: حذف مفاتيح أقدم من ساعة لمنع تسرب الذاكرة
+  if (_loginAttempts.size > 50) {
+    const cutoff = now - 60 * 60 * 1000;
+    for (const [k, v] of _loginAttempts.entries()) {
+      if ((v.lastAttempt || 0) < cutoff) _loginAttempts.delete(k);
+    }
+  }
 }
 function _translateAuthError(msg) {
   if (msg.includes('Invalid login credentials')) return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';

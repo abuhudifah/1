@@ -846,6 +846,16 @@ async function withDexie(fn) {
   try { return await fn(db); } catch (e) { console.warn('⚠️ Dexie:', e.message); return null; }
 }
 
+// TASK-5.3: نمط Online-First الموحّد
+async function fetchOnlineFirst(supabaseFn, dexieFn) {
+  if (typeof isOnline === 'function' && isOnline()) {
+    try { return await supabaseFn(); } catch (e) {
+      console.warn('⚠️ fetchOnlineFirst: تعذر الوصول للخادم، التراجع لـ Dexie:', e.message);
+    }
+  }
+  return dexieFn ? dexieFn() : err('offline');
+}
+
 // ============================================================
 // تصدير جميع الدوال للاستخدام في بقية الملفات
 // ============================================================
@@ -884,7 +894,7 @@ Object.assign(window, {
 
   // أداء
   sleep, calcBackoffDelay,
-  withDexie,
+  withDexie, fetchOnlineFirst,
 
   // أزرار
   setButtonLoading,
