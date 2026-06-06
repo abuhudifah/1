@@ -96,7 +96,10 @@ async function _bootApp(profile) {
   AppStore.setCurrentUser(profile);
 
   if (window.IdleTimer) {
-    profile.role === ROLES.AGENT ? IdleTimer.start() : IdleTimer.stop();
+    const idleMs = profile.role === ROLES.AGENT
+      ? IdleTimer.AGENT_IDLE_TIMEOUT_MS
+      : IdleTimer.ADMIN_IDLE_TIMEOUT_MS;
+    IdleTimer.start(idleMs);
   }
 
   // بناء الهيكل
@@ -814,7 +817,12 @@ async function _handleLogout() {
   );
   if (!confirmed) {
     const user = AuthService.getCurrentUser();
-    if (window.IdleTimer && user?.role === ROLES.AGENT) IdleTimer.start();
+    if (window.IdleTimer && user) {
+      const idleMs = user.role === ROLES.AGENT
+        ? IdleTimer.AGENT_IDLE_TIMEOUT_MS
+        : IdleTimer.ADMIN_IDLE_TIMEOUT_MS;
+      IdleTimer.start(idleMs);
+    }
     return;
   }
 
