@@ -242,7 +242,7 @@ async function _loadUsers() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.USERS,
     () => supabaseClient.from(TABLES.USERS)
-      .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash')
+      .select('id, username, display_name, role, is_active, allowed_tabs')
       .eq('is_active', true)
       .order('display_name'),
     () => db.isOpen()
