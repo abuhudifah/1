@@ -55,6 +55,15 @@ function _getPKColumn(tableName) {
   return TABLE_PRIMARY_KEYS[tableName] || 'id';
 }
 
+// الجداول التي لا تحتوي على عمود updated_at
+const _REPO_TABLES_WITHOUT_UPDATED_AT = new Set([
+  'account_balances',
+  'accounts',
+  'audit_logs',
+  'daily_closings',
+  'quick_login_rate_limit',
+]);
+
 // ============================================================
 // دوال مساعدة للفلاتر
 // ============================================================
@@ -175,11 +184,12 @@ const repo = {
       const pkColumn = _getPKColumn(tableName);
       const pkValue  = data[pkColumn] || (pkColumn === 'id' ? generateUUID() : data[pkColumn]);
 
+      const hasUpdatedAt = !_REPO_TABLES_WITHOUT_UPDATED_AT.has(tableName);
       const record = {
         ...data,
         [pkColumn] : pkValue,
         created_at : data.created_at || new Date().toISOString(),
-        updated_at : data.updated_at || new Date().toISOString(),
+        ...(hasUpdatedAt ? { updated_at: data.updated_at || new Date().toISOString() } : {}),
       };
 
       // للتوافق مع الكود القديم الذي يتوقع record.id
@@ -228,8 +238,25 @@ const repo = {
   async update(tableName, id, changes) {
     try {
       // FIX-4: تحديد عمود PK الصحيح
-      const pkColumn      = _getPKColumn(tableName);
-      const updatedChanges = { ...changes, updated_at: new Date().toISOString() };
+      const pkColumn = _getPKColumn(tableName);
+      const hasUpdatedAt = !_REPO_TABLES_WITHOUT_UPDATED_AT.has(tableName);
+
+      // التقاط لقطة updated_at قبل التعديل من Dexie (لكشف التعارض الحقيقي لاحقاً)
+      let preEditUpdatedAt = null;
+      if (hasUpdatedAt) {
+        try {
+          if (typeof db !== 'undefined' && db.isOpen() && db[tableName]) {
+            const existing = await db[tableName].get(id);
+            preEditUpdatedAt = existing?.updated_at || null;
+          }
+        } catch { /* تجاهل — Dexie ليست مصدر الحقيقة */ }
+      }
+
+      const updatedChanges = {
+        ...changes,
+        ...(hasUpdatedAt ? { updated_at: new Date().toISOString() } : {}),
+        ...(preEditUpdatedAt ? { _preEditUpdatedAt: preEditUpdatedAt } : {}),
+      };
 
       if (!isOnline()) {
         try {
@@ -242,9 +269,10 @@ const repo = {
       }
 
       // FIX-4: استخدام pkColumn الصحيح بدلاً من 'id' الثابت
+      const { _preEditUpdatedAt: _strip, ...supabaseChanges } = updatedChanges;
       const { data: saved, error } = await supabaseClient
         .from(tableName)
-        .update(updatedChanges)
+        .update(supabaseChanges)
         .eq(pkColumn, id)    // ← الإصلاح الجوهري
         .select()
         .single();
