@@ -636,6 +636,24 @@ const DataEntryComponent = {
     txTypeField.appendChild(txTypeSelect);
     frag.appendChild(txTypeField);
 
+    /* Fix #12: تنبيه الاستلام المعلق */
+    const pendingNotice = document.createElement('div');
+    pendingNotice.id = 'tr-pending-notice';
+    pendingNotice.style.cssText = 'display:none;padding:10px 14px;border-radius:10px;margin-bottom:12px;font-size:0.82rem;'
+      + 'background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.3);color:var(--warning);';
+    pendingNotice.innerHTML = '⏳ <strong>استلام بانتظار الموافقة:</strong> سيتم تسجيل المبلغ في حساب معلق '
+      + 'حتى يوافق عليه المدير من إدارة الحسابات.';
+    frag.appendChild(pendingNotice);
+
+    const updateNotice = () => {
+      const isReceipt = txTypeSelect.value === 'receipt';
+      const isAgent   = typeof AuthService !== 'undefined' && AuthService.currentUser &&
+                        AuthService.currentUser()?.role === 'agent';
+      pendingNotice.style.display = (isReceipt && isAgent) ? '' : 'none';
+    };
+    txTypeSelect.addEventListener('change', updateNotice);
+    setTimeout(updateNotice, 0);
+
     /* ─── نظام رقم الحساب ─── */
     const acctField = this._field('tr-account-num', 'رقم حساب الطرف الآخر', true);
     const acctRow   = document.createElement('div');
@@ -966,7 +984,13 @@ const DataEntryComponent = {
     });
     restore();
     if (isOk(result)) {
-      showToast('✅ تم حفظ العملية', 'success');
+      const isPending = result.data?.transaction?.approval_status === APPROVAL_STATUS.PENDING;
+      showToast(
+        isPending
+          ? '⏳ تم تسجيل الاستلام — بانتظار موافقة المدير'
+          : '✅ تم حفظ العملية',
+        isPending ? 'warning' : 'success'
+      );
       this._resetForm('tr');
     } else {
       showToast(`❌ ${result.error}`, 'error');
