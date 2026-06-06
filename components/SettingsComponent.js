@@ -359,6 +359,16 @@ const SettingsComponent = {
   async _resetLocalData() {
     if (!AuthService.isAdmin()) return;
 
+    const pendingCount = (typeof db !== 'undefined' && db.isOpen())
+      ? await db.sync_queue.count().catch(() => 0) : 0;
+    if (pendingCount > 0) {
+      const proceed = await confirmDialog(
+        `⚠️ يوجد ${pendingCount} عمليات معلقة لم تُزامَن بعد — ستُفقد نهائياً.\nهل تريد المتابعة على مسؤوليتك؟`,
+        'متابعة على مسؤوليتي', 'إلغاء', 'danger'
+      );
+      if (!proceed) return;
+    }
+
     const confirmed1 = await confirmDialog(
       'هل أنت متأكد من إعادة ضبط البيانات المحلية لهذا الجهاز؟\n\n' +
       '• سيتم حذف جميع بيانات IndexedDB وlocalStorage وsessionStorage.\n' +
