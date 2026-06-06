@@ -143,6 +143,7 @@ async function checkSession() {
     });
 
     _saveToDexieBackground(profile);
+    _migrateQuickLoginStorage();
     return ok({ user: session.user, profile });
 
   } catch (e) {
@@ -214,7 +215,7 @@ async function enableQuickLogin(equation) {
         localStorage.setItem(`ahu_device_${uid}`, deviceToken);
       }
       sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
-      localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify({ hash, userId: uid, eq: trimmed }));
+      localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify({ hash, userId: uid }));
     } catch {}
 
     saveSession({ ...getSession(), quickLoginEnabled: true });
@@ -396,7 +397,9 @@ async function _fetchUserProfile(userId) {
   if (isOnline()) {
     try {
       const { data, error } = await supabaseClient
-        .from(TABLES.USERS).select('*').eq('id', userId).single();
+        .from(TABLES.USERS)
+        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, phone, email')
+        .eq('id', userId).single();
       if (!error && data) return ok(data);
       console.warn('⚠️ _fetchUserProfile Supabase فشل:', error?.message);
     } catch (e) {
@@ -444,7 +447,7 @@ function _preloadEssentialData(profile) {
       if (profile.role === ROLES.ADMIN || profile.role === ROLES.ADMIN_ASSISTANT) {
         tasks.push(
           supabaseClient.from(TABLES.USERS)
-            .select('id,username,display_name,role,is_active,allowed_tabs,quick_equation_hash')
+            .select('id,username,display_name,role,is_active,allowed_tabs')
             .order('display_name')
             .then(({ data }) => {
               if (data && typeof db !== 'undefined' && db.isOpen())
@@ -458,7 +461,26 @@ function _preloadEssentialData(profile) {
 }
 
 // ============================================================
-// 12. Brute Force
+// 12. تنظيف localStorage من حقل eq المخزَّن (ترحيل أمني)
+// ============================================================
+function _migrateQuickLoginStorage() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('ahu_quick_')) continue;
+      try {
+        const val = JSON.parse(localStorage.getItem(key) || '{}');
+        if ('eq' in val) {
+          delete val.eq;
+          localStorage.setItem(key, JSON.stringify(val));
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+// ============================================================
+// 13. Brute Force
 // ============================================================
 function _checkBruteForce(key) {
   const r = _loginAttempts.get(key);
@@ -470,11 +492,21 @@ function _checkBruteForce(key) {
   return ok(true);
 }
 function _recordFailedAttempt(key) {
-  const r = _loginAttempts.get(key) || { count: 0 };
+  const now = Date.now();
+  const r   = _loginAttempts.get(key) || { count: 0, lastAttempt: now };
   r.count++;
+  r.lastAttempt = now;
   if (r.count >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS)
-    r.lockedUntil = Date.now() + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
+    r.lockedUntil = now + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
   _loginAttempts.set(key, r);
+
+  // تنظيف دوري: حذف مفاتيح أقدم من ساعة لمنع تسرب الذاكرة
+  if (_loginAttempts.size > 50) {
+    const cutoff = now - 60 * 60 * 1000;
+    for (const [k, v] of _loginAttempts.entries()) {
+      if ((v.lastAttempt || 0) < cutoff) _loginAttempts.delete(k);
+    }
+  }
 }
 function _translateAuthError(msg) {
   if (msg.includes('Invalid login credentials')) return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
@@ -484,7 +516,33 @@ function _translateAuthError(msg) {
 }
 
 // ============================================================
-// 13. الدوال العامة
+// 14. التحقق من is_active عند التنقل (TASK-2.3)
+// ============================================================
+let _lastActiveCheckTs = 0;
+const _ACTIVE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 دقائق
+
+async function verifyIsActive() {
+  const user = AuthState.currentUser;
+  if (!user) return err('لا يوجد مستخدم مسجّل');
+
+  const now = Date.now();
+  const useCache = !isOnline() || (now - _lastActiveCheckTs) < _ACTIVE_CHECK_INTERVAL_MS;
+  if (useCache) return user.is_active ? ok(true) : err('تم تعطيل هذا الحساب');
+
+  try {
+    const { data, error } = await supabaseClient
+      .from(TABLES.USERS).select('is_active').eq('id', user.id).single();
+    _lastActiveCheckTs = now;
+    if (!error && data) AuthState.currentUser.is_active = data.is_active;
+    const active = error ? user.is_active : data.is_active;
+    return active ? ok(true) : err('تم تعطيل هذا الحساب');
+  } catch {
+    return user.is_active ? ok(true) : err('تم تعطيل هذا الحساب');
+  }
+}
+
+// ============================================================
+// 15. الدوال العامة
 // ============================================================
 function getCurrentUser()    { return AuthState.currentUser; }
 function getCurrentRole()    { return AuthState.currentUser?.role || null; }
@@ -522,6 +580,7 @@ const AuthService = {
   enableQuickLogin, quickLogin, disableQuickLogin,
   getDeviceToken, getCurrentUser, getCurrentRole, getCurrentUserId,
   isAdmin, isAgent, isAdminAssistant,
+  verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
   _state: AuthState,
 };

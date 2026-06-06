@@ -227,3 +227,36 @@ SELECT key, value FROM public.system_settings;
 ### لا تعمل المزامنة
 - تأكد من تفعيل Realtime في Supabase Dashboard → Database → Replication.
 - افتح Browser Console وابحث عن رسائل `❌` أو `⚠️`.
+
+---
+
+## النسخ الاحتياطي والاسترداد (TASK-6.5)
+
+### النسخ الاحتياطي التلقائي (Supabase Pro/Team)
+1. Supabase Dashboard → **Settings → Database → Backups**
+2. تفعيل **Point-in-Time Recovery** (PITR) إن توفر في خطتك
+3. نسخ يومية محفوظة لمدة 7 أيام افتراضياً
+
+### النسخ الاحتياطي اليدوي (الخطة المجانية)
+نفّذ هذا الأمر أسبوعياً:
+```bash
+# استبدل القيم بمعلومات مشروعك من Supabase → Settings → Database
+pg_dump "postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres" \
+  --no-owner --no-privileges \
+  -f backup_$(date +%Y%m%d).sql
+```
+
+أو استخدم: Supabase Dashboard → **Database → Backups → Download**
+
+### إجراءات الاستعادة
+```bash
+# استعادة على مشروع جديد أو بيئة اختبار
+psql "postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres" \
+  < backup_YYYYMMDD.sql
+```
+
+### قائمة تحقق أسبوعية
+- [ ] تأكد من وجود نسخة احتياطية لا يتجاوز عمرها 7 أيام
+- [ ] اختبر `pg_dump` شهرياً وتأكد من اكتمال الملف
+- [ ] تحقق من Supabase Dashboard → Logs للتأكد من غياب أخطاء حرجة
+- [ ] راجع Usage في Dashboard للتأكد من عدم اقتراب حدود الخطة المجانية

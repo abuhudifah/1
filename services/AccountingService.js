@@ -26,18 +26,16 @@ const GENERAL_ACCOUNT_ID = 'GENERAL_FUND';
 // مولّد أرقام القيود
 // ============================================================
 
-let _voucherCounter = null;
-let _voucherDate    = null;
-
-function _generateVoucherNumber() {
-  const today = getCurrentSaudiDate().replace(/-/g, '');
-  if (_voucherDate !== today) {
-    _voucherDate    = today;
-    _voucherCounter = 1;
-  } else {
-    _voucherCounter = (_voucherCounter || 0) + 1;
+async function _generateVoucherNumber() {
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabaseClient.rpc(RPC.GET_NEXT_VOUCHER_NUMBER);
+      if (!error && data) return data;
+    } catch {}
   }
-  return `V${today}${String(_voucherCounter).padStart(4, '0')}`;
+  // Fallback offline: timestamp فريد لكل جلسة
+  const today = getCurrentSaudiDate().replace(/-/g, '');
+  return `V${today}-LOCAL-${Date.now()}`;
 }
 
 // ============================================================
@@ -50,14 +48,15 @@ const AccountId = {
   bank     : (id)   => `${ACCOUNT_PREFIXES.BANK}${id}`,
   customer : (id)   => `${ACCOUNT_PREFIXES.CUSTOMER}${id}`,
   expense  : (code) => `${ACCOUNT_PREFIXES.EXPENSE}${code}`,
+  revenue  : (code) => `${ACCOUNT_PREFIXES.REVENUE}${code}`,
+  suspense : (txId) => `${ACCOUNT_PREFIXES.SUSPENSE}${txId}`,
 };
 
 // ============================================================
 // بناء القيود لكل نوع عملية
 // ============================================================
 
-function _buildCollectionEntries(tx) {
-  const voucher  = _generateVoucherNumber();
+function _buildCollectionEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   const entries  = [];
@@ -72,11 +71,12 @@ function _buildCollectionEntries(tx) {
     );
   } else if (tx.customer_id) {
     const custAcc = AccountId.customer(tx.customer_id);
+    // BR-001: تحصيل من مدين = صندوق المندوب يرتفع (DR) + ذمة المدين تنخفض (CR)
     entries.push(
-      { voucher_number: voucher, date, account_id: custAcc,  debit: tx.amount, credit: 0,
-        description: `تخفيض دين العميل: ${tx.customer_name || tx.customer_id}` },
-      { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
-        description: 'استلام من عميل مديون' }
+      { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
+        description: `تحصيل من مدين: ${tx.customer_name || tx.customer_id}` },
+      { voucher_number: voucher, date, account_id: custAcc,  debit: 0, credit: tx.amount,
+        description: `تخفيض دين العميل: ${tx.customer_name || tx.customer_id}` }
     );
   } else {
     // FIX-5a: كان account_id: 'CASH_GENERAL' ← غير موجود في account_balances
@@ -92,15 +92,12 @@ function _buildCollectionEntries(tx) {
   return entries;
 }
 
-function _buildDepositEntries(tx) {
+function _buildDepositEntries(tx, voucher2, voucher3) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   const bankAcc  = AccountId.bank(tx.bank_account_id);
   // FIX-5a: كان 'COMP_GENERAL' — استبدلناه بـ GENERAL_ACCOUNT_ID عند غياب company_id
   const compAcc  = tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID;
-
-  const voucher2 = _generateVoucherNumber();
-  const voucher3 = _generateVoucherNumber();
 
   return [
     { voucher_number: voucher2, date, account_id: bankAcc,  debit: tx.amount, credit: 0,
@@ -114,8 +111,7 @@ function _buildDepositEntries(tx) {
   ];
 }
 
-function _buildExpenseEntries(tx) {
-  const voucher  = _generateVoucherNumber();
+function _buildExpenseEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   const expCode  = tx.expense_type || 'MISC';
@@ -129,25 +125,34 @@ function _buildExpenseEntries(tx) {
   ];
 }
 
-function _buildReceiptEntries(tx) {
-  const voucher     = _generateVoucherNumber();
-  const date        = tx.date || getCurrentSaudiDate();
-  const receiverAcc = AccountId.agent(tx.agent_id);
-  // FIX-5a: كان يستخدم 'GENERAL_FUND' مباشرة بدون ثابت — الآن موحَّد
-  const senderAcc   = tx.from_agent_id
+function _buildReceiptEntries(tx, voucher) {
+  const date      = tx.date || getCurrentSaudiDate();
+  const senderAcc = tx.from_agent_id
     ? AccountId.agent(tx.from_agent_id)
     : (tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID);
 
+  // Fix #11: RECEIPT في حالة انتظار → SUSP_ بدلاً من صندوق المندوب مباشرة
+  // عند الموافقة يُنفَّذ: DR AGT_ / CR SUSP_ (عبر approve_transaction RPC)
+  if (tx.approval_status === APPROVAL_STATUS.PENDING) {
+    const suspAcc = AccountId.suspense(tx.id);
+    return [
+      { voucher_number: voucher, date, account_id: suspAcc,   debit: tx.amount, credit: 0,
+        description: `استلام معلق — بانتظار موافقة المدير` },
+      { voucher_number: voucher, date, account_id: senderAcc, debit: 0, credit: tx.amount,
+        description: 'استلام معلق — خصم مؤقت من المرسِل' },
+    ];
+  }
+
+  // حالة عادية (approved مباشرة)
   return [
-    { voucher_number: voucher, date, account_id: receiverAcc, debit: tx.amount, credit: 0,
+    { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id), debit: tx.amount, credit: 0,
       description: `استلام من ${tx.from_agent_id ? 'مندوب' : 'الشركة'}` },
-    { voucher_number: voucher, date, account_id: senderAcc,   debit: 0, credit: tx.amount,
+    { voucher_number: voucher, date, account_id: senderAcc, debit: 0, credit: tx.amount,
       description: 'تسليم إلى المندوب' },
   ];
 }
 
-function _buildDeliveryEntries(tx) {
-  const voucher     = _generateVoucherNumber();
+function _buildDeliveryEntries(tx, voucher) {
   const date        = tx.date || getCurrentSaudiDate();
   const giverAcc    = AccountId.agent(tx.agent_id);
   // FIX-5a: موحَّد باستخدام GENERAL_ACCOUNT_ID
@@ -163,8 +168,20 @@ function _buildDeliveryEntries(tx) {
   ];
 }
 
-function _buildRefundSettlementEntries(tx) {
-  const voucher  = _generateVoucherNumber();
+function _buildBankWithdrawalEntries(tx, voucher) {
+  const date     = tx.date || getCurrentSaudiDate();
+  const agentAcc = AccountId.agent(tx.agent_id);
+  const bankAcc  = AccountId.bank(tx.bank_account_id);
+
+  return [
+    { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
+      description: `سحب بنكي — دخل الصندوق` },
+    { voucher_number: voucher, date, account_id: bankAcc,  debit: 0, credit: tx.amount,
+      description: `سحب بنكي — خرج من الحساب البنكي` },
+  ];
+}
+
+function _buildRefundSettlementEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   // FIX-5a: موحَّد باستخدام GENERAL_ACCOUNT_ID
@@ -192,23 +209,27 @@ function buildEntries(tx) {
 
     switch (tx.type) {
       case TRANSACTION_TYPES.COLLECTION:
-        entries = _buildCollectionEntries(tx);
+        entries = _buildCollectionEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.DEPOSIT:
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للإيداع');
-        entries = _buildDepositEntries(tx);
+        entries = _buildDepositEntries(tx, await _generateVoucherNumber(), await _generateVoucherNumber());
+        break;
+      case TRANSACTION_TYPES.BANK_WITHDRAWAL:
+        if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للسحب البنكي');
+        entries = _buildBankWithdrawalEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.EXPENSE:
-        entries = _buildExpenseEntries(tx);
+        entries = _buildExpenseEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.RECEIPT:
-        entries = _buildReceiptEntries(tx);
+        entries = _buildReceiptEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.DELIVERY:
-        entries = _buildDeliveryEntries(tx);
+        entries = _buildDeliveryEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.REFUND_SETTLEMENT:
-        entries = _buildRefundSettlementEntries(tx);
+        entries = _buildRefundSettlementEntries(tx, await _generateVoucherNumber());
         break;
       default:
         return err(`نوع عملية غير معروف: ${tx.type}`);
@@ -237,14 +258,20 @@ async function createTransactionWithEntries(txData) {
       return err('التاريخ غير صالح');
     }
 
+    // Fix #12: RECEIPT يبدأ بحالة انتظار الموافقة إلا إذا كان المدير يسجلها مباشرة
+    const isReceiptByAgent = txData.type === TRANSACTION_TYPES.RECEIPT
+      && AuthService.currentUser()?.role === ROLES.AGENT;
+
     const transaction = {
       ...txData,
-      id          : txData.id || (isOnline() ? generateUUID() : generateTempId()),
-      date        : txData.date || getCurrentSaudiDate(),
-      time        : txData.time || getCurrentSaudiTime(),
-      created_at  : new Date().toISOString(),
-      updated_at  : new Date().toISOString(),
-      sync_status : isOnline() ? SYNC_STATUS.SYNCED : SYNC_STATUS.PENDING,
+      id              : txData.id || (isOnline() ? generateUUID() : generateTempId()),
+      date            : txData.date || getCurrentSaudiDate(),
+      time            : txData.time || getCurrentSaudiTime(),
+      created_at      : new Date().toISOString(),
+      updated_at      : new Date().toISOString(),
+      sync_status     : isOnline() ? SYNC_STATUS.SYNCED : SYNC_STATUS.PENDING,
+      approval_status : txData.approval_status
+        || (isReceiptByAgent ? APPROVAL_STATUS.PENDING : APPROVAL_STATUS.APPROVED),
     };
 
     const entriesResult = buildEntries(transaction);
@@ -384,6 +411,16 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
   try {
     const { page = 1, pageSize = PAGINATION_CONFIG.DEFAULT_PAGE_SIZE } = options;
 
+    // جلب الرصيد الافتتاحي مستقلاً عن الصفحة الحالية — يجب أن يكون ثابتاً لكل صفحات الفترة
+    let openingBalance = 0;
+    if (isOnline()) {
+      const { data: balanceData, error: balanceErr } = await supabaseClient
+        .rpc(RPC.GET_OPENING_BALANCE, { p_account_id: accountId, p_from_date: fromDate });
+      if (!balanceErr && balanceData !== null) {
+        openingBalance = parseFloat(balanceData) || 0;
+      }
+    }
+
     const result = await repo.query(
       TABLES.ACCOUNT_LEDGER,
       {
@@ -396,30 +433,42 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
     if (!isOk(result)) return result;
 
     const entries = result.data.data || [];
-    let totalDebit = 0, totalCredit = 0;
+    const totalCount = result.data.count || entries.length;
+
+    // إجماليات الصفحة الحالية فقط (للعرض)
+    let pageDebit = 0, pageCredit = 0;
     for (const entry of entries) {
-      totalDebit  += parseFloat(entry.debit  || 0);
-      totalCredit += parseFloat(entry.credit || 0);
+      pageDebit  += parseFloat(entry.debit  || 0);
+      pageCredit += parseFloat(entry.credit || 0);
     }
 
-    let openingBalance = 0;
-    if (isOnline()) {
-      const { data: priorEntries } = await supabaseClient
-        .from(TABLES.ACCOUNT_LEDGER)
-        .select('debit, credit')
-        .eq('account_id', accountId)
-        .lt('date', fromDate);
-
-      if (priorEntries) {
-        for (const e of priorEntries) {
-          openingBalance += parseFloat(e.debit || 0) - parseFloat(e.credit || 0);
+    // الرصيد الختامي = الافتتاحي + صافي كامل الفترة (ليس الصفحة فقط)
+    // عند page=1 يكفي openingBalance + صافي الصفحة
+    // عند page>1: نحتاج مجموع ما سبق — نستخدم get_account_statement RPC إن كان متاحاً
+    let closingBalance = openingBalance + pageDebit - pageCredit;
+    if (isOnline() && page > 1) {
+      try {
+        const { data: stmtData } = await supabaseClient.rpc(RPC.GET_ACCOUNT_STATEMENT, {
+          p_account_id : accountId,
+          p_from_date  : fromDate,
+          p_to_date    : toDate,
+          p_page       : page - 1,
+          p_limit      : pageSize,
+        });
+        if (stmtData?.closing_balance !== undefined) {
+          closingBalance = parseFloat(stmtData.closing_balance) + pageDebit - pageCredit;
         }
-      }
+      } catch { /* الـ RPC قد لا يسمح للوكيل — نبقى على التقدير */ }
     }
 
-    const closingBalance = openingBalance + totalDebit - totalCredit;
-
-    return ok({ entries, count: result.data.count || entries.length, openingBalance, closingBalance, totalDebit, totalCredit });
+    return ok({
+      entries,
+      count         : totalCount,
+      openingBalance,
+      closingBalance,
+      totalDebit    : pageDebit,
+      totalCredit   : pageCredit,
+    });
 
   } catch (e) {
     return err(`فشل جلب كشف الحساب: ${e.message}`);
@@ -604,18 +653,84 @@ async function getAgentDailySummary(agentId, date) {
         .toArray();
     }
 
-    const summary = { collection: 0, deposit: 0, expense: 0, receipt: 0, delivery: 0 };
+    const summary = { collection: 0, deposit: 0, bank_withdrawal: 0, expense: 0, receipt: 0, delivery: 0 };
     for (const tx of transactions) {
-      if (summary.hasOwnProperty(tx.type)) {
+      if (Object.prototype.hasOwnProperty.call(summary, tx.type)) {
         summary[tx.type] += parseFloat(tx.amount || 0);
       }
     }
-    summary.net = summary.collection + summary.receipt - summary.deposit - summary.expense - summary.delivery;
+    // Fix #18: bank_withdrawal يدخل الصندوق مثل التحصيل
+    summary.net = summary.collection + summary.receipt + summary.bank_withdrawal
+                - summary.deposit - summary.expense - summary.delivery;
 
     return ok(summary);
 
   } catch (e) {
     return err(`فشل جلب ملخص المندوب: ${e.message}`);
+  }
+}
+
+// ============================================================
+// تصدير
+// ============================================================
+
+// ============================================================
+// Fix #12: الموافقة على المعاملات المعلقة
+// ============================================================
+
+async function approveTransaction(transactionId) {
+  try {
+    if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
+      return err('الموافقة مسموحة للمدير والمساعد الإداري فقط');
+    }
+    if (!isOnline()) return err('يجب الاتصال بالإنترنت للموافقة على المعاملات');
+
+    const result = await callRPC(RPC.APPROVE_TRANSACTION, { p_transaction_id: transactionId });
+    if (!isOk(result)) return result;
+
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      await db.transactions.update(transactionId, { approval_status: APPROVAL_STATUS.APPROVED });
+    }
+
+    window.dispatchEvent(new CustomEvent('accounting:transactionApproved', { detail: { transactionId } }));
+    return result;
+  } catch (e) {
+    return err(`فشل الموافقة: ${e.message}`);
+  }
+}
+
+async function rejectTransaction(transactionId, reason = '') {
+  try {
+    if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
+      return err('الرفض مسموح للمدير والمساعد الإداري فقط');
+    }
+    if (!isOnline()) return err('يجب الاتصال بالإنترنت لرفض المعاملات');
+
+    const result = await callRPC(RPC.REJECT_TRANSACTION, {
+      p_transaction_id : transactionId,
+      p_reason         : reason,
+    });
+    if (!isOk(result)) return result;
+
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      await db.transactions.update(transactionId, { approval_status: APPROVAL_STATUS.REJECTED });
+    }
+
+    window.dispatchEvent(new CustomEvent('accounting:transactionRejected', { detail: { transactionId, reason } }));
+    return result;
+  } catch (e) {
+    return err(`فشل الرفض: ${e.message}`);
+  }
+}
+
+async function getPendingApprovals() {
+  try {
+    if (!isOnline()) return ok([]);
+    const result = await callRPC(RPC.GET_PENDING_APPROVALS, {});
+    if (!isOk(result)) return ok([]);
+    return ok(Array.isArray(result.data) ? result.data : []);
+  } catch {
+    return ok([]);
   }
 }
 
@@ -633,10 +748,12 @@ const AccountingService = {
   validateLedger,
   getDailyDepositsTotal,
   getAgentDailySummary,
+  approveTransaction,
+  rejectTransaction,
+  getPendingApprovals,
   AccountId,
-  // FIX-5a: تصدير الثابت للاستخدام في مكونات أخرى
   GENERAL_ACCOUNT_ID,
 };
 
 window.AccountingService = AccountingService;
-console.log('✅ AccountingService.js v1.1 — FIX-5a: CASH_GENERAL → GENERAL_FUND | FIX-3: حماية typeof db');
+console.log('✅ AccountingService.js v2.0 — Phase C: SUSP_ accounts, approval workflow, revenue accounts');

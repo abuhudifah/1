@@ -10,6 +10,17 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="أبو حذيفة" />
 
+  <!-- Content Security Policy — TASK-5.2 -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src  'self' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net;
+    style-src   'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src    'self' https://fonts.gstatic.com;
+    connect-src 'self' https://*.supabase.co wss://*.supabase.co;
+    img-src     'self' data: blob: https://*.supabase.co;
+    worker-src  'self' blob:;
+  ">
+
   <title>نظام أبو حذيفة للصرافة والتحويلات</title>
 
   <!-- ============================================================
@@ -157,10 +168,10 @@
   <script src="components/AccountManagementComponent.js" defer></script>
   <script src="components/SettingsComponent.js"      defer></script>
   <!-- إعدادات الملف الشخصي (للجميع) -->
-<script src="components/ProfileSettingsComponent.js"></script>
+  <script src="components/ProfileSettingsComponent.js" defer></script>
 
-<!-- إشعار الدخول السريع -->
-<script src="utils/QuickLoginBanner.js"></script>
+  <!-- إشعار الدخول السريع -->
+  <script src="utils/QuickLoginBanner.js" defer></script>
 
 </body>
 </html>

@@ -196,6 +196,12 @@ function _schedulePeriodicSync() {
     if (!isOnline() || _syncState.isRunning) return;
     try {
       if (!db.isOpen()) return;
+
+      // تنظيف failedNotified عند تجاوز 500 عنصر لمنع تسرب الذاكرة
+      if (_syncState.failedNotified.size > 500) {
+        _syncState.failedNotified.clear();
+      }
+
       const stats = await SyncQueue.getStats();
       if (isOk(stats) && stats.data.pending > 0) {
         console.log(`⏰ SyncService: مزامنة دورية — ${stats.data.pending} عملية معلقة`);

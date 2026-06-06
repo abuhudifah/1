@@ -181,10 +181,11 @@ const DataEntryComponent = {
       border-radius:16px;overflow-x:auto;`;
 
     const forms = [
-      { id:'collection', label:'تحصيل',       icon:'💰' },
-      { id:'deposit',    label:'إيداع',        icon:'🏦' },
-      { id:'expense',    label:'مصروف',        icon:'💸' },
-      { id:'transfer',   label:'استلام/تسليم', icon:'🔄' },
+      { id:'collection',      label:'تحصيل',       icon:'💰' },
+      { id:'deposit',         label:'إيداع بنكي',   icon:'🏦' },
+      { id:'bank_withdrawal', label:'سحب بنكي',     icon:'💳' },
+      { id:'expense',         label:'مصروف',        icon:'💸' },
+      { id:'transfer',        label:'استلام/تسليم', icon:'🔄' },
     ];
 
     forms.forEach(f => {
@@ -218,10 +219,11 @@ const DataEntryComponent = {
     const card = document.createElement('div');
     card.className = 'glass-card animate-fade-in';
     switch (formId) {
-      case 'collection': card.appendChild(this._buildCollectionForm()); break;
-      case 'deposit':    card.appendChild(this._buildDepositForm());    break;
-      case 'expense':    card.appendChild(this._buildExpenseForm());    break;
-      case 'transfer':   card.appendChild(this._buildTransferForm());   break;
+      case 'collection':      card.appendChild(this._buildCollectionForm());     break;
+      case 'deposit':         card.appendChild(this._buildDepositForm());        break;
+      case 'bank_withdrawal': card.appendChild(this._buildBankWithdrawalForm()); break;
+      case 'expense':         card.appendChild(this._buildExpenseForm());        break;
+      case 'transfer':        card.appendChild(this._buildTransferForm());       break;
     }
     container.appendChild(card);
   },
@@ -276,73 +278,15 @@ const DataEntryComponent = {
   },
 
   /* ═══════════════════════════════════════════════
-     1. نموذج التحصيل
+     1. نموذج التحصيل (نقدي فقط)
   ═══════════════════════════════════════════════ */
   _buildCollectionForm() {
     const frag = document.createDocumentFragment();
 
     const title = document.createElement('h3');
     title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--success);display:flex;align-items:center;gap:8px;';
-    title.innerHTML = '<span>💰</span><span>تحصيل</span>';
+    title.innerHTML = '<span>💰</span><span>تحصيل نقدي</span>';
     frag.appendChild(title);
-
-    /* نوع الدفع */
-    const typeField = this._field('col-pay-type', 'نوع الدفع', true);
-    const typeSelect = document.createElement('select');
-    typeSelect.id = 'col-pay-type';
-    typeSelect.className = 'form-control';
-    typeSelect.innerHTML = `
-      <option value="cash">نقدي</option>
-      <option value="card">سحب من بطاقة (يُسجَّل على الحساب البنكي)</option>`;
-    typeField.appendChild(typeSelect);
-    frag.appendChild(typeField);
-
-    /* ✅ قائمة الحسابات البنكية — تظهر دائماً لكن مطلوبة فقط عند card */
-    const bankField = this._field('col-bank-account', 'الحساب البنكي للسحب');
-    const bankSelect = this._buildBankSelect('col-bank-account', '— اختر حساب السحب —');
-    bankField.appendChild(bankSelect);
-    bankField.appendChild(this._errMsg('col-bank-account-err'));
-    /* تُخفى في البداية */
-    bankField.style.display = 'none';
-    frag.appendChild(bankField);
-
-    /* معلومات الحساب المختار */
-    const bankInfo = document.createElement('div');
-    bankInfo.id = 'col-bank-info';
-    bankInfo.style.cssText = 'display:none;margin:-8px 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg-input);font-size:0.82rem;border:1px solid var(--border-color);';
-    frag.appendChild(bankInfo);
-
-    /* إظهار/إخفاء قائمة البنوك حسب نوع الدفع */
-    typeSelect.addEventListener('change', async () => {
-      const isCard = typeSelect.value === 'card';
-      bankField.style.display = isCard ? '' : 'none';
-      bankInfo.style.display  = (isCard && bankSelect.value) ? '' : 'none';
-      const errEl = document.getElementById('col-bank-account-err');
-      if (errEl) errEl.textContent = '';
-    });
-
-    /* عرض معلومات البنك عند الاختيار */
-    bankSelect.addEventListener('change', async () => {
-      const bank = this._sortedBanks.find(b => b.id === bankSelect.value);
-      if (!bank) { bankInfo.style.display = 'none'; return; }
-      const today    = getCurrentSaudiDate();
-      const total    = await AccountingService.getDailyDepositsTotal(bank.id, today);
-      const ceil     = parseFloat(bank.financial_ceiling) || 0;
-      const pct      = ceil > 0 ? Math.min(100, (total / ceil) * 100) : 0;
-      const rem      = Math.max(0, ceil - total);
-      const cls      = getProgressClass ? getProgressClass(pct) : (pct >= 80 ? 'high' : pct >= 50 ? 'medium' : 'low');
-      bankInfo.style.display = '';
-      bankInfo.innerHTML = `
-        <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
-          <span style="color:var(--text-secondary);">الإيداعات اليومية</span>
-          <span style="font-weight:700;">${formatCurrency(total)}</span>
-        </div>
-        <div class="progress-bar"><div class="progress-fill ${cls}" style="width:${pct}%;"></div></div>
-        <div style="display:flex;justify-content:space-between;margin-top:4px;color:var(--text-muted);font-size:0.76rem;">
-          <span>السقف: ${formatCurrency(ceil)}</span>
-          <span style="color:${rem < ceil * 0.1 ? 'var(--danger)' : 'var(--success)'};">المتبقي: ${formatCurrency(rem)}</span>
-        </div>`;
-    });
 
     /* المبلغ */
     const amtField = this._field('col-amount', 'المبلغ', true);
@@ -366,14 +310,90 @@ const DataEntryComponent = {
     compField.appendChild(compSelect);
     frag.appendChild(compField);
 
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:9px 13px;border-radius:9px;background:rgba(5,150,105,0.07);border:1px solid rgba(5,150,105,0.15);font-size:0.78rem;color:var(--success);margin-bottom:14px;';
+    hint.textContent = 'ℹ️ للسحب من بطاقة بنكية استخدم تبويب "سحب بنكي"';
+    frag.appendChild(hint);
+
     frag.appendChild(this._saveBtn('col-save-btn', '💾 حفظ التحصيل', async () => {
       await this._saveCollection({
-        payType   : typeSelect.value,
-        bankId    : typeSelect.value === 'card' ? bankSelect.value : null,
         amount    : amtInput.value,
         customer  : document.getElementById('col-customer-search')?.value?.trim() || '',
         customerId: document.getElementById('col-debtor-id')?.value || null,
         companyId : compSelect.value || null,
+      });
+    }));
+
+    return frag;
+  },
+
+  /* ═══════════════════════════════════════════════
+     1ب. نموذج السحب البنكي (مستقل)
+  ═══════════════════════════════════════════════ */
+  _buildBankWithdrawalForm() {
+    const frag = document.createDocumentFragment();
+
+    const title = document.createElement('h3');
+    title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--warning);display:flex;align-items:center;gap:8px;';
+    title.innerHTML = '<span>💳</span><span>سحب بنكي</span>';
+    frag.appendChild(title);
+
+    const bankField = this._field('wd-bank', 'الحساب البنكي للسحب', true);
+    const bankSelect = this._buildBankSelect('wd-bank', '— اختر الحساب البنكي —');
+    bankField.appendChild(bankSelect);
+    bankField.appendChild(this._errMsg('wd-bank-err'));
+    frag.appendChild(bankField);
+
+    const bankInfo = document.createElement('div');
+    bankInfo.id = 'wd-bank-info';
+    bankInfo.style.cssText = 'display:none;margin:-8px 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg-input);font-size:0.82rem;border:1px solid var(--border-color);';
+    frag.appendChild(bankInfo);
+
+    bankSelect.addEventListener('change', async () => {
+      const bank = this._sortedBanks.find(b => b.id === bankSelect.value);
+      if (!bank) { bankInfo.style.display = 'none'; return; }
+      const today = getCurrentSaudiDate();
+      const total = await AccountingService.getDailyDepositsTotal(bank.id, today);
+      const ceil  = parseFloat(bank.financial_ceiling) || 0;
+      const pct   = ceil > 0 ? Math.min(100, (total / ceil) * 100) : 0;
+      const rem   = Math.max(0, ceil - total);
+      const cls   = getProgressClass ? getProgressClass(pct) : (pct >= 80 ? 'high' : pct >= 50 ? 'medium' : 'low');
+      bankInfo.style.display = '';
+      bankInfo.innerHTML = `
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+          <span style="color:var(--text-secondary);">الإيداعات اليومية في هذا الحساب</span>
+          <span style="font-weight:700;">${formatCurrency(total)}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill ${cls}" style="width:${pct}%;"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;color:var(--text-muted);font-size:0.76rem;">
+          <span>السقف: ${formatCurrency(ceil)}</span>
+          <span>المتبقي: ${formatCurrency(rem)}</span>
+        </div>`;
+    });
+
+    const amtField = this._field('wd-amount', 'مبلغ السحب', true);
+    const amtInput = this._input('wd-amount', 'number', 'أدخل المبلغ بالريال', { min:'1', step:'1' });
+    amtField.appendChild(amtInput);
+    amtField.appendChild(this._errMsg('wd-amount-err'));
+    frag.appendChild(amtField);
+
+    const notesField = this._field('wd-notes', 'ملاحظات (اختياري)');
+    const notesInput = document.createElement('textarea');
+    notesInput.id = 'wd-notes'; notesInput.className = 'form-control';
+    notesInput.rows = 2; notesInput.placeholder = 'سبب السحب أو أي تفاصيل';
+    notesField.appendChild(notesInput);
+    frag.appendChild(notesField);
+
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:9px 13px;border-radius:9px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.15);font-size:0.78rem;color:var(--warning);margin-bottom:14px;';
+    hint.textContent = 'ℹ️ السحب البنكي: يُدخل النقد في صندوق المندوب ويُخرجه من رصيد الحساب البنكي.';
+    frag.appendChild(hint);
+
+    frag.appendChild(this._saveBtn('wd-save-btn', '💾 حفظ السحب البنكي', async () => {
+      await this._saveBankWithdrawal({
+        bankId : bankSelect.value,
+        amount : amtInput.value,
+        notes  : notesInput.value.trim(),
       });
     }));
 
@@ -585,7 +605,8 @@ const DataEntryComponent = {
       if (expType === '__new__') {
         const name = newTypeInput.value.trim();
         if (!name) { showToast('أدخل اسم النوع', 'warning'); return; }
-        expType = 'EXP_' + name.toUpperCase().replace(/\s/g, '_');
+        // منع double prefix: expense_code يُخزَّن بدون بادئة EXP_ — البادئة تُضاف تلقائياً في AccountId.expense()
+        expType = name.toUpperCase().replace(/\s/g, '_').replace(/^EXP_/, '');
         await repo.create(TABLES.EXPENSE_ACCOUNTS, { name, code: expType });
       }
       await this._saveExpense({ expenseType:expType, amount:amtInput.value, details:detInput.value.trim() });
@@ -595,7 +616,7 @@ const DataEntryComponent = {
   },
 
   /* ═══════════════════════════════════════════════
-     4. نموذج الاستلام / التسليم
+     4. نموذج الاستلام / التسليم (برقم الحساب)
   ═══════════════════════════════════════════════ */
   _buildTransferForm() {
     const frag = document.createDocumentFragment();
@@ -615,101 +636,150 @@ const DataEntryComponent = {
     txTypeField.appendChild(txTypeSelect);
     frag.appendChild(txTypeField);
 
-    /* المصدر / الوجهة */
-    const srcField = this._field('tr-source-type', 'المصدر / الوجهة', true);
-    const srcSelect = document.createElement('select');
-    srcSelect.id = 'tr-source-type'; srcSelect.className = 'form-control';
-    srcSelect.innerHTML = `<option value="agent">مندوب</option><option value="company">شركة</option>`;
-    srcField.appendChild(srcSelect);
-    frag.appendChild(srcField);
+    /* Fix #12: تنبيه الاستلام المعلق */
+    const pendingNotice = document.createElement('div');
+    pendingNotice.id = 'tr-pending-notice';
+    pendingNotice.style.cssText = 'display:none;padding:10px 14px;border-radius:10px;margin-bottom:12px;font-size:0.82rem;'
+      + 'background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.3);color:var(--warning);';
+    pendingNotice.innerHTML = '⏳ <strong>استلام بانتظار الموافقة:</strong> سيتم تسجيل المبلغ في حساب معلق '
+      + 'حتى يوافق عليه المدير من إدارة الحسابات.';
+    frag.appendChild(pendingNotice);
 
-    /* البحث عن مندوب */
-    const agentWrap = document.createElement('div');
-    agentWrap.id = 'tr-agent-wrap';
-    const agentSearchWrap = document.createElement('div');
-    agentSearchWrap.style.cssText = 'position:relative;margin-bottom:8px;';
-    const agentInput = document.createElement('input');
-    agentInput.id = 'tr-agent-search'; agentInput.type = 'text'; agentInput.className = 'form-control';
-    agentInput.placeholder = 'اسم المندوب / الجهة...'; agentInput.autocomplete = 'off';
-    const agentAccInput = document.createElement('input');
-    agentAccInput.type = 'text'; agentAccInput.className = 'form-control'; agentAccInput.id = 'tr-agent-account';
-    agentAccInput.placeholder = 'رقم الحساب (اختياري)'; agentAccInput.style.cssText = 'margin-top:8px;direction:ltr;';
-    const agentIdHidden = document.createElement('input');
-    agentIdHidden.type = 'hidden'; agentIdHidden.id = 'tr-agent-id';
+    const updateNotice = () => {
+      const isReceipt = txTypeSelect.value === 'receipt';
+      const isAgent   = typeof AuthService !== 'undefined' && AuthService.currentUser &&
+                        AuthService.currentUser()?.role === 'agent';
+      pendingNotice.style.display = (isReceipt && isAgent) ? '' : 'none';
+    };
+    txTypeSelect.addEventListener('change', updateNotice);
+    setTimeout(updateNotice, 0);
 
-    const agentDd = document.createElement('div');
-    agentDd.style.cssText = `position:absolute;top:100%;right:0;left:0;z-index:500;background:var(--glass-bg-heavy);border:1px solid var(--border-color);border-radius:12px;box-shadow:var(--shadow-lg);max-height:240px;overflow-y:auto;display:none;backdrop-filter:blur(16px);margin-top:4px;`;
+    /* ─── نظام رقم الحساب ─── */
+    const acctField = this._field('tr-account-num', 'رقم حساب الطرف الآخر', true);
+    const acctRow   = document.createElement('div');
+    acctRow.style.cssText = 'display:flex;gap:8px;';
+    const acctInput = this._input('tr-account-num', 'text', 'مثال: AGT-001', { dir:'ltr', autocomplete:'off' });
+    acctInput.style.flex = '1';
+    const acctLookupBtn = document.createElement('button');
+    acctLookupBtn.type = 'button';
+    acctLookupBtn.className = 'btn btn-secondary';
+    acctLookupBtn.style.cssText = 'white-space:nowrap;padding:0 14px;';
+    acctLookupBtn.textContent = '🔍 بحث';
+    acctRow.appendChild(acctInput);
+    acctRow.appendChild(acctLookupBtn);
+    acctField.appendChild(acctRow);
+    acctField.appendChild(this._errMsg('tr-account-num-err'));
+    frag.appendChild(acctField);
 
-    const sysAgents = AppStore.getState('users').filter(u => u.role === ROLES.AGENT && u.is_active && u.id !== AuthService.getCurrentUserId());
-    const BKEY = 'ahu_beneficiaries';
+    /* بطاقة نتيجة البحث */
+    const acctResult = document.createElement('div');
+    acctResult.id = 'tr-account-result';
+    acctResult.style.cssText = 'display:none;margin:-6px 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg-input);font-size:0.85rem;border:1px solid var(--border-color);';
+    frag.appendChild(acctResult);
+
+    /* hidden fields للنتيجة */
+    const hiddenAgentId  = document.createElement('input'); hiddenAgentId.type  = 'hidden'; hiddenAgentId.id = 'tr-agent-id';
+    const hiddenCompId   = document.createElement('input'); hiddenCompId.type   = 'hidden'; hiddenCompId.id  = 'tr-company-id';
+    const hiddenSrcType  = document.createElement('input'); hiddenSrcType.type  = 'hidden'; hiddenSrcType.id = 'tr-src-type';
+    frag.appendChild(hiddenAgentId); frag.appendChild(hiddenCompId); frag.appendChild(hiddenSrcType);
+
+    /* قائمة المستفيدين المحفوظين */
+    const BKEY   = 'ahu_beneficiaries';
     const getBen = () => { try { return JSON.parse(localStorage.getItem(BKEY) || '[]'); } catch { return []; } };
-    const saveBen = (n, a) => {
-      const l = getBen(); const i = l.findIndex(b => b.name === n);
-      if (i >= 0) { l[i].accountNum = a || l[i].accountNum; l[i].usedAt = Date.now(); }
-      else l.unshift({ name:n, accountNum:a, usedAt:Date.now() });
-      localStorage.setItem(BKEY, JSON.stringify(l.slice(0, 50)));
+    const saveBen = (name, accountNum, agentId, companyId, srcType) => {
+      const list = getBen();
+      const idx  = list.findIndex(b => b.accountNum === accountNum);
+      const entry = { name, accountNum, agentId: agentId || null, companyId: companyId || null, srcType: srcType || 'external', usedAt: Date.now() };
+      if (idx >= 0) { list[idx] = { ...list[idx], ...entry }; }
+      else { list.unshift(entry); }
+      localStorage.setItem(BKEY, JSON.stringify(list.slice(0, 50)));
     };
 
-    const renderAd = q => {
-      const trimQ = q.trim().toLowerCase();
-      agentDd.innerHTML = '';
-      const sm = trimQ ? sysAgents.filter(a => a.display_name.toLowerCase().includes(trimQ)) : sysAgents;
-      const bn = trimQ ? getBen().filter(b => b.name.toLowerCase().includes(trimQ)) : [];
-      const allItems = [...sm.map(a => ({ label:a.display_name, sub:'مندوب', isSystem:true, id:a.id })),
-                       ...bn.map(b => ({ label:b.name, sub:b.accountNum||'خارجي', isSystem:false }))];
-      if (!allItems.length) { agentDd.style.display = 'none'; return; }
-      allItems.forEach(it => {
-        const el = document.createElement('div');
-        el.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-color);transition:background 150ms;';
-        el.innerHTML = `<div><span style="font-weight:600;font-size:0.88rem;">${escapeHtml(it.label)}</span><span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">— ${escapeHtml(it.sub)}</span></div>`;
-        el.addEventListener('mouseenter', () => { el.style.background = 'var(--bg-hover)'; });
-        el.addEventListener('mouseleave', () => { el.style.background = ''; });
-        el.addEventListener('click', () => {
-          agentInput.value = it.label;
-          agentIdHidden.value = it.isSystem ? it.id : '';
-          agentDd.style.display = 'none';
+    /* دالة ملء نتيجة البحث */
+    const fillResult = (name, accountNum, agentId, companyId, srcType, isNew = false) => {
+      hiddenAgentId.value = agentId  || '';
+      hiddenCompId.value  = companyId || '';
+      hiddenSrcType.value = srcType  || 'external';
+      acctResult.style.display = '';
+      acctResult.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <span style="font-weight:700;font-size:0.9rem;">${escapeHtml(name)}</span>
+            <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">
+              ${srcType === 'agent' ? '(مندوب)' : srcType === 'company' ? '(شركة)' : '(جهة خارجية)'}
+            </span>
+          </div>
+          ${isNew ? '<span style="font-size:0.7rem;color:var(--warning);">جديد — سيُحفظ بعد الإرسال</span>' : '<span style="color:var(--success);font-size:0.75rem;">✓ موجود</span>'}
+        </div>`;
+      const errEl = document.getElementById('tr-account-num-err');
+      if (errEl) errEl.textContent = '';
+    };
+
+    /* دالة البحث */
+    const lookupAccount = () => {
+      const num     = acctInput.value.trim();
+      if (!num) { const e = document.getElementById('tr-account-num-err'); if (e) e.textContent = 'أدخل رقم الحساب'; return; }
+
+      // 1. بحث في مناديب النظام
+      const sysAgents = AppStore.getState('users').filter(u => u.is_active);
+      const matchedAgent = sysAgents.find(u =>
+        `AGT-${u.account_number || u.id.slice(0,6)}` === num ||
+        `AGT_${u.id}` === num ||
+        u.id === num
+      );
+      if (matchedAgent) { fillResult(matchedAgent.display_name, num, matchedAgent.id, null, 'agent'); return; }
+
+      // 2. بحث في الشركات
+      const sysComps = AppStore.getState('companies');
+      const matchedComp = sysComps.find(c =>
+        `COMP-${c.account_prefix || c.id.slice(0,6)}` === num ||
+        `COMP_${c.id}` === num ||
+        c.id === num
+      );
+      if (matchedComp) { fillResult(matchedComp.name, num, null, matchedComp.id, 'company'); return; }
+
+      // 3. بحث في المستفيدين المحفوظين
+      const saved = getBen().find(b => b.accountNum === num);
+      if (saved) { fillResult(saved.name, num, saved.agentId, saved.companyId, saved.srcType); return; }
+
+      // 4. حساب غير معروف — يطلب الاسم
+      acctResult.style.display = '';
+      hiddenAgentId.value = ''; hiddenCompId.value = ''; hiddenSrcType.value = 'external';
+      acctResult.innerHTML = `
+        <div style="margin-bottom:6px;color:var(--warning);font-size:0.82rem;">⚠️ رقم الحساب غير موجود — أدخل اسم الجهة لحفظه</div>
+        <input id="tr-new-party-name" type="text" class="form-control" placeholder="اسم المندوب أو الجهة" style="font-size:0.85rem;">`;
+    };
+
+    acctLookupBtn.addEventListener('click', lookupAccount);
+    acctInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookupAccount(); } });
+
+    /* قائمة سريعة للمستفيدين المعتادين */
+    const recentWrap = document.createElement('div');
+    recentWrap.style.cssText = 'margin-bottom:12px;';
+    const recentLabel = document.createElement('div');
+    recentLabel.style.cssText = 'font-size:0.75rem;color:var(--text-muted);margin-bottom:6px;';
+    recentLabel.textContent = 'الجهات المعتادة:';
+    recentWrap.appendChild(recentLabel);
+
+    const recentList = document.createElement('div');
+    recentList.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    const recents = getBen().sort((a,b) => (b.usedAt||0)-(a.usedAt||0)).slice(0, 6);
+    if (recents.length) {
+      recents.forEach(b => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'btn btn-secondary btn-sm';
+        chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
+        chip.textContent = b.name;
+        chip.addEventListener('click', () => {
+          acctInput.value = b.accountNum || '';
+          fillResult(b.name, b.accountNum, b.agentId, b.companyId, b.srcType);
         });
-        agentDd.appendChild(el);
+        recentList.appendChild(chip);
       });
-      agentDd.style.display = '';
-    };
-
-    agentInput.addEventListener('input', () => { agentIdHidden.value = ''; renderAd(agentInput.value); });
-    agentInput.addEventListener('focus', () => renderAd(agentInput.value));
-    agentInput.addEventListener('blur', () => {
-      const n = agentInput.value.trim();
-      if (n && !agentIdHidden.value) saveBen(n, agentAccInput.value.trim());
-    });
-    document.addEventListener('click', e => { if (!agentSearchWrap.contains(e.target)) agentDd.style.display = 'none'; });
-
-    agentSearchWrap.appendChild(agentInput);
-    agentSearchWrap.appendChild(agentDd);
-    agentSearchWrap.appendChild(agentIdHidden);
-    const agentLbl = document.createElement('label');
-    agentLbl.className = 'form-label'; agentLbl.textContent = 'المندوب / الجهة';
-    agentWrap.appendChild(agentLbl);
-    agentWrap.appendChild(agentSearchWrap);
-    agentWrap.appendChild(agentAccInput);
-    frag.appendChild(agentWrap);
-
-    /* الشركة */
-    const compWrap = document.createElement('div');
-    compWrap.id = 'tr-company-wrap'; compWrap.style.display = 'none';
-    const compField = this._field('tr-company', 'اختر الشركة', true);
-    const compSelect = document.createElement('select');
-    compSelect.id = 'tr-company'; compSelect.className = 'form-control';
-    compSelect.innerHTML = '<option value="">— اختر شركة —</option>';
-    AppStore.getState('companies').forEach(c => {
-      const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; compSelect.appendChild(o);
-    });
-    compField.appendChild(compSelect);
-    compWrap.appendChild(compField);
-    frag.appendChild(compWrap);
-
-    srcSelect.addEventListener('change', () => {
-      agentWrap.style.display = srcSelect.value === 'agent' ? '' : 'none';
-      compWrap.style.display  = srcSelect.value === 'company' ? '' : 'none';
-    });
+      recentWrap.appendChild(recentList);
+      frag.appendChild(recentWrap);
+    }
 
     /* المبلغ */
     const amtField = this._field('tr-amount', 'المبلغ', true);
@@ -719,12 +789,26 @@ const DataEntryComponent = {
     frag.appendChild(amtField);
 
     frag.appendChild(this._saveBtn('tr-save-btn', '💾 حفظ العملية', async () => {
-      const txType  = txTypeSelect.value;
-      const srcType = srcSelect.value;
-      const agentId = srcType === 'agent' ? (agentIdHidden.value || null) : null;
-      const compId  = srcType === 'company' ? compSelect.value : null;
-      if (srcType === 'agent' && agentInput.value.trim() && !agentIdHidden.value)
-        saveBen(agentInput.value.trim(), agentAccInput.value.trim());
+      const txType   = txTypeSelect.value;
+      const srcType  = hiddenSrcType.value;
+      const agentId  = hiddenAgentId.value || null;
+      const compId   = hiddenCompId.value  || null;
+      const acctNum  = acctInput.value.trim();
+
+      if (!acctNum) { showToast('أدخل رقم حساب الطرف الآخر', 'error'); return; }
+      if (!hiddenSrcType.value && !document.getElementById('tr-new-party-name')?.value?.trim()) {
+        showToast('ابحث عن رقم الحساب أولاً', 'error'); return;
+      }
+
+      // حفظ الاسم إذا كان جهة جديدة
+      const newName = document.getElementById('tr-new-party-name')?.value?.trim();
+      if (newName) { saveBen(newName, acctNum, null, null, 'external'); }
+      else if (acctNum && hiddenSrcType.value) {
+        // تحديث usedAt للجهة المعتادة
+        const existingName = acctResult.querySelector('span')?.textContent?.trim() || '';
+        if (existingName) saveBen(existingName, acctNum, agentId, compId, srcType);
+      }
+
       await this._saveTransfer({
         txType,
         fromAgentId : txType === 'receipt'  ? agentId : null,
@@ -749,36 +833,41 @@ const DataEntryComponent = {
 
   /* ═══════════════ منطق الحفظ ═══════════════ */
 
-  async _saveCollection({ payType, bankId, amount, customer, customerId, companyId }) {
+  async _saveCollection({ amount, customer, customerId, companyId }) {
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
-    /* ✅ التحقق من اختيار البنك عند السحب من بطاقة */
-    if (payType === 'card') {
-      if (!bankId) {
-        const errEl = document.getElementById('col-bank-account-err');
-        if (errEl) errEl.textContent = 'يجب اختيار الحساب البنكي عند سحب البطاقة';
-        showToast('اختر الحساب البنكي لإتمام عملية سحب البطاقة', 'error');
-        return;
+    const rounded = roundAmount(amount);
+
+    // Fix #15 — BR-002: تحقق من مبلغ التحصيل مقابل الدين المتبقي
+    if (customerId) {
+      const debtor = AppStore.getState('debtors')?.find(d => d.id === customerId);
+      const debtRemaining = parseFloat(debtor?.debt_amount || 0);
+      if (debtRemaining > 0 && rounded > debtRemaining) {
+        const overage = formatCurrency(rounded - debtRemaining);
+        const confirmed = await confirmDialog(
+          `⚠️ المبلغ يتجاوز الدين المسجَّل!\n`
+          + `الدين المتبقي: ${formatCurrency(debtRemaining)}\n`
+          + `المبلغ المُدخَل: ${formatCurrency(rounded)}\n`
+          + `الزيادة: ${overage}\n\n`
+          + `قد تكون دفعة مقدَّمة أو خطأ في المبلغ. هل تريد المتابعة؟`,
+          'متابعة', 'مراجعة', 'warning'
+        );
+        if (!confirmed) return;
       }
-      const errEl = document.getElementById('col-bank-account-err');
-      if (errEl) errEl.textContent = '';
     }
 
-    const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn     = document.getElementById('col-save-btn');
     const restore = setButtonLoading(btn);
 
     const txData = {
-      type            : 'collection',
-      amount          : rounded,
-      date            : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
-      agent_id        : agentId,
-      company_id      : companyId || null,
-      customer_name   : customer  || null,
-      customer_id     : customerId || null,
-      /* ✅ bank_account_id يُسجَّل فقط عند السحب من بطاقة */
-      bank_account_id : payType === 'card' ? (bankId || null) : null,
+      type          : 'collection',
+      amount        : rounded,
+      date          : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id      : agentId,
+      company_id    : companyId || null,
+      customer_name : customer  || null,
+      customer_id   : customerId || null,
     };
 
     const result = await AccountingService.createTransactionWithEntries(txData);
@@ -787,6 +876,32 @@ const DataEntryComponent = {
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
       await this._showShareModal({ type:'تحصيل', amount:rounded, customer, agentId, date:txData.date });
+    } else {
+      showToast(`❌ ${result.error}`, 'error');
+    }
+  },
+
+  async _saveBankWithdrawal({ bankId, amount, notes }) {
+    if (!bankId) { showToast('اختر الحساب البنكي', 'error'); return; }
+    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
+
+    const rounded = roundAmount(amount);
+    const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+    const btn     = document.getElementById('wd-save-btn');
+    const restore = setButtonLoading(btn);
+
+    const result = await AccountingService.createTransactionWithEntries({
+      type            : 'bank_withdrawal',
+      amount          : rounded,
+      date            : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id        : agentId,
+      bank_account_id : bankId,
+      details         : notes || null,
+    });
+    restore();
+    if (isOk(result)) {
+      showToast('✅ تم حفظ السحب البنكي', 'success');
+      this._resetForm('wd');
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -872,7 +987,37 @@ const DataEntryComponent = {
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
     if (!fromAgentId && !toAgentId && !companyId) { showToast('حدد المصدر أو الوجهة', 'error'); return; }
 
-    const rounded = roundAmount(amount);
+    const rounded   = roundAmount(amount);
+    const txDate    = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const myAgentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+
+    // Fix #17 — BR-021: كشف تكرار محتمل لنفس المبلغ والتاريخ والطرفين
+    if (isOnline()) {
+      try {
+        const otherAgent = fromAgentId || toAgentId;
+        let q = supabaseClient
+          .from('transactions')
+          .select('id,type,amount,agent_id')
+          .eq('type', txType)
+          .eq('date', txDate)
+          .eq('is_reversed', false)
+          .eq('amount', rounded);
+
+        if (txType === 'receipt') q = q.eq('agent_id', myAgentId);
+        if (txType === 'delivery') q = q.eq('from_agent_id', otherAgent);
+
+        const { data: dups } = await q.limit(3);
+        if (dups && dups.length > 0) {
+          const confirmed = await confirmDialog(
+            `⚠️ تنبيه: يوجد ${dups.length} عملية ${txType === 'receipt' ? 'استلام' : 'تسليم'} مشابهة\n`
+            + `بنفس المبلغ (${formatCurrency(rounded)}) وتاريخ اليوم.\n\n`
+            + `هل أنت متأكد أن هذه ليست عملية مكررة؟`,
+            'متابعة', 'مراجعة', 'warning'
+          );
+          if (!confirmed) return;
+        }
+      } catch { /* لا نمنع العملية إذا فشل الفحص */ }
+    }
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn     = document.getElementById('tr-save-btn');
     const restore = setButtonLoading(btn);
@@ -888,7 +1033,13 @@ const DataEntryComponent = {
     });
     restore();
     if (isOk(result)) {
-      showToast('✅ تم حفظ العملية', 'success');
+      const isPending = result.data?.transaction?.approval_status === APPROVAL_STATUS.PENDING;
+      showToast(
+        isPending
+          ? '⏳ تم تسجيل الاستلام — بانتظار موافقة المدير'
+          : '✅ تم حفظ العملية',
+        isPending ? 'warning' : 'success'
+      );
       this._resetForm('tr');
     } else {
       showToast(`❌ ${result.error}`, 'error');

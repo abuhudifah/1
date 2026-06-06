@@ -663,7 +663,9 @@ async function shareText(text, title = APP_CONFIG.NAME_SHORT) {
  */
 function isValidAmount(value) {
   const num = toNumber(value);
-  return !isNaN(num) && num > 0;
+  const min = window.AMOUNT_CONFIG?.MIN ?? 0.01;
+  const max = window.AMOUNT_CONFIG?.MAX ?? 10_000_000;
+  return !isNaN(num) && num >= min && num <= max;
 }
 
 /**
@@ -836,6 +838,25 @@ function getTransactionIcon(type) {
 }
 
 // ============================================================
+// TASK-4.2: مساعد Dexie الموحّد
+// ============================================================
+
+async function withDexie(fn) {
+  if (typeof db === 'undefined' || !db.isOpen()) return null;
+  try { return await fn(db); } catch (e) { console.warn('⚠️ Dexie:', e.message); return null; }
+}
+
+// TASK-5.3: نمط Online-First الموحّد
+async function fetchOnlineFirst(supabaseFn, dexieFn) {
+  if (typeof isOnline === 'function' && isOnline()) {
+    try { return await supabaseFn(); } catch (e) {
+      console.warn('⚠️ fetchOnlineFirst: تعذر الوصول للخادم، التراجع لـ Dexie:', e.message);
+    }
+  }
+  return dexieFn ? dexieFn() : err('offline');
+}
+
+// ============================================================
 // تصدير جميع الدوال للاستخدام في بقية الملفات
 // ============================================================
 
@@ -873,6 +894,8 @@ Object.assign(window, {
 
   // أداء
   sleep, calcBackoffDelay,
+  withDexie, fetchOnlineFirst,
+  Logger,
 
   // أزرار
   setButtonLoading,
@@ -884,3 +907,43 @@ Object.assign(window, {
 });
 
 console.log('✅ helpers.js محمّل — جميع الدوال المساعدة جاهزة');
+
+
+// ============================================================
+// TASK-6.4: Logger مركزي بسيط
+// ============================================================
+
+const Logger = {
+  _buffer  : [],
+  _maxBuffer: 200,
+  log(level, module, msg, data) {
+    const entry = { ts: new Date().toISOString(), level, module, msg, data };
+    this._buffer.push(entry);
+    if (this._buffer.length > this._maxBuffer) this._buffer.shift();
+    if (level === 'error') console.error(`[${module}]`, msg, data ?? '');
+    else if (level === 'warn') console.warn(`[${module}]`, msg, data ?? '');
+  },
+  error  : (m, msg, d) => Logger.log('error', m, msg, d),
+  warn   : (m, msg, d) => Logger.log('warn',  m, msg, d),
+  info   : (m, msg, d) => Logger.log('info',  m, msg, d),
+  getLogs: ()          => [...Logger._buffer],
+  clear  : ()          => { Logger._buffer = []; },
+};
+window.Logger = Logger;
+
+// ============================================================
+// TASK-6.2: مُلقِّط الأخطاء غير المعالجة
+// ============================================================
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  const msg    = reason?.message || String(reason) || 'unknown';
+  console.error('🔴 Unhandled Promise Rejection:', msg, reason);
+  // تسجيل في Logger إن كان متاحاً
+  if (window.Logger) Logger.error('App', 'unhandledRejection', msg);
+});
+
+window.addEventListener('error', (event) => {
+  console.error('🔴 Uncaught Error:', event.message, event.filename, event.lineno);
+  if (window.Logger) Logger.error('App', 'uncaughtError', event.message);
+});

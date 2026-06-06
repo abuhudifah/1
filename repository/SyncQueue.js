@@ -21,6 +21,21 @@
 'use strict';
 
 // ============================================================
+// خريطة المفاتيح الأساسية للجداول ذات PK غير قياسي
+// مطابقة لـ TABLE_PRIMARY_KEYS في Repository.js
+// ============================================================
+
+const _SQ_PK_MAP = Object.freeze({
+  account_balances : 'account_id',
+  system_settings  : 'key',
+  cache_meta       : 'key',
+});
+
+function _sqGetPKColumn(tableName) {
+  return _SQ_PK_MAP[tableName] || 'id';
+}
+
+// ============================================================
 // حالة داخلية للطابور
 // ============================================================
 
@@ -285,11 +300,13 @@ const SyncQueue = {
    */
   async _executeUpdate(tableName, recordId, changes) {
     try {
+      const pkCol = _sqGetPKColumn(tableName);
+
       // جلب updated_at الحالي من الخادم
       const { data: current, error: fetchError } = await supabaseClient
         .from(tableName)
         .select('updated_at')
-        .eq('id', recordId)
+        .eq(pkCol, recordId)
         .single();
 
       if (fetchError) {
@@ -300,7 +317,7 @@ const SyncQueue = {
         return err(fetchError.message);
       }
 
-      // ✅ الإصلاح: مقارنة updated_at لكشف ما إذا عدّل شخص آخر السجل
+      // مقارنة updated_at لكشف ما إذا عدّل شخص آخر السجل
       if (
         current?.updated_at &&
         changes?.updated_at &&
@@ -320,7 +337,7 @@ const SyncQueue = {
       const { data: saved, error } = await supabaseClient
         .from(tableName)
         .update(cleanChanges)
-        .eq('id', recordId)
+        .eq(pkCol, recordId)
         .select()
         .single();
 
@@ -344,10 +361,12 @@ const SyncQueue = {
    */
   async _executeDelete(tableName, recordId) {
     try {
+      const pkCol = _sqGetPKColumn(tableName);
+
       const { error } = await supabaseClient
         .from(tableName)
         .delete()
-        .eq('id', recordId);
+        .eq(pkCol, recordId);
 
       // إذا كان السجل غير موجود — اعتبره محذوفاً بالفعل
       if (error && error.code !== 'PGRST116') {
@@ -510,7 +529,16 @@ const SyncQueue = {
           .toArray();
 
         for (const qi of queueItems) {
-          await db.sync_queue.update(qi.id, { record_id: realId });
+          // BR-040: تحديث reference_id داخل JSON أيضاً لمنع FK violation عند مزامنة قيود account_ledger
+          let updatedFields = { record_id: realId };
+          try {
+            const parsed = typeof qi.data === 'string' ? JSON.parse(qi.data) : qi.data;
+            if (parsed && parsed.reference_id === tempId) {
+              parsed.reference_id = realId;
+              updatedFields.data  = JSON.stringify(parsed);
+            }
+          } catch { /* إذا فشل parse نُحدِّث record_id فقط */ }
+          await db.sync_queue.update(qi.id, updatedFields);
         }
 
       }); // نهاية db.transaction()
@@ -547,7 +575,7 @@ const SyncQueue = {
           const { data } = await supabaseClient
             .from(item.table_name)
             .select('*')
-            .eq('id', item.record_id)
+            .eq(_sqGetPKColumn(item.table_name), item.record_id)
             .single();
           serverData = data;
         }
@@ -598,9 +626,10 @@ const SyncQueue = {
       if (resolution === 'server') {
         // قبول نسخة الخادم — تحديث Dexie بالبيانات من الخادم
         if (conflict.server_data) {
-          const serverObj = JSON.parse(conflict.server_data);
+          const serverObj  = JSON.parse(conflict.server_data);
           const dexieTable = db[conflict.table_name];
-          if (dexieTable && serverObj?.id) {
+          const pkCol      = _sqGetPKColumn(conflict.table_name);
+          if (dexieTable && serverObj?.[pkCol]) {
             await dexieTable.put({ ...serverObj, sync_status: SYNC_STATUS.SYNCED });
           }
         }
@@ -609,15 +638,17 @@ const SyncQueue = {
       } else if (resolution === 'client') {
         // فرض نسخة العميل — إعادة الإرسال لـ Supabase
         const clientData = JSON.parse(conflict.client_data || '{}');
+        const pkCol = _sqGetPKColumn(conflict.table_name);
         const { error } = await supabaseClient
           .from(conflict.table_name)
-          .upsert({ ...clientData, updated_at: new Date().toISOString() })
+          .upsert({ ...clientData, updated_at: new Date().toISOString() }, { onConflict: pkCol })
           .select();
 
         if (error) return err(`فشل فرض نسخة العميل: ${error.message}`);
 
         const dexieTable = db[conflict.table_name];
-        if (dexieTable && clientData?.id) {
+        const pkVal = clientData?.[pkCol];
+        if (dexieTable && pkVal) {
           await dexieTable.put({ ...clientData, sync_status: SYNC_STATUS.SYNCED });
         }
         console.log(`✅ التعارض ${conflictId}: تم فرض نسخة العميل`);

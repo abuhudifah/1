@@ -242,7 +242,7 @@ async function _loadUsers() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.USERS,
     () => supabaseClient.from(TABLES.USERS)
-      .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash')
+      .select('id, username, display_name, role, is_active, allowed_tabs')
       .eq('is_active', true)
       .order('display_name'),
     () => db.isOpen()
@@ -264,7 +264,7 @@ async function _loadNotifications(user) {
           .order('created_at', { ascending: false })
           .limit(50);
         if (!error && data) {
-          allNotifs = data;
+          allNotifs = data.map(_normalizeNotification);
           // كتابة Dexie في الخلفية
           (async () => {
             try { if (db.isOpen()) await db.notifications.bulkPut(data); } catch { }
@@ -274,20 +274,19 @@ async function _loadNotifications(user) {
     }
 
     if (!allNotifs.length && db.isOpen()) {
-      allNotifs = await db.notifications.orderBy('created_at').reverse().limit(50).toArray().catch(() => []);
+      const raw = await db.notifications.orderBy('created_at').reverse().limit(50).toArray().catch(() => []);
+      allNotifs = raw.map(_normalizeNotification);
     }
 
     const visible = allNotifs.filter(n => {
-      if (n.target === 'all' || n.target === '"all"') return true;
-      if (Array.isArray(n.target) && n.target.includes(user.id)) return true;
-      if (typeof n.target === 'string') {
-        try { const p = JSON.parse(n.target); return p === 'all' || (Array.isArray(p) && p.includes(user.id)); } catch { }
-      }
+      const t = n.target;
+      if (t === 'all') return true;
+      if (Array.isArray(t)) return t.includes(user.id);
       return false;
     });
 
-    const notHidden = visible.filter(n => !_safeJsonParse(n.hidden_by, []).includes(user.id));
-    const unread    = notHidden.filter(n => !_safeJsonParse(n.read_by,   []).includes(user.id));
+    const notHidden = visible.filter(n => !n.hidden_by.includes(user.id));
+    const unread    = notHidden.filter(n => !n.read_by.includes(user.id));
 
     setState({ notifications: notHidden, unreadNotifCount: unread.length }, 'store:notificationsLoaded');
   } catch (e) {
@@ -365,6 +364,15 @@ function _safeJsonParse(value, fallback = []) {
   if (value == null) return fallback;
   if (typeof value !== 'string') return fallback;
   try { return JSON.parse(value) ?? fallback; } catch { return fallback; }
+}
+
+function _normalizeNotification(n) {
+  return {
+    ...n,
+    read_by   : _safeJsonParse(n.read_by,   []),
+    hidden_by : _safeJsonParse(n.hidden_by, []),
+    target    : typeof n.target === 'string' ? _safeJsonParse(n.target, n.target) : (n.target ?? null),
+  };
 }
 
 // ============================================================

@@ -62,47 +62,93 @@ const LoginComponent = {
     const style = document.createElement('style');
     style.id = 'calc-theme-styles';
     style.textContent = `
-      .calc-card { background:rgba(255,255,255,0.92);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border:1px solid rgba(15,23,42,0.10);border-radius:28px;padding:24px 20px 20px;box-shadow:0 32px 80px rgba(15,23,42,0.18),inset 0 1px 0 rgba(255,255,255,0.6);animation:scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1); }
-      .calc-display { background:rgba(15,23,42,0.06);border:1px solid rgba(15,23,42,0.08);border-radius:18px;padding:16px 18px;margin-bottom:18px;text-align:left;direction:ltr;min-height:90px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden; }
-      .calc-expr   { color:rgba(15,23,42,0.35);font-size:0.82rem;min-height:18px;word-break:break-all;margin-bottom:4px;font-family:monospace; }
-      .calc-result { color:#0f172a;font-size:2.4rem;font-weight:700;line-height:1.1;word-break:break-all;transition:font-size 150ms ease,color 150ms ease; }
-      .calc-btn-num { background:rgba(15,23,42,0.07);color:#0f172a;border:1px solid rgba(15,23,42,0.06); }
-      .calc-btn-op  { background:rgba(37,99,235,0.18);color:#1d4ed8;border:1px solid rgba(37,99,235,0.15); }
-      .calc-btn-fn  { background:rgba(100,116,139,0.14);color:#475569;border:1px solid rgba(100,116,139,0.10); }
-      .calc-btn-eq  { background:#2563eb;color:#fff;border:none;box-shadow:0 4px 12px rgba(37,99,235,0.35); }
-      .calc-btn-num:hover{background:rgba(15,23,42,0.13);} .calc-btn-op:hover{background:rgba(37,99,235,0.30);} .calc-btn-fn:hover{background:rgba(100,116,139,0.22);} .calc-btn-eq:hover{background:#1d4ed8;box-shadow:0 6px 20px rgba(37,99,235,0.50);}
+      /* ── iOS Calculator Core ── */
+      .calc-card {
+        background:#1c1c1e;
+        border:none;
+        border-radius:32px;
+        padding:24px 16px 20px;
+        box-shadow:0 40px 100px rgba(0,0,0,0.70);
+        animation:scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+      }
+      .calc-display {
+        background:transparent;
+        border:none;
+        padding:8px 12px 18px;
+        margin-bottom:12px;
+        text-align:right;
+        direction:ltr;
+        min-height:110px;
+        display:flex;
+        flex-direction:column;
+        justify-content:flex-end;
+        overflow:hidden;
+      }
+      .calc-expr   { color:rgba(255,255,255,0.40);font-size:0.88rem;min-height:20px;word-break:break-all;margin-bottom:6px;font-family:monospace;text-align:right; }
+      .calc-result { color:#fff;font-size:3rem;font-weight:300;line-height:1.1;word-break:break-all;text-align:right;transition:font-size 150ms ease,color 150ms ease;letter-spacing:-1px; }
+
+      /* ── iOS Button Base ── */
+      .ios-calc-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:12px; }
+      .calc-btn-base {
+        aspect-ratio:1/1;
+        border:none;
+        border-radius:50%;
+        font-size:1.4rem;
+        font-weight:500;
+        cursor:pointer;
+        font-family:inherit;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        transition:filter 80ms,transform 80ms;
+        -webkit-tap-highlight-color:transparent;
+        user-select:none;
+        line-height:1;
+      }
+      .calc-btn-base.wide {
+        border-radius:999px;
+        aspect-ratio:auto;
+        grid-column:span 2;
+        justify-content:flex-start;
+        padding:0 0 0 28px;
+      }
+      .calc-btn-num { background:#333333;color:#fff; }
+      .calc-btn-op  { background:#ff9f0a;color:#fff; }
+      .calc-btn-fn  { background:#a5a5a5;color:#1c1c1e; }
+      .calc-btn-eq  { background:#ff9f0a;color:#fff; }
+      .calc-btn-base:active,.calc-btn-base.pressed { transform:scale(0.88);filter:brightness(1.3); }
+      .calc-btn-num:hover { filter:brightness(1.15); }
+      .calc-btn-op:hover  { filter:brightness(1.15); }
+      .calc-btn-fn:hover  { filter:brightness(0.92); }
+
+      /* ── Login Card ── */
       .login-card { background:rgba(255,255,255,0.92);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border:1px solid rgba(15,23,42,0.10);border-radius:28px;padding:28px 24px 24px;box-shadow:0 32px 80px rgba(15,23,42,0.18),inset 0 1px 0 rgba(255,255,255,0.6); }
       .login-input { width:100%;padding:12px 16px;border-radius:14px;background:rgba(15,23,42,0.05);border:1.5px solid rgba(15,23,42,0.12);color:#0f172a;font-size:0.92rem;font-family:inherit;transition:border-color 150ms,box-shadow 150ms;outline:none; }
       .login-input:focus{border-color:rgba(37,99,235,0.60);box-shadow:0 0 0 3px rgba(37,99,235,0.15);background:rgba(255,255,255,0.95);}
       .login-submit { width:100%;padding:13px;border:none;border-radius:16px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:0.95rem;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 20px rgba(37,99,235,0.35);transition:box-shadow 150ms,transform 150ms; }
       .login-submit:hover{box-shadow:0 6px 28px rgba(37,99,235,0.50);transform:translateY(-1px);}
-      body.dark-mode .calc-card{background:rgba(30,41,59,0.92);border-color:rgba(248,250,252,0.08);box-shadow:0 32px 80px rgba(0,0,0,0.50),inset 0 1px 0 rgba(255,255,255,0.05);}
-      body.dark-mode .calc-display{background:rgba(0,0,0,0.30);border-color:rgba(248,250,252,0.07);}
-      body.dark-mode .calc-expr{color:rgba(248,250,252,0.35);} body.dark-mode .calc-result{color:#f1f5f9;}
-      body.dark-mode .calc-btn-num{background:rgba(248,250,252,0.07);color:#e2e8f0;border-color:rgba(248,250,252,0.05);}
-      body.dark-mode .calc-btn-op{background:rgba(37,99,235,0.35);color:#93c5fd;border-color:rgba(37,99,235,0.20);}
-      body.dark-mode .calc-btn-fn{background:rgba(148,163,184,0.18);color:#94a3b8;}
-      body.dark-mode .calc-btn-num:hover{background:rgba(248,250,252,0.13);} body.dark-mode .calc-btn-op:hover{background:rgba(37,99,235,0.50);}
+
+      /* ── Dark mode: login card only (calc always dark) ── */
       body.dark-mode .login-card{background:rgba(30,41,59,0.94);border-color:rgba(248,250,252,0.08);}
       body.dark-mode .login-input{background:rgba(15,23,42,0.50);border-color:rgba(248,250,252,0.12);color:#f1f5f9;}
       body.dark-mode .login-input:focus{border-color:rgba(59,130,246,0.60);background:rgba(30,41,59,0.80);}
+
+      /* ── Page & Menu ── */
       .login-page-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;position:relative;overflow:hidden;transition:background 0.4s;}
-      body:not(.dark-mode) .login-page-wrap{background:linear-gradient(135deg,#dbeafe 0%,#eff6ff 40%,#f0fdf4 70%,#ecfdf5 100%);}
-      body.dark-mode .login-page-wrap{background:linear-gradient(135deg,#0a0f1e 0%,#0f2044 40%,#0a1628 70%,#0a0f1e 100%);}
-      .menu-btn{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.20);color:#1e293b;font-size:1.3rem;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);transition:background 150ms;}
-      body.dark-mode .menu-btn{color:#fff;background:rgba(255,255,255,0.10);border-color:rgba(255,255,255,0.16);}
-      .menu-btn:hover{background:rgba(255,255,255,0.25);}
-      .menu-dropdown{position:absolute;top:54px;right:0;background:rgba(255,255,255,0.97);border:1px solid rgba(15,23,42,0.10);border-radius:16px;padding:8px;min-width:210px;display:none;box-shadow:0 20px 60px rgba(15,23,42,0.18);backdrop-filter:blur(24px);}
-      body.dark-mode .menu-dropdown{background:rgba(15,23,42,0.97);border-color:rgba(255,255,255,0.10);}
-      .menu-item{display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;border:none;background:transparent;color:#334155;font-family:inherit;font-size:0.9rem;border-radius:10px;cursor:pointer;text-align:right;transition:background 150ms;}
-      body.dark-mode .menu-item{color:rgba(255,255,255,0.85);} .menu-item:hover{background:rgba(37,99,235,0.08);}
-      .switch-btn{width:100%;margin-top:14px;padding:12px;background:rgba(37,99,235,0.10);border:1px solid rgba(37,99,235,0.25);border-radius:14px;color:#1d4ed8;font-size:0.88rem;font-family:inherit;cursor:pointer;transition:all 150ms;display:flex;align-items:center;justify-content:center;gap:8px;}
-      body.dark-mode .switch-btn{color:#93c5fd;background:rgba(37,99,235,0.15);border-color:rgba(37,99,235,0.30);} .switch-btn:hover{background:rgba(37,99,235,0.20);transform:translateY(-1px);}
-      .back-btn{background:rgba(15,23,42,0.07);border:1px solid rgba(15,23,42,0.12);border-radius:10px;color:#475569;padding:6px 12px;font-size:0.82rem;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background 150ms;}
-      body.dark-mode .back-btn{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.12);color:rgba(255,255,255,0.65);}
-      .quick-hint{text-align:center;font-size:0.75rem;color:#059669;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:4px;padding:6px;background:rgba(5,150,105,0.08);border-radius:8px;}
-      body.dark-mode .quick-hint{color:rgba(16,185,129,0.80);}
-      .quick-trying{text-align:center;font-size:0.78rem;color:#059669;margin-top:8px;min-height:20px;}
+      body:not(.dark-mode) .login-page-wrap{background:linear-gradient(135deg,#1c1c1e 0%,#2a2a2e 50%,#1c1c1e 100%);}
+      body.dark-mode .login-page-wrap{background:linear-gradient(135deg,#0a0a0c 0%,#1c1c1e 50%,#0a0a0c 100%);}
+      .menu-btn{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.16);color:#fff;font-size:1.3rem;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);transition:background 150ms;}
+      .menu-btn:hover{background:rgba(255,255,255,0.18);}
+      .menu-dropdown{position:absolute;top:54px;right:0;background:rgba(28,28,30,0.97);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:8px;min-width:210px;display:none;box-shadow:0 20px 60px rgba(0,0,0,0.50);backdrop-filter:blur(24px);}
+      .menu-item{display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;border:none;background:transparent;color:rgba(255,255,255,0.85);font-family:inherit;font-size:0.9rem;border-radius:10px;cursor:pointer;text-align:right;transition:background 150ms;}
+      .menu-item:hover{background:rgba(255,255,255,0.08);}
+      .switch-btn{width:100%;margin-top:14px;padding:12px;background:rgba(255,159,10,0.15);border:1px solid rgba(255,159,10,0.35);border-radius:14px;color:#ff9f0a;font-size:0.88rem;font-family:inherit;cursor:pointer;transition:all 150ms;display:flex;align-items:center;justify-content:center;gap:8px;}
+      .switch-btn:hover{background:rgba(255,159,10,0.25);transform:translateY(-1px);}
+      .back-btn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:rgba(255,255,255,0.70);padding:6px 12px;font-size:0.82rem;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background 150ms;}
+      body:not(.dark-mode) .back-btn{background:rgba(15,23,42,0.07);border-color:rgba(15,23,42,0.12);color:#475569;}
+      .quick-hint{text-align:center;font-size:0.75rem;color:#ff9f0a;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:4px;padding:6px;background:rgba(255,159,10,0.12);border-radius:8px;}
+      .quick-trying{text-align:center;font-size:0.78rem;color:#ff9f0a;margin-top:8px;min-height:20px;}
+
       @keyframes scaleIn{from{opacity:0;transform:scale(0.94)}to{opacity:1;transform:scale(1)}}
       @keyframes pulse-glow{0%,100%{opacity:.6}50%{opacity:1}}
       @keyframes spin{to{transform:rotate(360deg)}}
@@ -196,7 +242,6 @@ const LoginComponent = {
 
     card.appendChild(this._buildKeypad());
 
-    // منطقة رسالة "جاري التحقق..."
     const tryingEl = document.createElement('div');
     tryingEl.id = 'quick-trying-msg';
     tryingEl.className = 'quick-trying';
@@ -204,7 +249,7 @@ const LoginComponent = {
 
     const switchBtn = document.createElement('button');
     switchBtn.className = 'switch-btn';
-    switchBtn.innerHTML = `<span>🔑</span><span>تسجيل الدخول التقليدي</span>`;
+    switchBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>تسجيل الدخول التقليدي</span>`;
     switchBtn.addEventListener('click',()=>this._flipToLogin());
     card.appendChild(switchBtn);
     return card;
@@ -212,29 +257,28 @@ const LoginComponent = {
 
   _buildKeypad() {
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:9px;';
+    grid.className = 'ios-calc-grid';
     const BTNS = [
-      {l:'C',t:'fn',v:'C'},{l:'⌫',t:'fn',v:'back'},{l:'%',t:'op',v:'%'},{l:'÷',t:'op',v:'/'},
-      {l:'7',t:'n',v:'7'},{l:'8',t:'n',v:'8'},{l:'9',t:'n',v:'9'},{l:'×',t:'op',v:'*'},
-      {l:'4',t:'n',v:'4'},{l:'5',t:'n',v:'5'},{l:'6',t:'n',v:'6'},{l:'−',t:'op',v:'-'},
-      {l:'1',t:'n',v:'1'},{l:'2',t:'n',v:'2'},{l:'3',t:'n',v:'3'},{l:'+',t:'op',v:'+'},
-      {l:'0',t:'n',v:'0',wide:true},{l:'.',t:'n',v:'.'},{l:'=',t:'eq',v:'='},
+      {l:'C', t:'fn',v:'C'}, {l:'⌫',t:'fn',v:'back'}, {l:'%',t:'op',v:'%'}, {l:'÷',t:'op',v:'/'},
+      {l:'7', t:'n', v:'7'}, {l:'8', t:'n', v:'8'},    {l:'9', t:'n', v:'9'}, {l:'×',t:'op',v:'*'},
+      {l:'4', t:'n', v:'4'}, {l:'5', t:'n', v:'5'},    {l:'6', t:'n', v:'6'}, {l:'−',t:'op',v:'-'},
+      {l:'1', t:'n', v:'1'}, {l:'2', t:'n', v:'2'},    {l:'3', t:'n', v:'3'}, {l:'+',t:'op',v:'+'},
+      {l:'0', t:'n', v:'0', wide:true},                 {l:'.',t:'n', v:'.'},  {l:'=',t:'eq',v:'='},
     ];
-    const cls={fn:'calc-btn-fn',op:'calc-btn-op',eq:'calc-btn-eq',n:'calc-btn-num'};
-    BTNS.forEach(b=>{
-      const el=document.createElement('button');
-      if(b.wide) el.style.gridColumn='span 2';
-      el.className=cls[b.t]||'calc-btn-num';
-      el.style.cssText=`padding:17px 0;border-radius:14px;font-size:${b.t==='fn'?'1rem':'1.15rem'};font-weight:600;cursor:pointer;font-family:inherit;transition:filter 150ms,transform 80ms;-webkit-tap-highlight-color:transparent;`;
-      el.textContent=b.l;
-      el.addEventListener('click',()=>this._handleKey(b.v));
-      el.addEventListener('mousedown',()=>el.style.transform='scale(0.92)');
-      el.addEventListener('mouseup',()=>el.style.transform='');
-      el.addEventListener('touchstart',()=>el.style.transform='scale(0.92)',{passive:true});
-      el.addEventListener('touchend',()=>el.style.transform='',{passive:true});
+    const cls = {fn:'calc-btn-fn',op:'calc-btn-op',eq:'calc-btn-eq',n:'calc-btn-num'};
+    BTNS.forEach(b => {
+      const el = document.createElement('button');
+      el.className = `calc-btn-base ${cls[b.t]||'calc-btn-num'}${b.wide?' wide':''}`;
+      el.textContent = b.l;
+      el.addEventListener('click', () => this._handleKey(b.v));
+      el.addEventListener('mousedown', () => el.classList.add('pressed'));
+      el.addEventListener('mouseup',   () => el.classList.remove('pressed'));
+      el.addEventListener('mouseleave',() => el.classList.remove('pressed'));
+      el.addEventListener('touchstart',() => el.classList.add('pressed'),   {passive:true});
+      el.addEventListener('touchend',  () => el.classList.remove('pressed'),{passive:true});
       grid.appendChild(el);
     });
-    document.addEventListener('keydown',e=>this._handleKeyboard(e));
+    document.addEventListener('keydown', e => this._handleKeyboard(e));
     return grid;
   },
 

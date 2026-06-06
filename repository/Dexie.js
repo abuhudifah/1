@@ -285,19 +285,22 @@ async function cleanStaleTransactions() {
  */
 async function cleanStaleQueueItems() {
   try {
-    const cutoff = Date.now() - SYNC_CONFIG.STALE_QUEUE_DAYS * 24 * 60 * 60 * 1000;
+    const BATCH_SIZE = 100;
+    const cutoff     = new Date(Date.now() - SYNC_CONFIG.STALE_QUEUE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-    const staleIds = await db.sync_queue
+    const stale = await db.sync_queue
       .where('created_at')
-      .below(new Date(cutoff).toISOString())
-      .primaryKeys();
+      .below(cutoff)
+      .and(item => item.sync_status === SYNC_STATUS.CONFLICT || item.attempts >= SYNC_CONFIG.MAX_RETRIES)
+      .limit(BATCH_SIZE)
+      .toArray();
 
-    if (staleIds.length > 0) {
-      await db.sync_queue.bulkDelete(staleIds);
-      console.log(`🧹 حُذف ${staleIds.length} عملية قديمة من طابور المزامنة`);
+    if (stale.length > 0) {
+      await db.sync_queue.bulkDelete(stale.map(i => i.id));
+      console.log(`🧹 حُذف ${stale.length} عملية قديمة فاشلة من طابور المزامنة`);
     }
 
-    return ok({ deleted: staleIds.length });
+    return ok({ deleted: stale.length });
   } catch (e) {
     console.error('خطأ في تنظيف طابور المزامنة القديم:', e);
     return err(e.message);

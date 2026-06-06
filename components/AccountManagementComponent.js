@@ -44,6 +44,11 @@ const AccountManagementComponent = {
     container.innerHTML = '';
     const wrap = document.createElement('div');
 
+    /* ── Fix #12: لوحة الموافقات المعلقة ── */
+    const pendingSection = document.createElement('div');
+    pendingSection.id = 'acct-pending-section';
+    wrap.appendChild(pendingSection);
+
     /* ── شريط العنوان ── */
     const titleRow = document.createElement('div');
     titleRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;';
@@ -155,7 +160,14 @@ const AccountManagementComponent = {
     });
 
     if (window.lucide) lucide.createIcons();
-    await this._loadChart();
+    await Promise.all([
+      this._loadChart(),
+      this._loadPendingApprovals(),
+    ]);
+
+    /* استمع لأحداث الموافقة لتحديث اللوحة تلقائياً */
+    window.addEventListener('accounting:transactionApproved',  () => this._loadPendingApprovals());
+    window.addEventListener('accounting:transactionRejected',  () => this._loadPendingApprovals());
   },
 
   // ─────────────────────────────────────────────────────────
@@ -194,6 +206,88 @@ const AccountManagementComponent = {
     if (window.lucide) lucide.createIcons();
   },
 
+  // ─────────────────────────────────────────────────────────
+  // Fix #12: لوحة الموافقات المعلقة
+  // ─────────────────────────────────────────────────────────
+  async _loadPendingApprovals() {
+    const el = document.getElementById('acct-pending-section');
+    if (!el) return;
+
+    const result = await AccountingService.getPendingApprovals();
+    const pending = isOk(result) ? result.data : [];
+
+    if (!pending.length) { el.innerHTML = ''; return; }
+
+    el.innerHTML = `
+      <div class="glass-card" style="margin-bottom:20px;border:2px solid var(--warning);border-radius:16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+          <div style="width:36px;height:36px;border-radius:10px;background:rgba(217,119,6,0.12);
+            display:flex;align-items:center;justify-content:center;font-size:1.2rem;">⏳</div>
+          <div>
+            <div style="font-weight:700;color:var(--warning);">معاملات بانتظار الموافقة</div>
+            <div style="font-size:0.75rem;color:var(--text-muted);">${pending.length} معاملة تحتاج مراجعة</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;" id="pending-list">
+          ${pending.map(tx => `
+            <div style="display:flex;align-items:center;justify-content:space-between;
+              padding:10px 14px;background:rgba(217,119,6,0.06);border-radius:10px;
+              border:1px solid rgba(217,119,6,0.15);flex-wrap:wrap;gap:8px;">
+              <div>
+                <div style="font-weight:600;font-size:0.9rem;">
+                  ${escapeHtml(tx.agent_name || '—')}
+                  <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">${escapeHtml(tx.date || '')}</span>
+                </div>
+                <div style="font-size:0.78rem;color:var(--text-muted);">
+                  استلام · ${escapeHtml(tx.details || '')}
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="font-weight:700;font-size:1rem;color:var(--warning);direction:ltr;">
+                  ${Math.round(parseFloat(tx.amount||0)).toLocaleString('en-US')} ر.س
+                </div>
+                <button class="btn btn-sm approve-btn"
+                  style="background:var(--success);color:#fff;font-size:0.78rem;"
+                  data-id="${escapeHtml(tx.id)}">✓ موافقة</button>
+                <button class="btn btn-secondary btn-sm reject-btn"
+                  style="color:var(--danger);font-size:0.78rem;"
+                  data-id="${escapeHtml(tx.id)}">✕ رفض</button>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+
+    el.querySelectorAll('.approve-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true; btn.textContent = '⏳';
+        const result = await AccountingService.approveTransaction(btn.dataset.id);
+        if (isOk(result)) {
+          showToast('تمت الموافقة وتحديث القيود', 'success');
+          await this._loadPendingApprovals();
+          await this._loadChart();
+        } else {
+          showToast(result.error, 'error');
+          btn.disabled = false; btn.textContent = '✓ موافقة';
+        }
+      });
+    });
+
+    el.querySelectorAll('.reject-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const reason = prompt('سبب الرفض (اختياري):') ?? '';
+        btn.disabled = true; btn.textContent = '⏳';
+        const result = await AccountingService.rejectTransaction(btn.dataset.id, reason);
+        if (isOk(result)) {
+          showToast('تم الرفض وعكس القيود', 'warning');
+          await this._loadPendingApprovals();
+        } else {
+          showToast(result.error, 'error');
+          btn.disabled = false; btn.textContent = '✕ رفض';
+        }
+      });
+    });
+  },
+
   _renderChart(el, chartData) {
     const categoryMeta = {
       agents   : { icon:'👤', label:'حسابات المناديب',          color:'var(--accent)',  bg:'rgba(37,99,235,0.06)'  },
@@ -202,6 +296,8 @@ const AccountManagementComponent = {
       banks    : { icon:'🏦', label:'الحسابات البنكية',           color:'var(--success)', bg:'rgba(5,150,105,0.06)'  },
       expenses : { icon:'💸', label:'حسابات المصروفات',           color:'var(--danger)',  bg:'rgba(220,38,38,0.06)'  },
       treasury : { icon:'🏛️', label:'الخزينة والحسابات العامة', color:'var(--warning)', bg:'rgba(217,119,6,0.06)'  },
+      revenue  : { icon:'💰', label:'حسابات الإيرادات',          color:'#059669',        bg:'rgba(5,150,105,0.06)'  },
+      suspense : { icon:'⏳', label:'الحسابات المعلقة',          color:'#d97706',        bg:'rgba(217,119,6,0.06)'  },
     };
 
     for (const cat of chartData.categories) {
@@ -252,8 +348,13 @@ const AccountManagementComponent = {
             <tbody>
               ${accounts.map(acc => {
                 const bal = Math.round(parseFloat(acc.balance || 0));
+                // Fix #14: عرض اسم الشركة الأم لحسابات البنوك
+                const parentBadge = acc.parent_name
+                  ? `<span style="font-size:0.68rem;color:#7c3aed;background:rgba(124,58,237,0.08);
+                       padding:1px 5px;border-radius:4px;margin-right:4px;">🏢 ${escapeHtml(acc.parent_name)}</span>`
+                  : '';
                 return `<tr class="acct-row" data-name="${escapeHtml((acc.name || acc.account_id).toLowerCase())}">
-                  <td style="font-weight:600;">${escapeHtml(acc.name || acc.account_id)}</td>
+                  <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
                   <td style="direction:ltr;font-family:monospace;font-size:0.72rem;color:var(--text-muted);">
                     ${escapeHtml(acc.account_id)}
                   </td>
@@ -416,43 +517,55 @@ const AccountManagementComponent = {
     const companies = AppStore.getState('companies');
     const debtors   = AppStore.getState('debtors') || [];
 
-    const cats = { agents:[], debtors:[], companies:[], banks:[], expenses:[], treasury:[] };
+    const cats = { agents:[], debtors:[], companies:[], banks:[], expenses:[], revenue:[], suspense:[], treasury:[] };
+    const catLabels = {
+      agents:'حسابات المناديب', debtors:'حسابات العملاء المديونين',
+      companies:'حسابات الشركات', banks:'الحسابات البنكية',
+      expenses:'حسابات المصروفات', revenue:'حسابات الإيرادات',
+      suspense:'الحسابات المعلقة', treasury:'الخزينة والحسابات العامة',
+    };
 
     for (const b of balances) {
       const bal = Math.round(parseFloat(b.balance || 0));
-      let name = b.account_id, cat = 'treasury';
+      let name = b.account_id, cat = 'treasury', parent_name = null;
 
       if (b.account_id.startsWith('AGT_')) {
         const id = b.account_id.slice(4);
         const u  = users.find(u => u.id === id);
         name = u?.display_name || id; cat = 'agents';
-
-      } else if (b.account_id.startsWith('DBT_')) {
-        const id = b.account_id.slice(4);
+      } else if (b.account_id.startsWith('DBT_') || b.account_id.startsWith('CUST_')) {
+        const id = b.account_id.slice(b.account_id.startsWith('DBT_') ? 4 : 5);
         const d  = debtors.find(d => d.id === id);
         name = d?.name || id; cat = 'debtors';
-
       } else if (b.account_id.startsWith('COMP_')) {
         const p = b.account_id.slice(5);
         const c = companies.find(c => c.account_prefix === p);
         name = c?.name || p; cat = 'companies';
-
       } else if (b.account_id.startsWith('BNK_')) {
         const id = b.account_id.slice(4);
         const bk = banks.find(bk => bk.id === id);
-        name = bk?.name || id; cat = 'banks';
-
+        if (bk) {
+          name = bk.name;
+          const co = companies.find(c => c.id === bk.company_id);
+          parent_name = co?.name || null;
+        } else { name = id; }
+        cat = 'banks';
       } else if (b.account_id.startsWith('EXP_')) {
         name = b.account_id.slice(4); cat = 'expenses';
+      } else if (b.account_id.startsWith('REV_')) {
+        name = b.account_id.slice(4); cat = 'revenue';
+      } else if (b.account_id.startsWith('SUSP_')) {
+        if (bal === 0) continue;  // لا تعرض المعلقة المغلقة
+        name = 'معلق: ' + b.account_id.slice(5); cat = 'suspense';
       }
 
-      cats[cat].push({ account_id: b.account_id, name, balance: bal });
+      cats[cat].push({ account_id: b.account_id, name, balance: bal, parent_name });
     }
 
     return {
       categories: Object.entries(cats).map(([key, accs]) => ({
         category      : key,
-        label         : { agents:'المناديب', debtors:'العملاء', companies:'الشركات', banks:'البنوك', expenses:'المصروفات', treasury:'الخزينة' }[key] || key,
+        label         : catLabels[key] || key,
         total_balance : accs.reduce((s, a) => s + a.balance, 0),
         accounts      : accs,
       })).filter(c => c.accounts.length > 0),

@@ -24,8 +24,11 @@ const IdleTimer = (function () {
   // الثوابت
   // ============================================================
 
-  /** مهلة الخمول الكاملة: 5 دقائق */
-  const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+  /** مهلة الخمول الافتراضية للمندوب: 5 دقائق */
+  const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
+  /** مهلة الخمول للمدير والمساعد: 30 دقيقة */
+  const ADMIN_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
   /** مهلة التحذير المسبق: 60 ثانية قبل انتهاء المهلة */
   const WARNING_BEFORE_MS = 60 * 1000;
@@ -44,11 +47,12 @@ const IdleTimer = (function () {
   // الحالة الداخلية
   // ============================================================
 
-  let _running         = false;   // هل الخدمة تعمل؟
-  let _idleTimer       = null;    // المؤقت الرئيسي للخروج
-  let _warningTimer    = null;    // مؤقت التحذير المسبق
-  let _warningShown    = false;   // هل ظهر التحذير؟
-  let _warningToastEl  = null;    // عنصر التنبيه المعروض
+  let _running         = false;               // هل الخدمة تعمل؟
+  let _idleTimer       = null;               // المؤقت الرئيسي للخروج
+  let _warningTimer    = null;               // مؤقت التحذير المسبق
+  let _warningShown    = false;              // هل ظهر التحذير؟
+  let _warningToastEl  = null;              // عنصر التنبيه المعروض
+  let _timeoutMs       = AGENT_IDLE_TIMEOUT_MS; // المهلة النشطة حالياً
 
   // ============================================================
   // دوال المؤقتات
@@ -161,12 +165,12 @@ const IdleTimer = (function () {
       if (_running) {
         _showWarning();
       }
-    }, IDLE_TIMEOUT_MS - WARNING_BEFORE_MS);
+    }, _timeoutMs - WARNING_BEFORE_MS);
 
     // المؤقت الرئيسي للخروج
     _idleTimer = setTimeout(async () => {
       if (!_running) return;
-      console.log('⏱️  IdleTimer: انتهت مهلة الخمول — تسجيل خروج تلقائي للمندوب');
+      console.log('⏱️  IdleTimer: انتهت مهلة الخمول — تسجيل خروج تلقائي');
       _hideWarning();
       _running = false;
       _clearTimers();
@@ -195,7 +199,7 @@ const IdleTimer = (function () {
         // حتى لو فشل، أعد تحميل الصفحة للأمان
         window.location.reload();
       }
-    }, IDLE_TIMEOUT_MS);
+    }, _timeoutMs);
   }
 
   // ============================================================
@@ -243,24 +247,27 @@ const IdleTimer = (function () {
   // ============================================================
 
   /**
-   * يبدأ مراقبة الخمول
-   * يُستدعى عند تسجيل دخول مندوب فقط
+   * يبدأ مراقبة الخمول لأي دور
+   * @param {number} [timeoutMs] — المهلة بالمللي ثانية (افتراضي: 5 دقائق للمندوب)
    */
-  function start() {
+  function start(timeoutMs) {
+    _timeoutMs = (typeof timeoutMs === 'number' && timeoutMs > 0)
+      ? timeoutMs
+      : AGENT_IDLE_TIMEOUT_MS;
+
     if (_running) {
-      // إذا كان يعمل بالفعل، أعد التعيين فقط
       reset();
       return;
     }
 
-    _running      = false; // سيُعيَّن true بعد إضافة المستمعين
+    _running      = false;
     _warningShown = false;
 
     _addActivityListeners();
     _running = true;
     _scheduleTimers();
 
-    console.log(`✅ IdleTimer: بدأ — مهلة الخمول ${IDLE_TIMEOUT_MS / 60000} دقائق`);
+    console.log(`✅ IdleTimer: بدأ — مهلة الخمول ${_timeoutMs / 60000} دقيقة`);
   }
 
   /**
@@ -301,7 +308,7 @@ const IdleTimer = (function () {
    * @returns {number}
    */
   function getTimeoutMs() {
-    return IDLE_TIMEOUT_MS;
+    return _timeoutMs;
   }
 
   // ============================================================
@@ -314,6 +321,8 @@ const IdleTimer = (function () {
     reset,
     isRunning,
     getTimeoutMs,
+    AGENT_IDLE_TIMEOUT_MS,
+    ADMIN_IDLE_TIMEOUT_MS,
   };
 
 })();

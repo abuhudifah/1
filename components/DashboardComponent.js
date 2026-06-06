@@ -210,7 +210,7 @@ const DashboardComponent = {
 
       if (isOnline()) {
         // FIX-3: استخدام supabaseClient المُوحَّد
-        const { data, error } = await supabaseClient.rpc('get_admin_dashboard', {
+        const { data, error } = await supabaseClient.rpc(RPC.GET_ADMIN_DASHBOARD, {
           p_date: this._selectedDate, p_from: from, p_to: to,
         });
 
@@ -279,7 +279,7 @@ const DashboardComponent = {
       if (isOnline()) {
         // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
-          .from('transactions').select('type,amount,is_reversed')
+          .from(TABLES.TRANSACTIONS).select('type,amount,is_reversed')
           .gte('date', from).lte('date', to).eq('is_reversed', false);
         txs = data || [];
       } else if (typeof db !== 'undefined' && db.isOpen()) {
@@ -349,15 +349,18 @@ const DashboardComponent = {
       if (isOnline()) {
         // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
-          .from('transactions').select('date,type,amount').in('date', days7).eq('is_reversed', false);
+          .from(TABLES.TRANSACTIONS).select('date,type,amount').in('date', days7).eq('is_reversed', false);
         cData = days7.map(d => (data||[]).filter(t=>t.date===d&&t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
         dData = days7.map(d => (data||[]).filter(t=>t.date===d&&t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
       } else if (typeof db !== 'undefined' && db.isOpen()) {
-        for (const d of days7) {
-          const txs = await db.transactions.where('date').equals(d).filter(t=>!t.is_reversed).toArray();
-          cData.push(txs.filter(t=>t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
-          dData.push(txs.filter(t=>t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
-        }
+        const weekStart = days7[0];
+        const weekEnd   = days7[days7.length - 1];
+        const allTxs    = await db.transactions
+          .where('date').between(weekStart, weekEnd, true, true)
+          .filter(t => !t.is_reversed)
+          .toArray();
+        cData = days7.map(d => allTxs.filter(t=>t.date===d&&t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
+        dData = days7.map(d => allTxs.filter(t=>t.date===d&&t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
       }
     } catch { cData = days7.map(()=>0); dData = days7.map(()=>0); }
 
@@ -416,7 +419,7 @@ const DashboardComponent = {
       if (isOnline()) {
         // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
-          .from('transactions').select('bank_account_id,amount')
+          .from(TABLES.TRANSACTIONS).select('bank_account_id,amount')
           .eq('type','deposit').gte('date',from).lte('date',to).eq('is_reversed',false)
           .not('bank_account_id','is',null);
         (data||[]).forEach(t => { totals[t.bank_account_id] = (totals[t.bank_account_id]||0) + Math.round(parseFloat(t.amount)||0); });
@@ -497,7 +500,7 @@ const DashboardComponent = {
       if (isOnline()) {
         // FIX-3: استخدام supabaseClient
         const [txRes, balRes] = await Promise.all([
-          supabaseClient.from('transactions').select('agent_id,type,amount')
+          supabaseClient.from(TABLES.TRANSACTIONS).select('agent_id,type,amount')
             .gte('date',from).lte('date',to).eq('is_reversed',false),
           supabaseClient.from('account_balances').select('account_id,balance')
             .in('account_id', agents.map(a=>`AGT_${a.id}`)),
@@ -573,7 +576,7 @@ const DashboardComponent = {
       if (isOnline()) {
         // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
-          .from('transactions')
+          .from(TABLES.TRANSACTIONS)
           .select('id,type,amount,date,time,agent_id,customer_name,details,is_reversed,company_id,bank_account_id')
           .gte('date',from).lte('date',to)
           .order('created_at',{ascending:false}).limit(10);

@@ -91,6 +91,7 @@ const DailySummaryComponent = {
       <option value="">الكل</option>
       <option value="collection">💰 تحصيل</option>
       <option value="deposit">🏦 إيداع</option>
+      <option value="bank_withdrawal">💳 سحب بنكي</option>
       <option value="expense">💸 مصروف</option>
       <option value="receipt">📥 استلام</option>
       <option value="delivery">📤 تسليم</option>`;
@@ -124,7 +125,7 @@ const DailySummaryComponent = {
     statsRow.id = 'summary-stats';
     statsRow.className = 'kpi-grid';
     statsRow.style.marginBottom = '20px';
-    statsRow.innerHTML = [1,2,3,4,5,6].map(()=>
+    statsRow.innerHTML = [1,2,3,4,5,6,7].map(()=>
       `<div class="kpi-card"><div class="skeleton" style="height:20px;width:60%;margin-bottom:8px;border-radius:4px;"></div>
        <div class="skeleton" style="height:28px;width:80%;border-radius:6px;"></div></div>`
     ).join('');
@@ -183,17 +184,19 @@ const DailySummaryComponent = {
     const el = document.getElementById('summary-stats');
     if (!el) return;
     const txs = AppStore.getState('transactions').filter(tx=>!tx.is_reversed);
-    const s = {collection:0,deposit:0,expense:0,receipt:0,delivery:0};
+    const s = {collection:0,deposit:0,bank_withdrawal:0,expense:0,receipt:0,delivery:0};
     txs.forEach(tx=>{if(s.hasOwnProperty(tx.type))s[tx.type]+=parseFloat(tx.amount||0);});
-    const net = s.collection+s.receipt-s.deposit-s.expense-s.delivery;
+    // Fix #18: bank_withdrawal يدخل الصندوق مثل التحصيل
+    const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense-s.delivery;
 
     const kpis = [
-      {label:'تحصيلات',value:s.collection,icon:'💰',cls:'kpi-success'},
-      {label:'إيداعات', value:s.deposit,   icon:'🏦',cls:'kpi-accent'},
-      {label:'مصروفات', value:s.expense,   icon:'💸',cls:'kpi-danger'},
-      {label:'استلامات',value:s.receipt,   icon:'📥',cls:'kpi-info'},
-      {label:'تسليمات', value:s.delivery,  icon:'📤',cls:'kpi-warning'},
-      {label:'المتبقي', value:net,          icon:'📊',cls:net>=0?'kpi-success':'kpi-danger'},
+      {label:'تحصيلات',  value:s.collection,     icon:'💰',cls:'kpi-success'},
+      {label:'إيداعات',  value:s.deposit,         icon:'🏦',cls:'kpi-accent'},
+      {label:'سحب بنكي', value:s.bank_withdrawal, icon:'💳',cls:'kpi-info'},
+      {label:'مصروفات',  value:s.expense,         icon:'💸',cls:'kpi-danger'},
+      {label:'استلامات', value:s.receipt,         icon:'📥',cls:'kpi-info'},
+      {label:'تسليمات',  value:s.delivery,        icon:'📤',cls:'kpi-warning'},
+      {label:'المتبقي',  value:net,               icon:'📊',cls:net>=0?'kpi-success':'kpi-danger'},
     ];
 
     el.innerHTML = kpis.map(k=>`
@@ -283,10 +286,12 @@ const DailySummaryComponent = {
   _buildTxRow(tx, users) {
     const color    = getTransactionColor(tx.type);
     const label    = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
-    const typeIcon = {collection:'💰',deposit:'🏦',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'🔄'}[tx.type]||'📋';
+    const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'🔄'}[tx.type]||'📋';
     const isToday  = tx.date===getCurrentSaudiDate();
     const canEdit  = AuthService.isAdmin()||isToday;
-    const isPending= tx.sync_status===SYNC_STATUS.PENDING;
+    const isPending       = tx.sync_status===SYNC_STATUS.PENDING;
+    const isApprovalPending = tx.approval_status === 'pending';
+    const isRejected      = tx.approval_status === 'rejected';
     const agent    = users.find(u=>u.id===tx.agent_id);
 
     return `
@@ -304,7 +309,9 @@ const DailySummaryComponent = {
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span style="font-weight:700;font-size:0.9rem;">${escapeHtml(label)}</span>
               ${tx.is_reversed?'<span class="badge badge-danger" style="font-size:0.68rem;">مُعكوس</span>':''}
-              ${isPending?'<span class="sync-dot pending" title="معلق"></span>':''}
+              ${isApprovalPending?'<span class="badge" style="font-size:0.68rem;background:rgba(217,119,6,0.15);color:var(--warning);">⏳ بانتظار الموافقة</span>':''}
+              ${isRejected?'<span class="badge badge-danger" style="font-size:0.68rem;">مرفوض</span>':''}
+              ${isPending?'<span class="sync-dot pending" title="معلق مزامنة"></span>':''}
             </div>
             <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
               ${tx.customer_name?escapeHtml(tx.customer_name)+' · ':''}

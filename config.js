@@ -62,11 +62,26 @@ const DEXIE_TABLES = Object.freeze({
 // ============================================================
 
 const RPC = Object.freeze({
-  CREATE_TRANSACTION_WITH_ENTRIES : 'create_transaction_with_entries',
-  PERFORM_DAILY_CLOSE             : 'perform_daily_close',
-  REVERSE_TRANSACTION             : 'reverse_transaction',
-  UPDATE_DEBTOR_BALANCE           : 'update_debtor_balance',
-  VERIFY_QUICK_LOGIN              : 'verify_quick_login',
+  // دوال المعاملات المالية
+  CREATE_TRANSACTION_WITH_ENTRIES : 'create_transaction_with_entries', // params: {tx_data, entries_data}
+  PERFORM_DAILY_CLOSE             : 'perform_daily_close',             // params: {p_date, p_user_id}
+  REVERSE_TRANSACTION             : 'reverse_transaction',             // params: {p_transaction_id}
+  UPDATE_DEBTOR_BALANCE           : 'update_debtor_balance',           // params: {p_debtor_id, p_amount}
+  // دوال المصادقة
+  VERIFY_QUICK_LOGIN              : 'verify_quick_login',              // params: {p_hash} → {user_id, valid}
+  // دوال التقارير والاستعلامات
+  GET_ADMIN_DASHBOARD             : 'get_admin_dashboard',             // params: {p_date} → {kpi, banks, agents}
+  GET_DAILY_SUMMARY               : 'get_daily_summary',               // params: {p_date, p_agent_id?}
+  GET_CHART_OF_ACCOUNTS           : 'get_chart_of_accounts',           // params: {} → [{account_id, name, balance}]
+  GET_ACCOUNT_STATEMENT           : 'get_account_statement',           // params: {p_account_id, p_from, p_to}
+  GET_BANK_STATEMENT              : 'get_bank_statement',              // params: {p_bank_id, p_from, p_to}
+  GET_AUDIT_LOGS                  : 'get_audit_logs',                  // params: {p_from, p_to, p_user_id?}
+  GET_OPENING_BALANCE             : 'get_opening_balance',             // params: {p_account_id, p_from_date} → numeric
+  GET_NEXT_VOUCHER_NUMBER         : 'get_next_voucher_number',         // params: {} → text
+  // دوال الموافقة على المعاملات
+  APPROVE_TRANSACTION             : 'approve_transaction',             // params: {p_transaction_id}
+  REJECT_TRANSACTION              : 'reject_transaction',              // params: {p_transaction_id, p_reason}
+  GET_PENDING_APPROVALS           : 'get_pending_approvals',           // params: {} → [{id,type,amount,...}]
 });
 
 // ============================================================
@@ -76,6 +91,7 @@ const RPC = Object.freeze({
 const TRANSACTION_TYPES = Object.freeze({
   COLLECTION        : 'collection',
   DEPOSIT           : 'deposit',
+  BANK_WITHDRAWAL   : 'bank_withdrawal',
   EXPENSE           : 'expense',
   RECEIPT           : 'receipt',
   DELIVERY          : 'delivery',
@@ -84,7 +100,8 @@ const TRANSACTION_TYPES = Object.freeze({
 
 const TRANSACTION_TYPE_LABELS = Object.freeze({
   collection        : 'تحصيل',
-  deposit           : 'إيداع',
+  deposit           : 'إيداع بنكي',
+  bank_withdrawal   : 'سحب بنكي',
   expense           : 'مصروف',
   receipt           : 'استلام',
   delivery          : 'تسليم',
@@ -224,7 +241,21 @@ const ACCOUNT_PREFIXES = Object.freeze({
   BANK     : 'BNK_',
   CUSTOMER : 'CUST_',
   EXPENSE  : 'EXP_',
+  REVENUE  : 'REV_',
   SUSPENSE : 'SUSP_',
+});
+
+// حالات الموافقة على المعاملات
+const APPROVAL_STATUS = Object.freeze({
+  APPROVED : 'approved',
+  PENDING  : 'pending',
+  REJECTED : 'rejected',
+});
+
+const APPROVAL_STATUS_LABELS = Object.freeze({
+  approved : 'مُوافَق عليه',
+  pending  : 'بانتظار الموافقة',
+  rejected : 'مرفوض',
 });
 
 // ============================================================
@@ -252,6 +283,15 @@ const CACHE_CONFIG = Object.freeze({
 const PAGINATION_CONFIG = Object.freeze({
   DEFAULT_PAGE_SIZE : 20,
   PAGE_SIZE_OPTIONS : [20, 50, 100],
+});
+
+// ============================================================
+// حدود المبالغ المالية
+// ============================================================
+
+const AMOUNT_CONFIG = Object.freeze({
+  MIN : 0.01,           // أقل مبلغ مقبول
+  MAX : 10_000_000,     // أعلى مبلغ مقبول (10 مليون ر.س)
 });
 
 // ============================================================
@@ -312,27 +352,14 @@ window.SYNC_ACTIONS          = SYNC_ACTIONS;
 window.SYNC_CONFIG           = SYNC_CONFIG;
 window.CACHE_CONFIG          = CACHE_CONFIG;
 window.PAGINATION_CONFIG     = PAGINATION_CONFIG;
+window.AMOUNT_CONFIG         = AMOUNT_CONFIG;
 window.SECURITY_CONFIG       = SECURITY_CONFIG;
 window.DEXIE_CONFIG          = DEXIE_CONFIG;
 window.FAILED_DEPOSIT_STATUS = FAILED_DEPOSIT_STATUS;
 window.FAILED_DEPOSIT_STATUS_LABELS = FAILED_DEPOSIT_STATUS_LABELS;
 window.NOTIFICATION_TYPES    = NOTIFICATION_TYPES;
 window.ACCOUNT_PREFIXES      = ACCOUNT_PREFIXES;
+window.APPROVAL_STATUS       = APPROVAL_STATUS;
+window.APPROVAL_STATUS_LABELS = APPROVAL_STATUS_LABELS;
 
 console.log(`✅ config.js محمّل — ${APP_CONFIG.NAME} v${APP_CONFIG.VERSION}`);
-
-
-// ═══════════════════════════════════════════════════════════════
-// RPC الجديدة — مضافة في التحديث (لوحة المدير، الملخص، الحسابات)
-// ═══════════════════════════════════════════════════════════════
-window.RPC = Object.freeze({
-  ...RPC,
-  GET_ADMIN_DASHBOARD   : 'get_admin_dashboard',
-  GET_DAILY_SUMMARY     : 'get_daily_summary',
-  GET_CHART_OF_ACCOUNTS : 'get_chart_of_accounts',
-  GET_ACCOUNT_STATEMENT : 'get_account_statement',
-  GET_BANK_STATEMENT    : 'get_bank_statement',
-  GET_AUDIT_LOGS        : 'get_audit_logs',
-});
-
-console.log('✅ config.js v2 — RPC الجديدة مضافة');
