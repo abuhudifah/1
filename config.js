@@ -264,6 +264,15 @@ const PAGINATION_CONFIG = Object.freeze({
 });
 
 // ============================================================
+// حدود المبالغ المالية
+// ============================================================
+
+const AMOUNT_CONFIG = Object.freeze({
+  MIN : 0.01,           // أقل مبلغ مقبول
+  MAX : 10_000_000,     // أعلى مبلغ مقبول (10 مليون ر.س)
+});
+
+// ============================================================
 // إعدادات الأمان
 // ============================================================
 
@@ -321,6 +330,7 @@ window.SYNC_ACTIONS          = SYNC_ACTIONS;
 window.SYNC_CONFIG           = SYNC_CONFIG;
 window.CACHE_CONFIG          = CACHE_CONFIG;
 window.PAGINATION_CONFIG     = PAGINATION_CONFIG;
+window.AMOUNT_CONFIG         = AMOUNT_CONFIG;
 window.SECURITY_CONFIG       = SECURITY_CONFIG;
 window.DEXIE_CONFIG          = DEXIE_CONFIG;
 window.FAILED_DEPOSIT_STATUS = FAILED_DEPOSIT_STATUS;

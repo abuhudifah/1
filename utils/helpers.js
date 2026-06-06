@@ -663,7 +663,9 @@ async function shareText(text, title = APP_CONFIG.NAME_SHORT) {
  */
 function isValidAmount(value) {
   const num = toNumber(value);
-  return !isNaN(num) && num > 0;
+  const min = window.AMOUNT_CONFIG?.MIN ?? 0.01;
+  const max = window.AMOUNT_CONFIG?.MAX ?? 10_000_000;
+  return !isNaN(num) && num >= min && num <= max;
 }
 
 /**
