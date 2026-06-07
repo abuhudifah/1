@@ -64,7 +64,7 @@ const DEXIE_TABLES = Object.freeze({
 const RPC = Object.freeze({
   // دوال المعاملات المالية
   CREATE_TRANSACTION_WITH_ENTRIES : 'create_transaction_with_entries', // params: {tx_data, entries_data}
-  PERFORM_DAILY_CLOSE             : 'perform_daily_close',             // params: {p_date, p_user_id}
+  PERFORM_DAILY_CLOSE             : 'perform_daily_close',             // params: {p_date}
   REVERSE_TRANSACTION             : 'reverse_transaction',             // params: {p_transaction_id}
   UPDATE_DEBTOR_BALANCE           : 'update_debtor_balance',           // params: {p_debtor_id, p_amount}
   // دوال المصادقة

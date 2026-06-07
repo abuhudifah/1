@@ -267,7 +267,7 @@ const SettingsComponent = {
 
     const btn     = document.getElementById('set-manual-close');
     const restore = setButtonLoading(btn, 'جاري الإقفال...');
-    const result  = await callRPC('perform_daily_close', {});
+    const result  = await callRPC('perform_daily_close', { p_date: new Date().toISOString().split('T')[0] });
     restore();
 
     isOk(result)
