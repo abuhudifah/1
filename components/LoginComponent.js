@@ -1183,7 +1183,9 @@ const LoginComponent = {
     btn.disabled = true;
     btn.innerHTML = `<div class="lp-spinner"></div><span>جاري التحقق...</span>`;
 
+    console.log('[AUTH TRACE] LoginComponent._handleLogin — calling AuthService.login');
     const result = await AuthService.login(email, password);
+    console.log('[AUTH TRACE] LoginComponent._handleLogin — result ok:', isOk(result), 'error:', result.error);
 
     btn.disabled = false;
     btn.innerHTML = 'دخول';

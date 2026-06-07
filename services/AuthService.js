@@ -35,15 +35,18 @@ const _loginAttempts = new Map();
 // ============================================================
 async function login(email, password) {
   try {
+    console.log('[AUTH TRACE] 1. login() called, email:', email?.slice(0,4)+'***', 'online:', isOnline());
     const lockCheck = _checkBruteForce(email);
-    if (!isOk(lockCheck)) return lockCheck;
+    if (!isOk(lockCheck)) { console.log('[AUTH TRACE] BLOCKED brute-force'); return lockCheck; }
 
     if (!email || !password) return err('البريد الإلكتروني وكلمة المرور مطلوبان');
     if (!isValidEmail(email))  return err('البريد الإلكتروني غير صالح');
 
+    console.log('[AUTH TRACE] 2. calling signInWithPassword...');
     const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
       email: email.trim().toLowerCase(), password,
     });
+    console.log('[AUTH TRACE] 3. signInWithPassword result — userId:', authData?.user?.id, 'error:', authError?.message);
 
     if (authError) {
       _recordFailedAttempt(email);
@@ -52,13 +55,16 @@ async function login(email, password) {
 
     _loginAttempts.delete(email);
 
+    console.log('[AUTH TRACE] 4. calling _fetchUserProfile for', authData.user.id);
     const profileResult = await _fetchUserProfile(authData.user.id);
+    console.log('[AUTH TRACE] 5. _fetchUserProfile result — ok:', isOk(profileResult), 'data keys:', profileResult.data ? Object.keys(profileResult.data).join(',') : profileResult.error);
     if (!isOk(profileResult)) {
       await supabaseClient.auth.signOut();
       return err('لم يُعثر على ملف المستخدم. تواصل مع المدير.');
     }
 
     const profile = profileResult.data;
+    console.log('[AUTH TRACE] 6. profile — role:', profile.role, 'is_active:', profile.is_active);
     if (!profile.is_active) {
       await supabaseClient.auth.signOut();
       return err('تم تعطيل هذا الحساب. راجع المدير.');
@@ -69,6 +75,7 @@ async function login(email, password) {
     AuthState.isInitialized = true;
 
     await _setupDeviceToken(profile.id);
+    console.log('[AUTH TRACE] 7. saveSession...');
 
     saveSession({
       userId      : profile.id,
@@ -80,6 +87,7 @@ async function login(email, password) {
 
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
+    console.log('[AUTH TRACE] 8. login complete ✅');
 
     console.log(`✅ AuthService: دخل ${profile.display_name} (${profile.role})`);
     return ok({ user: authData.user, profile });
@@ -399,12 +407,14 @@ function getDeviceToken() {
 // 9. جلب ملف المستخدم (فقط عند وجود جلسة Auth نشطة)
 // ============================================================
 async function _fetchUserProfile(userId) {
+  console.log('[AUTH TRACE] _fetchUserProfile — online:', isOnline(), 'userId:', userId);
   if (isOnline()) {
     try {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)
         .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors')
         .eq('id', userId).single();
+      console.log('[AUTH TRACE] _fetchUserProfile Supabase — data:', !!data, 'error:', error?.message, 'code:', error?.code);
       if (!error && data) return ok(data);
       console.warn('⚠️ _fetchUserProfile Supabase فشل:', error?.message);
     } catch (e) {
@@ -414,9 +424,12 @@ async function _fetchUserProfile(userId) {
   try {
     if (typeof db !== 'undefined' && db.isOpen()) {
       const local = await db.users.get(userId);
+      console.log('[AUTH TRACE] _fetchUserProfile Dexie fallback — found:', !!local);
       if (local) return ok(local);
     }
-  } catch {}
+  } catch (e) {
+    console.warn('[AUTH TRACE] _fetchUserProfile Dexie error:', e.message);
+  }
   return err('لم يُعثر على ملف المستخدم. تواصل مع المدير.');
 }
 
