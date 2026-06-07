@@ -81,21 +81,6 @@ async function login(email, password) {
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
-    // إذا كان المستخدم لديه Quick Login مُفعَّل في DB، احفظ مفتاح localStorage
-    // حتى تظهر الآلة الحاسبة في الجلسة القادمة بدون الحاجة لإعادة التفعيل
-    if (profile.quick_equation_hash) {
-      try {
-        const key = `ahu_quick_${profile.id}`;
-        const existing = localStorage.getItem(key);
-        if (!existing) {
-          localStorage.setItem(key, JSON.stringify({
-            hash   : profile.quick_equation_hash,
-            userId : profile.id,
-          }));
-        }
-      } catch {}
-    }
-
     console.log(`✅ AuthService: دخل ${profile.display_name} (${profile.role})`);
     return ok({ user: authData.user, profile });
 
