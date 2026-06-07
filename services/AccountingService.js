@@ -92,22 +92,17 @@ function _buildCollectionEntries(tx, voucher) {
   return entries;
 }
 
-function _buildDepositEntries(tx, voucher2, voucher3) {
+function _buildDepositEntries(tx, voucher) {
+  // قيد بسيط ومتوازن: البنك يستلم ← المندوب يُسوَّى
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
   const bankAcc  = AccountId.bank(tx.bank_account_id);
-  // FIX-5a: كان 'COMP_GENERAL' — استبدلناه بـ GENERAL_ACCOUNT_ID عند غياب company_id
-  const compAcc  = tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID;
 
   return [
-    { voucher_number: voucher2, date, account_id: bankAcc,  debit: tx.amount, credit: 0,
-      description: 'إيداع بنكي' },
-    { voucher_number: voucher2, date, account_id: compAcc,  debit: 0, credit: tx.amount,
-      description: 'إيداع بنكي — خصم من رصيد الشركة' },
-    { voucher_number: voucher3, date, account_id: compAcc,  debit: tx.amount, credit: 0,
-      description: 'تسوية دين المندوب — برأت ذمة الشركة' },
-    { voucher_number: voucher3, date, account_id: agentAcc, debit: 0, credit: tx.amount,
-      description: 'تسوية عهدة المندوب — برأت ذمته' },
+    { voucher_number: voucher, date, account_id: bankAcc,  debit: tx.amount, credit: 0,
+      description: 'إيداع بنكي — زيادة رصيد البنك' },
+    { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
+      description: 'إيداع بنكي — تسوية عهدة المندوب' },
   ];
 }
 
@@ -169,15 +164,16 @@ function _buildDeliveryEntries(tx, voucher) {
 }
 
 function _buildBankWithdrawalEntries(tx, voucher) {
-  const date     = tx.date || getCurrentSaudiDate();
-  const agentAcc = AccountId.agent(tx.agent_id);
-  const bankAcc  = AccountId.bank(tx.bank_account_id);
+  // سحب من البنك: رصيد البنك يقل ← الشركة (أو الصندوق العام) تستلم
+  const date    = tx.date || getCurrentSaudiDate();
+  const bankAcc = AccountId.bank(tx.bank_account_id);
+  const compAcc = tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID;
 
   return [
-    { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
-      description: `سحب بنكي — دخل الصندوق` },
-    { voucher_number: voucher, date, account_id: bankAcc,  debit: 0, credit: tx.amount,
-      description: `سحب بنكي — خرج من الحساب البنكي` },
+    { voucher_number: voucher, date, account_id: bankAcc, debit: 0,         credit: tx.amount,
+      description: 'سحب بنكي — نقص رصيد البنك' },
+    { voucher_number: voucher, date, account_id: compAcc, debit: tx.amount, credit: 0,
+      description: 'سحب بنكي — استلام الشركة' },
   ];
 }
 
@@ -213,7 +209,7 @@ async function buildEntries(tx) {
         break;
       case TRANSACTION_TYPES.DEPOSIT:
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للإيداع');
-        entries = _buildDepositEntries(tx, await _generateVoucherNumber(), await _generateVoucherNumber());
+        entries = _buildDepositEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.BANK_WITHDRAWAL:
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للسحب البنكي');
