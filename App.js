@@ -118,6 +118,7 @@ async function _bootApp(profile) {
 
   await AppStore.refreshData();
   _bindStoreEvents();
+  _startCommandsWatcher(); // مراقبة أوامر النظام (RESET_ALL_DATA وغيرها)
 
   const firstTab = AuthService.getAllowedTabs()[0];
   if (firstTab) await _navigateTo(firstTab);
@@ -696,6 +697,7 @@ function _updateHeaderLogo() {
 // ============================================================
 function _showLoginScreen() {
   if (window.IdleTimer) IdleTimer.stop();
+  _stopCommandsWatcher(); // إيقاف مراقبة الأوامر عند الخروج
   _hideLoadingScreen();
   _stopDateClock();
   _destroyActiveComponent();
@@ -800,11 +802,86 @@ function _showFatalError(msg) {
 }
 
 // ============================================================
+// مراقب أوامر النظام — System Commands Watcher
+// يُستدعى بعد تسجيل الدخول، ويعمل كل 30 ثانية.
+// يلتقط RESET_ALL_DATA على الأجهزة غير المتصلة عند عودتها.
+// ============================================================
+
+let _cmdWatcherTimer = null;
+
+async function _checkSystemCommands() {
+  if (!window.supabaseClient) return;
+  if (!AppStore.getState('currentUser')) return; // لم يُسجَّل الدخول بعد
+
+  try {
+    const { data: commands, error } = await supabaseClient
+      .from('system_commands')
+      .select('id, command, issued_at')
+      .is('executed_at', null)
+      .order('issued_at', { ascending: true });
+
+    if (error) {
+      console.warn('⚠️ _checkSystemCommands:', error.message);
+      return;
+    }
+    if (!commands?.length) return;
+
+    for (const cmd of commands) {
+      if (cmd.command === 'RESET_ALL_DATA') {
+        console.log('📢 App.js: استُلم أمر RESET_ALL_DATA — مسح Dexie...');
+
+        // مسح Dexie المحلي
+        if (window.db) {
+          try {
+            await db.delete();
+            await db.open();
+            console.log('✅ App.js: Dexie أُعيدت تهيئتها');
+          } catch (dErr) {
+            console.warn('⚠️ App.js: Dexie delete/reopen:', dErr.message);
+          }
+        }
+
+        // تحديث executed_at لمنع إعادة التنفيذ من هذا الجهاز
+        // (سيبقى executed_at لو جهاز آخر سبق — الشرط IS NULL يمنع التكرار)
+        await supabaseClient
+          .from('system_commands')
+          .update({ executed_at: new Date().toISOString() })
+          .eq('id', cmd.id)
+          .is('executed_at', null); // atomic: فقط إذا لم يُنفَّذ بعد
+
+        // تحديث الـ store (البيانات فارغة الآن)
+        try { await AppStore.refreshData(); } catch (_) {}
+
+        showToast('📢 تم مسح البيانات المحلية بناءً على أمر المدير', 'info');
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ _checkSystemCommands (unexpected):', err.message);
+  }
+}
+
+function _startCommandsWatcher() {
+  if (_cmdWatcherTimer) return; // تجنب التكرار
+  // فحص فوري عند أول اتصال/تشغيل
+  _checkSystemCommands();
+  // فحص دوري كل 30 ثانية
+  _cmdWatcherTimer = setInterval(_checkSystemCommands, 30_000);
+  // فحص فوري عند عودة الاتصال
+  window.addEventListener('online', _checkSystemCommands, { passive: true });
+}
+
+function _stopCommandsWatcher() {
+  if (_cmdWatcherTimer) { clearInterval(_cmdWatcherTimer); _cmdWatcherTimer = null; }
+  window.removeEventListener('online', _checkSystemCommands);
+}
+
+// ============================================================
 // تصدير
 // ============================================================
 window.App             = { navigateTo: _navigateTo, bootApp: _bootApp, onLoginSuccess: _onLoginSuccess };
 window._appNavigateTo  = _navigateTo;
 window._updateHeaderLogo = _updateHeaderLogo;
+window._startCommandsWatcher = _startCommandsWatcher;
 
 // ============================================================
 // تحسينات إضافية آمنة — Safe Enhancements v1.0

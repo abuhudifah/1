@@ -135,7 +135,28 @@ const SettingsComponent = {
       <div id="set-import-status" style="font-size:0.82rem;color:var(--text-muted);margin-top:6px;"></div>`;
     adminWrap.appendChild(backupCard);
 
-    /* ═══ 4. مصدر البيانات (Data Source Foundation) ═══ */
+    /* ═══ 4. إعادة ضبط البيانات التشغيلية ═══ */
+    const resetCard = this._buildCard('⚠️ إعادة ضبط البيانات التشغيلية');
+    resetCard.innerHTML += `
+      <div style="background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.20);
+        border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+        <p style="font-size:0.83rem;color:var(--danger);font-weight:600;margin:0 0 6px;">
+          ⚠️ تحذير: هذه العملية لا يمكن التراجع عنها
+        </p>
+        <p style="font-size:0.80rem;color:var(--text-secondary);margin:0;line-height:1.6;">
+          يتم حذف جميع العمليات (معاملات، إيداعات، سحوبات، حسابات بنكية، شركات، مديونيات، إقفالات يومية)
+          من Supabase ومن جميع الأجهزة المتصلة. <strong>يُحتفظ بالمستخدمين وإعدادات النظام.</strong>
+        </p>
+      </div>
+      <button id="set-reset-data-btn" class="btn btn-sm"
+        style="background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.35);
+               color:var(--danger);font-weight:700;gap:6px;">
+        <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+        إعادة ضبط جميع البيانات التشغيلية
+      </button>`;
+    adminWrap.appendChild(resetCard);
+
+    /* ═══ 5. مصدر البيانات (Data Source Foundation) ═══ */
     const dsCard = this._buildCard('🔌 مصدر البيانات');
     const dsInfo = DataSourceConfig.getInfo();
     dsCard.innerHTML += `
@@ -179,12 +200,13 @@ const SettingsComponent = {
      ربط أحداث المدير فقط
   ══════════════════════════════════════════ */
   _bindAdminEvents() {
-    document.getElementById('set-logo-save')?.addEventListener('click',      () => this._saveLogo());
-    document.getElementById('set-lock-save')?.addEventListener('click',      () => this._saveLockSettings());
-    document.getElementById('set-manual-close')?.addEventListener('click',   () => this._manualClose());
-    document.getElementById('set-export-btn')?.addEventListener('click',     () => this._exportBackup());
-    document.getElementById('set-import-trigger')?.addEventListener('click', () => document.getElementById('set-import-file')?.click());
-    document.getElementById('set-import-file')?.addEventListener('change',   (e) => this._importBackup(e));
+    document.getElementById('set-logo-save')?.addEventListener('click',       () => this._saveLogo());
+    document.getElementById('set-lock-save')?.addEventListener('click',       () => this._saveLockSettings());
+    document.getElementById('set-manual-close')?.addEventListener('click',    () => this._manualClose());
+    document.getElementById('set-export-btn')?.addEventListener('click',      () => this._exportBackup());
+    document.getElementById('set-import-trigger')?.addEventListener('click',  () => document.getElementById('set-import-file')?.click());
+    document.getElementById('set-import-file')?.addEventListener('change',    (e) => this._importBackup(e));
+    document.getElementById('set-reset-data-btn')?.addEventListener('click',  () => this._resetAllData());
   },
 
   /* ══════════════════════════════════════════
@@ -364,6 +386,78 @@ const SettingsComponent = {
       if (statusEl) statusEl.textContent = '';
     } finally {
       event.target.value = '';
+    }
+  },
+
+  /* ══════════════════════════════════════════
+     إعادة ضبط جميع البيانات التشغيلية
+     (تسلسل أمان مزدوج: تأكيد نصي + RPC + system_commands)
+  ══════════════════════════════════════════ */
+  async _resetAllData() {
+    // الخطوة 1: تأكيد أول
+    const first = await confirmDialog(
+      '⚠️ تحذير: سيتم حذف جميع البيانات التشغيلية (معاملات، حسابات بنكية، شركات، مديونيات، إقفالات يومية) من Supabase وجميع الأجهزة. المستخدمون وإعدادات النظام لن تُمس. لا يمكن التراجع عن هذه العملية.',
+      'تأكيد أول — متابعة', 'إلغاء', 'warning'
+    );
+    if (!first) return;
+
+    // الخطوة 2: تأكيد ثانٍ بكتابة نص تحقق
+    const code = 'إعادة الضبط';
+    const typed = window.prompt(`⚠️ تأكيد نهائي: اكتب "${code}" بالضبط للمتابعة:`);
+    if (typed !== code) {
+      showToast('تم الإلغاء — النص غير مطابق', 'info');
+      return;
+    }
+
+    const btn     = document.getElementById('set-reset-data-btn');
+    const restore = setButtonLoading(btn, 'جاري إعادة الضبط...');
+
+    try {
+      const userId = AppStore.getState('currentUser')?.id;
+
+      // الخطوة 3: استدعاء RPC لحذف البيانات من Supabase (SECURITY DEFINER)
+      showToast('جاري حذف البيانات من السحابة...', 'info');
+      const { error: rpcError } = await supabaseClient.rpc(RPC.RESET_ALL_OPERATIONAL_DATA);
+      if (rpcError) {
+        showToast(`فشل حذف البيانات: ${rpcError.message}`, 'error');
+        return;
+      }
+
+      // الخطوة 4: نشر أمر system_commands لإعلام الأجهزة الأخرى
+      const { error: cmdError } = await supabaseClient
+        .from(TABLES.SYSTEM_COMMANDS)
+        .insert({
+          command   : 'RESET_ALL_DATA',
+          issued_by : userId,
+          note      : `إعادة ضبط يدوية بواسطة المدير — ${new Date().toLocaleString('ar-SA')}`,
+        });
+      if (cmdError) {
+        // تحذير فقط — البيانات حُذفت بالفعل
+        console.warn('⚠️ SettingsComponent: فشل إدراج system_commands:', cmdError.message);
+      }
+
+      // الخطوة 5: مسح Dexie المحلي على هذا الجهاز
+      showToast('جاري مسح قاعدة البيانات المحلية...', 'info');
+      if (window.db) {
+        try {
+          await db.delete();
+          await db.open();
+          console.log('✅ Dexie: أُعيد تهيئتها بعد إعادة الضبط');
+        } catch (dexieErr) {
+          console.warn('⚠️ Dexie delete/reopen:', dexieErr.message);
+        }
+      }
+
+      // الخطوة 6: تحديث الـ store (ستكون البيانات فارغة)
+      await AppStore.refreshData();
+
+      showToast('✅ تمت إعادة الضبط بنجاح — جميع البيانات التشغيلية حُذفت', 'success');
+
+    } catch (e) {
+      showToast(`خطأ غير متوقع: ${e.message}`, 'error');
+      console.error('❌ _resetAllData:', e);
+    } finally {
+      restore();
     }
   },
 

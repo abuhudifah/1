@@ -35,6 +35,7 @@ const TABLES = Object.freeze({
   SYSTEM_SETTINGS   : 'system_settings',
   COMPANIES         : 'companies',
   EXPENSE_ACCOUNTS  : 'expense_accounts',
+  SYSTEM_COMMANDS   : 'system_commands',   // أوامر النظام (إعادة الضبط)
 });
 
 // ============================================================
@@ -83,6 +84,7 @@ const RPC = Object.freeze({
   REJECT_TRANSACTION              : 'reject_transaction',              // params: {p_transaction_id, p_reason}
   GET_PENDING_APPROVALS           : 'get_pending_approvals',           // params: {} → [{id,type,amount,...}]
   CLEAR_AUDIT_LOGS                : 'clear_audit_logs',                // params: {p_before_date?} → {deleted, success}
+  RESET_ALL_OPERATIONAL_DATA      : 'reset_all_operational_data',       // params: {} → 'OK' | EXCEPTION
 });
 
 // ============================================================
