@@ -216,7 +216,11 @@ const SettingsComponent = {
         if (!logoValue) { showToast('أدخل رابط الشعار أو اختر ملفاً', 'error'); return; }
       }
 
-      await repo.upsert(TABLES.SYSTEM_SETTINGS, { key: 'logo', value: { type: logoType, value: logoValue } }, 'key');
+      const upsertResult = await repo.upsert(TABLES.SYSTEM_SETTINGS, { key: 'logo', value: { type: logoType, value: logoValue } }, 'key');
+      if (upsertResult && !isOk(upsertResult)) {
+        showToast(`فشل حفظ الشعار: ${upsertResult.error?.message || 'خطأ غير معروف'}`, 'error');
+        return;
+      }
       showToast('تم حفظ الشعار بنجاح', 'success');
       await AppStore.refreshData();
     } catch (e) {
