@@ -331,13 +331,17 @@ const SettingsComponent = {
         showToast('الملف غير صالح', 'error'); return;
       }
 
+      // جداول ذات مفتاح أساسي مختلف عن 'id'
+      const PK_MAP = { system_settings: 'key', cache_meta: 'key', account_balances: 'account_id' };
+
       let total = 0;
       for (const [table, records] of Object.entries(backup.tables)) {
         if (!records?.length) continue;
         if (statusEl) statusEl.textContent = `جاري استعادة: ${table}...`;
+        const conflictCol = PK_MAP[table] || 'id';
         const bs = 50;
         for (let i = 0; i < records.length; i += bs) {
-          await supabaseClient.from(table).upsert(records.slice(i, i+bs), { onConflict: 'id' });
+          await supabaseClient.from(table).upsert(records.slice(i, i+bs), { onConflict: conflictCol });
           total += Math.min(bs, records.length - i);
         }
       }
