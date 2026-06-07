@@ -288,9 +288,15 @@ const SettingsComponent = {
         TABLES.BANK_ACCOUNTS, TABLES.EXPENSE_ACCOUNTS, TABLES.NOTIFICATIONS,
         TABLES.FAILED_DEPOSITS, TABLES.SYSTEM_SETTINGS,
       ];
+      // أعمدة يُستبعد تصديرها لأسباب أمنية (key: اسم الجدول، value: أعمدة آمنة فقط)
+      const SAFE_COLUMNS = {
+        [TABLES.USERS]: 'id,email,display_name,role,is_active,allowed_tabs,avatar_url,created_at,updated_at',
+      };
+
       const backup = { version: APP_CONFIG.VERSION, exportedAt: new Date().toISOString(), tables: {} };
       for (const table of tables) {
-        const { data } = await supabaseClient.from(table).select('*');
+        const cols = SAFE_COLUMNS[table] || '*';
+        const { data } = await supabaseClient.from(table).select(cols);
         backup.tables[table] = data || [];
       }
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
