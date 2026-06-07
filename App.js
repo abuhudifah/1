@@ -151,6 +151,16 @@ function _buildAppShell() {
 
   if (window.lucide) lucide.createIcons();
 
+  // حساب التداخل بعد بناء الـ DOM مباشرة
+  requestAnimationFrame(() => {
+    _fixHeaderOverlap();
+    let _resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(_resizeTimer);
+      _resizeTimer = setTimeout(_fixHeaderOverlap, 80);
+    }, { passive: true });
+  });
+
   // ── scroll → .scrolled على الهيدر + زر الرجوع للأعلى ──
   const scrollTopBtn = document.createElement('button');
   scrollTopBtn.id        = 'scroll-to-top';
@@ -188,7 +198,7 @@ function _buildAppShell() {
 }
 
 // ============================================================
-// الهيدر — تصميم عمودي مركزي v5.0
+// الهيدر — تصميم أفقي ثلاثي الأقسام v6.0
 // ============================================================
 function _buildHeader() {
   const user    = AppStore.getState('currentUser');
@@ -199,11 +209,11 @@ function _buildHeader() {
   header.id        = 'app-header';
   header.className = 'app-header';
 
-  // ════════════════════════════════════════
-  // قسم العلامة التجارية: شعار + عناوين
-  // ════════════════════════════════════════
-  const brandSection = document.createElement('div');
-  brandSection.className = 'header-brand-section';
+  // ══════════════════════════════════════
+  // اليمين: العلامة التجارية (شعار + اسم)
+  // ══════════════════════════════════════
+  const brand = document.createElement('div');
+  brand.className = 'header-brand';
 
   const logoArea = document.createElement('div');
   logoArea.className = 'header-logo-area';
@@ -217,12 +227,12 @@ function _buildHeader() {
     const ph = document.createElement('div');
     ph.id = 'header-logo-placeholder'; ph.className = 'header-logo-placeholder';
     ph.innerHTML = `
-      <svg viewBox="0 0 56 56" fill="none" width="56" height="56">
-        <rect width="56" height="56" rx="16" fill="url(#hGv5)"/>
-        <text x="28" y="38" text-anchor="middle" fill="white" font-size="28" font-weight="800"
+      <svg viewBox="0 0 48 48" fill="none" width="48" height="48">
+        <rect width="48" height="48" rx="14" fill="url(#hLg6)"/>
+        <text x="24" y="33" text-anchor="middle" fill="white" font-size="24" font-weight="800"
           font-family="system-ui,sans-serif">أ</text>
         <defs>
-          <linearGradient id="hGv5" x1="0" y1="0" x2="56" y2="56">
+          <linearGradient id="hLg6" x1="0" y1="0" x2="48" y2="48">
             <stop offset="0%" stop-color="#f59e0b"/>
             <stop offset="100%" stop-color="#d97706"/>
           </linearGradient>
@@ -230,115 +240,133 @@ function _buildHeader() {
       </svg>`;
     logoArea.appendChild(ph);
   }
-  brandSection.appendChild(logoArea);
+  brand.appendChild(logoArea);
 
-  const titlesDiv = document.createElement('div');
-  titlesDiv.className = 'header-titles';
-  titlesDiv.innerHTML = `
-    <div class="header-main-title">نظام إدارة التحصيلات والإيداعات</div>
-    <div class="header-sub-title">${escapeHtml(APP_CONFIG?.NAME || 'أبو حذيفة للصرافة والتحويلات')}</div>`;
-  brandSection.appendChild(titlesDiv);
-  header.appendChild(brandSection);
+  const brandText = document.createElement('div');
+  brandText.className = 'header-brand-text';
+  brandText.innerHTML = `
+    <div class="header-brand-name">${escapeHtml(APP_CONFIG?.NAME || 'أبو حذيفة')}</div>
+    <div class="header-brand-sub">للصرافة والتحويلات</div>`;
+  brand.appendChild(brandText);
+  header.appendChild(brand);
 
-  // ════════════════════════════════════════
-  // بطاقة المستخدم: صف المعلومات + صف الأزرار
-  // ════════════════════════════════════════
-  const userCardV2 = document.createElement('div');
-  userCardV2.className = 'header-user-card-v2';
-
-  // الصف الأول: اسم المستخدم + أيقونة الثيم + جرس الإشعارات
-  const userRow = document.createElement('div');
-  userRow.className = 'header-user-row';
+  // ══════════════════════════════════════
+  // الوسط: معلومات المستخدم
+  // ══════════════════════════════════════
+  const userCenter = document.createElement('div');
+  userCenter.className = 'header-user-center';
 
   const roleLabel = ROLE_LABELS[user?.role] || user?.role || '';
-  const userLabel = document.createElement('div');
-  userLabel.className = 'header-user-label';
-  userLabel.innerHTML = `<span class="header-role-prefix">${escapeHtml(roleLabel)}:</span> ${escapeHtml(user?.display_name || '')}`;
-  userRow.appendChild(userLabel);
+  const nameInitial = (user?.display_name || 'U').charAt(0);
 
-  const actionsGroup = document.createElement('div');
-  actionsGroup.className = 'header-actions-group';
+  const avatarWrap = document.createElement('div');
+  avatarWrap.className = 'header-avatar-wrap';
+  avatarWrap.innerHTML = `
+    <div class="header-avatar">${escapeHtml(nameInitial)}</div>
+    <div class="header-online-dot"></div>`;
+  userCenter.appendChild(avatarWrap);
 
-  // زر تبديل الثيم
+  const userInfo = document.createElement('div');
+  userInfo.className = 'header-user-info-center';
+  userInfo.innerHTML = `
+    <div class="header-user-greeting">مرحباً، ${escapeHtml(user?.display_name || '')}</div>
+    <div class="header-user-role-tag">${escapeHtml(roleLabel)}</div>`;
+  userCenter.appendChild(userInfo);
+
+  header.appendChild(userCenter);
+
+  // ══════════════════════════════════════
+  // اليسار: أزرار الإجراءات
+  // ══════════════════════════════════════
+  const actions = document.createElement('div');
+  actions.className = 'header-actions';
+
+  // زر الإشعارات
+  const notifBtn = document.createElement('button');
+  notifBtn.id        = 'notif-btn';
+  notifBtn.className = 'header-action-btn' + (AuthService.canAccessTab(TABS.NOTIFICATIONS) ? '' : ' header-action-btn--hidden');
+  notifBtn.title     = 'الإشعارات';
+  notifBtn.innerHTML = `
+    <div class="header-action-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span id="notif-badge" class="notif-badge" style="display:none;"></span>
+    </div>
+    <span class="header-action-label">الإشعارات</span>`;
+  if (AuthService.canAccessTab(TABS.NOTIFICATIONS)) {
+    notifBtn.addEventListener('click', () => _navigateTo(TABS.NOTIFICATIONS));
+  }
+  actions.appendChild(notifBtn);
+
+  // زر الثيم
+  const isDarkNow = document.body.classList.contains('dark-mode');
   const themeBtn = document.createElement('button');
   themeBtn.id        = 'theme-toggle-btn';
-  themeBtn.className = 'header-icon-btn';
+  themeBtn.className = 'header-action-btn';
   themeBtn.title     = 'تبديل المظهر';
-  const isDarkNow = document.body.classList.contains('dark-mode');
-  themeBtn.innerHTML = _themeIcon(isDarkNow);
+  themeBtn.innerHTML = `
+    <div class="header-action-icon">${_themeIcon(isDarkNow)}</div>
+    <span class="header-action-label">${isDarkNow ? 'الوضع الفاتح' : 'الوضع الليلي'}</span>`;
   themeBtn.addEventListener('click', () => {
     const isDark = window.ThemeManager
       ? ThemeManager.toggle()
       : document.body.classList.toggle('dark-mode');
     localStorage.setItem('abu_theme', isDark ? 'dark' : 'light');
-    themeBtn.innerHTML = _themeIcon(isDark);
+    themeBtn.querySelector('.header-action-icon').innerHTML = _themeIcon(isDark);
+    themeBtn.querySelector('.header-action-label').textContent = isDark ? 'الوضع الفاتح' : 'الوضع الليلي';
     showToast(isDark ? '🌙 الوضع المظلم' : '☀️ الوضع الفاتح', 'info', 1500);
   });
-  actionsGroup.appendChild(themeBtn);
+  actions.appendChild(themeBtn);
 
-  // زر الإشعارات
-  if (AuthService.canAccessTab(TABS.NOTIFICATIONS)) {
-    const notifBtn = document.createElement('button');
-    notifBtn.id        = 'notif-btn';
-    notifBtn.className = 'header-icon-btn';
-    notifBtn.title     = 'الإشعارات';
-    notifBtn.innerHTML = `
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-      </svg>
-      <span id="notif-badge" class="notif-badge" style="display:none;"></span>`;
-    notifBtn.addEventListener('click', () => _navigateTo(TABS.NOTIFICATIONS));
-    actionsGroup.appendChild(notifBtn);
-  } else {
-    // الحفاظ على العنصر في DOM لأن كود آخر يرجع إليه
-    const hiddenBadge = document.createElement('span');
-    hiddenBadge.id = 'notif-badge';
-    hiddenBadge.className = 'notif-badge';
-    hiddenBadge.style.display = 'none';
-    actionsGroup.appendChild(hiddenBadge);
-  }
-
-  userRow.appendChild(actionsGroup);
-  userCardV2.appendChild(userRow);
-
-  // الصف الثاني: زر الخروج + زر المزامنة
-  const btnRow = document.createElement('div');
-  btnRow.className = 'header-btn-row';
-
+  // زر الخروج
   const logoutBtn = document.createElement('button');
-  logoutBtn.className = 'header-logout-btn';
+  logoutBtn.className = 'header-action-btn header-action-btn--logout';
   logoutBtn.title     = 'تسجيل الخروج';
-  logoutBtn.innerHTML = `خروج
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-      stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-      <polyline points="16 17 21 12 16 7"/>
-      <line x1="21" y1="12" x2="9" y2="12"/>
-    </svg>`;
+  logoutBtn.innerHTML = `
+    <div class="header-action-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    </div>
+    <span class="header-action-label">تسجيل الخروج</span>`;
   logoutBtn.addEventListener('click', _handleLogout);
-  btnRow.appendChild(logoutBtn);
+  actions.appendChild(logoutBtn);
 
+  // حبة المزامنة
   const syncBtn = document.createElement('button');
   syncBtn.id        = 'sync-indicator';
-  syncBtn.className = 'header-sync-btn';
+  syncBtn.className = 'header-sync-pill';
   syncBtn.title     = 'انقر للمزامنة اليدوية';
   syncBtn.innerHTML = `
     <div id="sync-dot" class="sync-dot synced"></div>
     <span id="sync-label" class="sync-label">مزامنة</span>
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-      stroke-linecap="round" style="vertical-align:middle;">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
       <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
     </svg>
     <span id="sync-count" class="sync-count" style="display:none;"></span>`;
   syncBtn.addEventListener('click', () => SyncService?.manualSync?.());
-  btnRow.appendChild(syncBtn);
+  actions.appendChild(syncBtn);
 
-  userCardV2.appendChild(btnRow);
-  header.appendChild(userCardV2);
-
+  header.appendChild(actions);
   return header;
+}
+
+// حساب ارتفاعات الهيدر والنافار ديناميكياً
+function _fixHeaderOverlap() {
+  const header  = document.querySelector('.app-header');
+  const nav     = document.querySelector('.app-nav');
+  const content = document.getElementById('app-content');
+  if (!header || !nav || !content) return;
+  const hh = header.offsetHeight;
+  const nh = nav.offsetHeight;
+  nav.style.top          = hh + 'px';
+  content.style.paddingTop = (hh + nh + 8) + 'px';
 }
 
 /* أيقونة الثيم SVG */
@@ -575,6 +603,7 @@ function _bindStoreEvents() {
 
   AppStore.addEventListener('store:settingsLoaded', () => {
     _updateHeaderLogo();
+    requestAnimationFrame(_fixHeaderOverlap);
   });
 
   AppStore.addEventListener('store:syncStatusChanged', (e) => {
