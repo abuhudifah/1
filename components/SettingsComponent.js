@@ -135,27 +135,27 @@ const SettingsComponent = {
       <div id="set-import-status" style="font-size:0.82rem;color:var(--text-muted);margin-top:6px;"></div>`;
     adminWrap.appendChild(backupCard);
 
-    /* ═══ 4. إعادة ضبط البيانات المحلية ═══ */
-    const resetCard = this._buildCard('🗑️ إعادة ضبط البيانات المحلية');
-    resetCard.innerHTML += `
-      <div style="padding:12px 14px;background:rgba(220,38,38,0.06);
-        border:1px solid rgba(220,38,38,0.18);border-radius:10px;margin-bottom:16px;">
-        <p style="font-size:0.85rem;font-weight:700;color:var(--danger);margin-bottom:6px;">
-          ⚠️ تحذير: هذا الإجراء لا يمكن التراجع عنه على هذا الجهاز
-        </p>
-        <ul style="font-size:0.80rem;color:var(--text-secondary);line-height:1.8;padding-right:16px;margin:0;">
-          <li>يحذف جميع بيانات <strong>IndexedDB (Dexie)</strong> من هذا الجهاز فقط.</li>
-          <li>لا يتأثر أي بيانات في <strong>Supabase</strong>.</li>
-          <li>لا تتأثر أجهزة المستخدمين الآخرين.</li>
-        </ul>
+    /* ═══ 4. مصدر البيانات (Data Source Foundation) ═══ */
+    const dsCard = this._buildCard('🔌 مصدر البيانات');
+    const dsInfo = DataSourceConfig.getInfo();
+    dsCard.innerHTML += `
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;
+        background:var(--bg-hover);border-radius:10px;border:1px solid var(--border-color);margin-bottom:12px;">
+        <div style="width:36px;height:36px;border-radius:8px;background:var(--primary);
+          display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;">
+          ☁️
+        </div>
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:0.9rem;">${escapeHtml(dsInfo.label)}</div>
+          <div style="font-size:0.78rem;color:var(--text-muted);">${escapeHtml(dsInfo.endpoint)}</div>
+        </div>
+        <span class="badge badge-success" style="font-size:0.75rem;">نشط</span>
       </div>
-      <button id="set-reset-local-btn" class="btn btn-sm"
-        style="background:rgba(220,38,38,0.08);color:var(--danger);
-               border:1px solid rgba(220,38,38,0.25);display:flex;align-items:center;gap:6px;">
-        <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
-        إعادة ضبط البيانات المحلية لهذا الجهاز
-      </button>`;
-    adminWrap.appendChild(resetCard);
+      <p style="font-size:0.80rem;color:var(--text-muted);line-height:1.7;margin:0;">
+        دعم مزودات سحابية إضافية قيد التطوير.
+        ستتاح إمكانية التبديل بين قواعد البيانات في إصدار مستقبلي.
+      </p>`;
+    adminWrap.appendChild(dsCard);
 
     wrap.appendChild(adminWrap);
     container.appendChild(wrap);
@@ -185,7 +185,6 @@ const SettingsComponent = {
     document.getElementById('set-export-btn')?.addEventListener('click',     () => this._exportBackup());
     document.getElementById('set-import-trigger')?.addEventListener('click', () => document.getElementById('set-import-file')?.click());
     document.getElementById('set-import-file')?.addEventListener('change',   (e) => this._importBackup(e));
-    document.getElementById('set-reset-local-btn')?.addEventListener('click',() => this._resetLocalData());
   },
 
   /* ══════════════════════════════════════════
@@ -214,6 +213,7 @@ const SettingsComponent = {
         logoType  = 'upload';
       } else {
         logoValue = urlInput?.value.trim() || '';
+        if (!logoValue) { showToast('أدخل رابط الشعار أو اختر ملفاً', 'error'); return; }
       }
 
       await repo.upsert(TABLES.SYSTEM_SETTINGS, { key: 'logo', value: { type: logoType, value: logoValue } }, 'key');
@@ -353,48 +353,6 @@ const SettingsComponent = {
     }
   },
 
-  /* ══════════════════════════════════════════
-     إعادة ضبط البيانات المحلية
-  ══════════════════════════════════════════ */
-  async _resetLocalData() {
-    if (!AuthService.isAdmin()) return;
-
-    const pendingCount = (typeof db !== 'undefined' && db.isOpen())
-      ? await db.sync_queue.count().catch(() => 0) : 0;
-    if (pendingCount > 0) {
-      const proceed = await confirmDialog(
-        `⚠️ يوجد ${pendingCount} عمليات معلقة لم تُزامَن بعد — ستُفقد نهائياً.\nهل تريد المتابعة على مسؤوليتك؟`,
-        'متابعة على مسؤوليتي', 'إلغاء', 'danger'
-      );
-      if (!proceed) return;
-    }
-
-    const confirmed1 = await confirmDialog(
-      'هل أنت متأكد من إعادة ضبط البيانات المحلية لهذا الجهاز؟\n\n' +
-      '• سيتم حذف جميع بيانات IndexedDB وlocalStorage وsessionStorage.\n' +
-      '• لن تتأثر بيانات Supabase.',
-      'متابعة', 'إلغاء', 'danger'
-    );
-    if (!confirmed1) return;
-
-    const confirmed2 = await confirmDialog(
-      '⚠️ تأكيد أخير: هذا الإجراء لا يمكن التراجع عنه.\nهل أنت متأكد تماماً؟',
-      'نعم، إعادة الضبط', 'إلغاء', 'danger'
-    );
-    if (!confirmed2) return;
-
-    try {
-      if (typeof db !== 'undefined' && db.isOpen()) await db.delete();
-      const theme = localStorage.getItem('abu_theme');
-      localStorage.clear();
-      if (theme) localStorage.setItem('abu_theme', theme);
-      sessionStorage.clear();
-      showToast('تم ضبط البيانات المحلية — سيُعاد تحميل الصفحة...', 'success', 2000);
-      setTimeout(() => location.reload(), 2000);
-    } catch (e) {
-      showToast(`فشل إعادة الضبط: ${e.message}`, 'error');
-    }
-  },
 };
 
 window.SettingsComponent = SettingsComponent;

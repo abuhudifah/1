@@ -82,6 +82,7 @@ const RPC = Object.freeze({
   APPROVE_TRANSACTION             : 'approve_transaction',             // params: {p_transaction_id}
   REJECT_TRANSACTION              : 'reject_transaction',              // params: {p_transaction_id, p_reason}
   GET_PENDING_APPROVALS           : 'get_pending_approvals',           // params: {} → [{id,type,amount,...}]
+  CLEAR_AUDIT_LOGS                : 'clear_audit_logs',                // params: {p_before_date?} → {deleted, success}
 });
 
 // ============================================================

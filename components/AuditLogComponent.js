@@ -35,6 +35,15 @@ const AuditLogComponent = {
         🔍 سجل التدقيق
       </h2>
       <span id="audit-count" style="font-size:0.82rem;color:var(--text-muted);"></span>`;
+
+    if (AuthService.isAdmin()) {
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'btn btn-sm';
+      clearBtn.style.cssText = 'background:rgba(220,38,38,0.08);color:var(--danger);border:1px solid rgba(220,38,38,0.25);display:flex;align-items:center;gap:5px;';
+      clearBtn.innerHTML = '<i data-lucide="trash-2" style="width:13px;height:13px;"></i> مسح السجل';
+      clearBtn.addEventListener('click', () => this._clearLogs());
+      bar.appendChild(clearBtn);
+    }
     wrap.appendChild(bar);
 
     // الفلاتر
@@ -245,7 +254,66 @@ const AuditLogComponent = {
 
     if (window.lucide) lucide.createIcons();
   },
+
+  /* ── مسح محتوى السجل (المدير فقط) ── */
+  async _clearLogs() {
+    const choice = await new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.style.cssText = 'display:flex;z-index:1100;';
+
+      const box = document.createElement('div');
+      box.className = 'modal-box';
+      box.style.maxWidth = '340px';
+      box.innerHTML = `
+        <h3 style="font-size:1rem;font-weight:700;margin-bottom:10px;">مسح سجل التدقيق</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">
+          اختر نطاق المسح. لن يُحذف الجدول — فقط المحتوى.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+          <button class="btn btn-secondary" data-val="all">مسح الكل</button>
+          <button class="btn btn-secondary" data-val="30d">مسح الأقدم من 30 يوماً</button>
+          <button class="btn btn-secondary" data-val="7d">مسح الأقدم من 7 أيام</button>
+        </div>
+        <button class="btn btn-secondary" style="width:100%;" id="audit-clear-cancel">إلغاء</button>`;
+
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      box.querySelectorAll('[data-val]').forEach(btn =>
+        btn.addEventListener('click', () => { document.body.removeChild(overlay); resolve(btn.dataset.val); }));
+      box.querySelector('#audit-clear-cancel').addEventListener('click', () => {
+        document.body.removeChild(overlay); resolve(null);
+      });
+    });
+
+    if (!choice) return;
+
+    const confirmed = await confirmDialog(
+      'هل أنت متأكد؟ لا يمكن التراجع عن مسح سجل التدقيق.',
+      'مسح', 'إلغاء', 'danger'
+    );
+    if (!confirmed) return;
+
+    let beforeDate = null;
+    if (choice === '30d') {
+      const d = new Date(); d.setDate(d.getDate() - 30);
+      beforeDate = d.toLocaleDateString('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
+    } else if (choice === '7d') {
+      const d = new Date(); d.setDate(d.getDate() - 7);
+      beforeDate = d.toLocaleDateString('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
+    }
+
+    const { data, error } = await supabaseClient.rpc('clear_audit_logs',
+      beforeDate ? { p_before_date: beforeDate } : {}
+    );
+
+    if (error) { showToast(`فشل المسح: ${error.message}`, 'error'); return; }
+    showToast(`تم مسح ${data?.deleted ?? 0} سجل`, 'success');
+    this._page = 1;
+    await this._load();
+  },
 };
 
 window.AuditLogComponent = AuditLogComponent;
-console.log('✅ AuditLogComponent v2.0 محمّل — مع RPC get_audit_logs');
+console.log('✅ AuditLogComponent v2.1 محمّل — مع RPC get_audit_logs + clear_audit_logs');
