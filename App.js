@@ -58,9 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     else _restoreDarkMode();
 
     // 4. التحقق من الجلسة
-    console.log('[AUTH TRACE] App.js: calling checkSession...');
     const sessionResult = await AuthService.checkSession();
-    console.log('[AUTH TRACE] App.js: checkSession result — ok:', isOk(sessionResult), 'error:', sessionResult.error);
     if (isOk(sessionResult)) {
       await _bootApp(sessionResult.data.profile);
     } else {

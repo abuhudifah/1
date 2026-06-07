@@ -860,6 +860,28 @@ async function fetchOnlineFirst(supabaseFn, dexieFn) {
 // تصدير جميع الدوال للاستخدام في بقية الملفات
 // ============================================================
 
+// ============================================================
+// TASK-6.4: Logger مركزي بسيط — يجب تعريفه قبل Object.assign
+// ============================================================
+
+const Logger = {
+  _buffer  : [],
+  _maxBuffer: 200,
+  log(level, module, msg, data) {
+    const entry = { ts: new Date().toISOString(), level, module, msg, data };
+    this._buffer.push(entry);
+    if (this._buffer.length > this._maxBuffer) this._buffer.shift();
+    if (level === 'error') console.error(`[${module}]`, msg, data ?? '');
+    else if (level === 'warn') console.warn(`[${module}]`, msg, data ?? '');
+  },
+  error  : (m, msg, d) => Logger.log('error', m, msg, d),
+  warn   : (m, msg, d) => Logger.log('warn',  m, msg, d),
+  info   : (m, msg, d) => Logger.log('info',  m, msg, d),
+  getLogs: ()          => [...Logger._buffer],
+  clear  : ()          => { Logger._buffer = []; },
+};
+window.Logger = Logger;
+
 Object.assign(window, {
   // Result pattern
   ok, err, isOk,
@@ -907,29 +929,6 @@ Object.assign(window, {
 });
 
 console.log('✅ helpers.js محمّل — جميع الدوال المساعدة جاهزة');
-
-
-// ============================================================
-// TASK-6.4: Logger مركزي بسيط
-// ============================================================
-
-const Logger = {
-  _buffer  : [],
-  _maxBuffer: 200,
-  log(level, module, msg, data) {
-    const entry = { ts: new Date().toISOString(), level, module, msg, data };
-    this._buffer.push(entry);
-    if (this._buffer.length > this._maxBuffer) this._buffer.shift();
-    if (level === 'error') console.error(`[${module}]`, msg, data ?? '');
-    else if (level === 'warn') console.warn(`[${module}]`, msg, data ?? '');
-  },
-  error  : (m, msg, d) => Logger.log('error', m, msg, d),
-  warn   : (m, msg, d) => Logger.log('warn',  m, msg, d),
-  info   : (m, msg, d) => Logger.log('info',  m, msg, d),
-  getLogs: ()          => [...Logger._buffer],
-  clear  : ()          => { Logger._buffer = []; },
-};
-window.Logger = Logger;
 
 // ============================================================
 // TASK-6.2: مُلقِّط الأخطاء غير المعالجة
