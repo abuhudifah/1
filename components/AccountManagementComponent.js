@@ -430,7 +430,7 @@ const AccountManagementComponent = {
                     ${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
                   </td>
                   <td>
-                    <div style="display:flex;gap:4px;">
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;">
                       <button class="view-stmt-btn btn btn-secondary btn-sm"
                         data-account="${escapeHtml(acc.account_id)}"
                         data-name="${escapeHtml(acc.name || acc.account_id)}"
@@ -442,6 +442,13 @@ const AccountManagementComponent = {
                         data-name="${escapeHtml(acc.name || acc.account_id)}"
                         style="font-size:0.78rem;">
                         <i data-lucide="pen-line" style="width:12px;height:12px;"></i> قيد
+                      </button>
+                      <button class="delete-account-btn btn btn-secondary btn-sm"
+                        data-account="${escapeHtml(acc.account_id)}"
+                        data-name="${escapeHtml(acc.name || acc.account_id)}"
+                        style="font-size:0.78rem;color:var(--danger);"
+                        title="حذف الحساب">
+                        <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
                       </button>
                     </div>
                   </td>
@@ -491,6 +498,9 @@ const AccountManagementComponent = {
     el.querySelectorAll('.quick-entry-btn').forEach(btn => {
       btn.addEventListener('click', () => this._openJournalModal(btn.dataset.account, btn.dataset.name));
     });
+    el.querySelectorAll('.delete-account-btn').forEach(btn => {
+      btn.addEventListener('click', () => this._deleteAccount(btn.dataset.account, btn.dataset.name));
+    });
 
     if (window.lucide) lucide.createIcons();
   },
@@ -526,6 +536,44 @@ const AccountManagementComponent = {
       } else {
         countEl.style.display = 'none';
       }
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // حذف حساب من account_balances
+  // ─────────────────────────────────────────────────────────
+  async _deleteAccount(accountId, accountName) {
+    const SYSTEM_ACCOUNTS = ['GENERAL_FUND', 'CASH_GENERAL', 'COMP_GENERAL', 'DEBTOR_ADJUSTMENT', 'SUSPENSE'];
+    if (SYSTEM_ACCOUNTS.includes(accountId)) {
+      showToast('لا يمكن حذف حساب نظامي', 'error');
+      return;
+    }
+
+    const confirmed = await confirmDialog(
+      `حذف الحساب "${accountName}" (${accountId})؟\nسيتم حذف جميع قيوده المحاسبية.`,
+      'حذف', 'إلغاء', 'danger'
+    );
+    if (!confirmed) return;
+
+    try {
+      // حذف القيود المحاسبية أولاً
+      const { error: ledgerErr } = await supabaseClient
+        .from('account_ledger')
+        .delete()
+        .eq('account_id', accountId);
+      if (ledgerErr) { showToast(`فشل حذف القيود: ${ledgerErr.message}`, 'error'); return; }
+
+      // حذف الرصيد
+      const { error: balErr } = await supabaseClient
+        .from('account_balances')
+        .delete()
+        .eq('account_id', accountId);
+      if (balErr) { showToast(`فشل حذف الحساب: ${balErr.message}`, 'error'); return; }
+
+      showToast(`تم حذف الحساب "${accountName}" بنجاح`, 'success');
+      await this._loadChart();
+    } catch (e) {
+      showToast(`خطأ غير متوقع: ${e.message}`, 'error');
     }
   },
 

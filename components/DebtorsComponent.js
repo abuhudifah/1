@@ -439,6 +439,16 @@ const DebtorsComponent = {
       approval_status: 'approved',
     };
 
+    /* ضمان وجود حساب CUST_ في account_balances قبل إنشاء القيد */
+    try {
+      await supabaseClient.from('account_balances').upsert(
+        { account_id: custAcc, balance: oldBalance, last_updated: new Date().toISOString() },
+        { onConflict: 'account_id', ignoreDuplicates: true }
+      );
+    } catch (upsertErr) {
+      console.warn('⚠️ تعذّر التحقق من حساب CUST_:', upsertErr);
+    }
+
     const rpcResult = await callRPC(RPC.CREATE_TRANSACTION_WITH_ENTRIES, {
       p_transaction : txData,
       p_entries     : entries,
