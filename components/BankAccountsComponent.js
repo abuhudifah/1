@@ -440,7 +440,8 @@ const BankAccountsComponent = {
   // طباعة كشف الحساب البنكي
   // ─────────────────────────────────────────────
   _printStatement(bank, deposits, ceiling) {
-    const users = AppStore.getState('users');
+    const users   = AppStore.getState('users');
+    const logoUrl = AppStore.getState('logoUrl') || '';
     const total = deposits.reduce((s,d)=>s+Math.round(parseFloat(d.amount)||0),0);
     const pct   = ceiling>0?Math.round(total/ceiling*100):0;
 
@@ -482,7 +483,8 @@ const BankAccountsComponent = {
       <h1>كشف حساب بنكي</h1>
       <p>نظام أبو حذيفة المتكامل للصرافة والتحويلات</p>
     </div>
-    <div style="text-align:left;">
+    <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+      ${logoUrl ? `<img src="${logoUrl}" alt="شعار" style="height:48px;object-fit:contain;display:block;margin-bottom:4px;">` : ''}
       <p style="font-size:9pt;color:#64748b;">تاريخ الطباعة</p>
       <p style="font-size:10pt;font-weight:700;">${new Date().toLocaleDateString('ar-SA')}</p>
     </div>

@@ -295,35 +295,16 @@ async function _loadNotifications(user) {
   }
 }
 
-// المندوب: يجلب بنوكه من خلال معاملاته اليومية
+// المندوب: يجلب كل البنوك — RLS تضمن صلاحية القراءة
+// BankAccountsComponent يُصفِّي عرض اليوم محلياً في واجهته
 async function _loadAgentBankAccounts(agentId) {
   try {
-    let bankIds = [];
-
-    if (isOnline()) {
-      const today = getCurrentSaudiDate();
-      const { data } = await supabaseClient
-        .from(TABLES.TRANSACTIONS)
-        .select('bank_account_id')
-        .eq('agent_id', agentId)
-        .eq('type', 'deposit')
-        .eq('date', today)
-        .not('bank_account_id', 'is', null);
-      bankIds = [...new Set((data || []).map(d => d.bank_account_id))];
-    } else if (db.isOpen()) {
-      const today = getCurrentSaudiDate();
-      const txs   = await db.transactions.where('[date+agent_id]').equals([today, agentId]).filter(tx => tx.bank_account_id).toArray().catch(() => []);
-      bankIds = [...new Set(txs.map(d => d.bank_account_id))];
-    }
-
-    if (bankIds.length) {
-      const data = await _fetchFromSupabaseWithFallback(
-        TABLES.BANK_ACCOUNTS,
-        () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').in('id', bankIds),
-        () => db.isOpen() ? db.bank_accounts.where('id').anyOf(bankIds).toArray().catch(() => []) : []
-      );
-      setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
-    }
+    const data = await _fetchFromSupabaseWithFallback(
+      TABLES.BANK_ACCOUNTS,
+      () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name'),
+      () => db.isOpen() ? db.bank_accounts.orderBy('name').toArray().catch(() => []) : []
+    );
+    setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
   } catch { /* تجاهل */ }
 }
 

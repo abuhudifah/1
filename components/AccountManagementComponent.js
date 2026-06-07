@@ -629,7 +629,7 @@ const AccountManagementComponent = {
         name = d?.name || id; cat = 'debtors';
       } else if (b.account_id.startsWith('COMP_')) {
         const p = b.account_id.slice(5);
-        const c = companies.find(c => c.account_prefix === p);
+        const c = companies.find(c => c.id === p);
         name = c?.name || p; cat = 'companies';
       } else if (b.account_id.startsWith('BNK_')) {
         const id = b.account_id.slice(4);
