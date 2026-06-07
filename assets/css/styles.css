@@ -2777,3 +2777,133 @@ body.dark-mode .bank-card-name { color: var(--text-primary); }
 
 /* ══ نهاية ملف التحسينات ══ */
 
+/* ============================================================
+   Safe Enhancements v1.0 — إضافات آمنة غير قابلة للكسر
+   كل قسم هنا مستقل: يمكن حذفه بدون أثر على باقي التصميم.
+   ============================================================ */
+
+/* ── T2: تأثير الدخول المتتابع ──────────────────────────── */
+.stagger-item {
+  opacity  : 0;
+  transform: translateX(18px);
+  transition: opacity 0.38s ease, transform 0.38s ease;
+}
+.stagger-item.visible {
+  opacity  : 1;
+  transform: translateX(0);
+}
+/* لا تُطبِّق التأثير على من لديه prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .stagger-item,
+  .stagger-item.visible { opacity: 1; transform: none; transition: none; }
+}
+
+/* ── T3: تقلص الهيدر عند التمرير ────────────────────────── */
+.app-header {
+  transition: box-shadow 0.25s ease, border-color 0.25s ease,
+              padding 0.25s ease;
+}
+/* إخفاء النصوص الثانوية فقط — لا يُغير الارتفاع الفعلي */
+.app-header.header-shrink .header-brand-sub,
+.app-header.header-shrink .header-user-role-tag {
+  opacity   : 0;
+  max-height: 0;
+  overflow  : hidden;
+  margin    : 0;
+  padding   : 0;
+  transition: opacity 0.2s ease, max-height 0.2s ease;
+}
+.app-header:not(.header-shrink) .header-brand-sub,
+.app-header:not(.header-shrink) .header-user-role-tag {
+  opacity   : 1;
+  max-height: 2em;
+  transition: opacity 0.25s ease, max-height 0.25s ease;
+}
+
+/* ── T6: Auto-hide شريط التبويبات ───────────────────────── */
+.app-nav {
+  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1),
+              top 0.18s ease;
+}
+.app-nav.nav-hidden {
+  transform : translateY(-110%);
+}
+
+/* ── T7: شكل التبويب النشط المحسَّن (pill style) ─────────── */
+:root {
+  --nav-active-bg : rgba(37,99,235,0.14);
+}
+body.dark-mode {
+  --nav-active-bg : rgba(96,165,250,0.16);
+}
+
+/* تأكيد وتعزيز تصميم التبويب النشط */
+.nav-tab.active {
+  background   : var(--nav-active-bg);
+  border-radius: 40px;
+  border-color : rgba(59,130,246,0.35);
+  color        : #3b82f6;
+  font-weight  : 700;
+  box-shadow   : inset 0 -2px 0 0 #3b82f6, 0 0 0 1px rgba(59,130,246,0.15);
+  transition   : all 0.22s cubic-bezier(0.4,0,0.2,1);
+}
+body.dark-mode .nav-tab.active {
+  color       : #60a5fa;
+  border-color: rgba(96,165,250,0.35);
+  box-shadow  : inset 0 -2px 0 0 #60a5fa, 0 0 0 1px rgba(96,165,250,0.15);
+}
+
+/* ── تأثير زجاجي على الهيدر في الوضع المظلم ──────────────── */
+body.dark-mode .app-header {
+  background    : linear-gradient(135deg,
+    rgba(10,15,30,0.96) 0%,
+    rgba(20,40,80,0.94) 60%,
+    rgba(10,25,45,0.96) 100%);
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border-bottom : 1px solid rgba(96,165,250,0.12);
+}
+
+/* ── تأثير زجاجي على شريط التبويبات في الوضع المظلم ─────── */
+body.dark-mode .app-nav {
+  background    : rgba(10,15,30,0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom : 1px solid rgba(255,255,255,0.06);
+}
+body.dark-mode .nav-tab {
+  color: rgba(255,255,255,0.65);
+}
+body.dark-mode .nav-tab:hover {
+  background: rgba(255,255,255,0.07);
+  color     : #fff;
+}
+
+/* ── تحسين Header Sync Pill في الوضع المظلم ──────────────── */
+body.dark-mode .header-sync-pill {
+  background  : rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.08);
+}
+body.dark-mode .header-user-center {
+  background  : rgba(0,0,0,0.35);
+  border-color: rgba(255,255,255,0.07);
+}
+
+/* ── sync-dot تحريك بصري ─────────────────────────────────── */
+.sync-dot {
+  width        : 8px;
+  height       : 8px;
+  border-radius: 50%;
+  flex-shrink  : 0;
+  transition   : background-color 0.3s ease;
+}
+.sync-dot.synced  { background: #10b981; }
+.sync-dot.pending {
+  background: #f59e0b;
+  animation : sync-pulse 1.2s ease-in-out infinite;
+}
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.8); }
+}
+

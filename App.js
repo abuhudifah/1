@@ -118,6 +118,7 @@ async function _bootApp(profile) {
 
   await AppStore.refreshData();
   _bindStoreEvents();
+  _startCommandsWatcher(); // مراقبة أوامر النظام (RESET_ALL_DATA وغيرها)
 
   const firstTab = AuthService.getAllowedTabs()[0];
   if (firstTab) await _navigateTo(firstTab);
@@ -151,7 +152,7 @@ function _buildAppShell() {
 
   if (window.lucide) lucide.createIcons();
 
-  // حساب التداخل بعد بناء الـ DOM مباشرة
+  // حساب التداخل + التحسينات الآمنة بعد بناء الـ DOM مباشرة
   requestAnimationFrame(() => {
     _fixHeaderOverlap();
     let _resizeTimer;
@@ -159,6 +160,7 @@ function _buildAppShell() {
       clearTimeout(_resizeTimer);
       _resizeTimer = setTimeout(_fixHeaderOverlap, 80);
     }, { passive: true });
+    _initSafeEnhancements(); // T2–T4 — آمن تماماً
   });
 
   // ── scroll → .scrolled على الهيدر + زر الرجوع للأعلى ──
@@ -537,6 +539,9 @@ async function _navigateTo(tabId) {
   _contentEl.querySelectorAll('.glass-card').forEach((card, i) => {
     card.style.setProperty('--card-index', Math.min(i, 7));
   });
+
+  // T2 — تأثير الدخول المتتابع (Safe Enhancement)
+  requestAnimationFrame(_applyStaggerAnimation);
 }
 
 function _updateNavHighlight(activeTabId) {
@@ -692,6 +697,7 @@ function _updateHeaderLogo() {
 // ============================================================
 function _showLoginScreen() {
   if (window.IdleTimer) IdleTimer.stop();
+  _stopCommandsWatcher(); // إيقاف مراقبة الأوامر عند الخروج
   _hideLoadingScreen();
   _stopDateClock();
   _destroyActiveComponent();
@@ -796,10 +802,188 @@ function _showFatalError(msg) {
 }
 
 // ============================================================
+// مراقب أوامر النظام — System Commands Watcher
+// يُستدعى بعد تسجيل الدخول، ويعمل كل 30 ثانية.
+// يلتقط RESET_ALL_DATA على الأجهزة غير المتصلة عند عودتها.
+// ============================================================
+
+let _cmdWatcherTimer = null;
+
+async function _checkSystemCommands() {
+  if (!window.supabaseClient) return;
+  if (!AppStore.getState('currentUser')) return; // لم يُسجَّل الدخول بعد
+
+  try {
+    const { data: commands, error } = await supabaseClient
+      .from('system_commands')
+      .select('id, command, issued_at')
+      .is('executed_at', null)
+      .order('issued_at', { ascending: true });
+
+    if (error) {
+      console.warn('⚠️ _checkSystemCommands:', error.message);
+      return;
+    }
+    if (!commands?.length) return;
+
+    for (const cmd of commands) {
+      if (cmd.command === 'RESET_ALL_DATA') {
+        console.log('📢 App.js: استُلم أمر RESET_ALL_DATA — مسح Dexie...');
+
+        // مسح Dexie المحلي
+        if (window.db) {
+          try {
+            await db.delete();
+            await db.open();
+            console.log('✅ App.js: Dexie أُعيدت تهيئتها');
+          } catch (dErr) {
+            console.warn('⚠️ App.js: Dexie delete/reopen:', dErr.message);
+          }
+        }
+
+        // تحديث executed_at لمنع إعادة التنفيذ من هذا الجهاز
+        // (سيبقى executed_at لو جهاز آخر سبق — الشرط IS NULL يمنع التكرار)
+        await supabaseClient
+          .from('system_commands')
+          .update({ executed_at: new Date().toISOString() })
+          .eq('id', cmd.id)
+          .is('executed_at', null); // atomic: فقط إذا لم يُنفَّذ بعد
+
+        // تحديث الـ store (البيانات فارغة الآن)
+        try { await AppStore.refreshData(); } catch (_) {}
+
+        showToast('📢 تم مسح البيانات المحلية بناءً على أمر المدير', 'info');
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ _checkSystemCommands (unexpected):', err.message);
+  }
+}
+
+function _startCommandsWatcher() {
+  if (_cmdWatcherTimer) return; // تجنب التكرار
+  // فحص فوري عند أول اتصال/تشغيل
+  _checkSystemCommands();
+  // فحص دوري كل 30 ثانية
+  _cmdWatcherTimer = setInterval(_checkSystemCommands, 30_000);
+  // فحص فوري عند عودة الاتصال
+  window.addEventListener('online', _checkSystemCommands, { passive: true });
+}
+
+function _stopCommandsWatcher() {
+  if (_cmdWatcherTimer) { clearInterval(_cmdWatcherTimer); _cmdWatcherTimer = null; }
+  window.removeEventListener('online', _checkSystemCommands);
+}
+
+// ============================================================
 // تصدير
 // ============================================================
 window.App             = { navigateTo: _navigateTo, bootApp: _bootApp, onLoginSuccess: _onLoginSuccess };
 window._appNavigateTo  = _navigateTo;
 window._updateHeaderLogo = _updateHeaderLogo;
+window._startCommandsWatcher = _startCommandsWatcher;
 
-console.log('✅ App.js v3.0 — هيدر محسَّن + QuickLoginBanner + last_login');
+// ============================================================
+// تحسينات إضافية آمنة — Safe Enhancements v1.0
+// كل دالة هنا مستقلة تماماً عن منطق التطبيق الأساسي.
+// لإلغاء أي تحسين: علِّق استدعاءه في _initSafeEnhancements فقط.
+// ============================================================
+
+/**
+ * T2 — تأثير الدخول المتتابع (Stagger In)
+ * يضيف class stagger-item.visible بتأخير تدريجي على عناصر المحتوى.
+ * آمن تماماً: لا يمس البيانات، لا يُعيد بناء DOM.
+ */
+function _applyStaggerAnimation() {
+  const content = document.getElementById('app-content');
+  if (!content) return;
+
+  // أضف class على الهيدر والنافبار مرة واحدة فقط
+  ['.app-header', '.app-nav'].forEach((sel, i) => {
+    const el = document.querySelector(sel);
+    if (!el || el.dataset.staggerDone) return;
+    el.classList.add('stagger-item');
+    setTimeout(() => el.classList.add('visible'), i * 60);
+    el.dataset.staggerDone = '1';
+  });
+
+  // العناصر المباشرة داخل المحتوى
+  const children = Array.from(content.children).slice(0, 12); // حد أقصى لتجنب التأثير الزائد
+  children.forEach((el, i) => {
+    if (el.dataset.staggerDone) return;
+    el.classList.add('stagger-item');
+    setTimeout(() => el.classList.add('visible'), 80 + i * 55);
+    el.dataset.staggerDone = '1';
+  });
+}
+
+/**
+ * T3 — تقلص الهيدر عند التمرير (Shrink on Scroll)
+ * يُخفي عناصر النصوص الثانوية فقط — لا يغير ارتفاع الهيدر.
+ * يستخدم class header-shrink على .app-header.
+ */
+let _shrinkActive = false;
+function _onScrollEnhancements() {
+  const scrollY = window.scrollY;
+  const header  = document.querySelector('.app-header');
+  const nav     = document.querySelector('.app-nav');
+  if (!header) return;
+
+  // تقلص الهيدر
+  const shouldShrink = scrollY > 50;
+  if (shouldShrink !== _shrinkActive) {
+    _shrinkActive = shouldShrink;
+    header.classList.toggle('header-shrink', shouldShrink);
+    // أعد حساب padding بعد تغيير الـ class (تأخير صغير لانتهاء transition)
+    setTimeout(_fixHeaderOverlap, 160);
+  }
+
+  // Auto-hide للشريط
+  if (nav) {
+    const lastScroll = parseInt(nav.dataset.lastScroll || '0', 10);
+    const isScrollingDown = scrollY > lastScroll && scrollY > 80;
+    nav.classList.toggle('nav-hidden', isScrollingDown);
+    nav.dataset.lastScroll = String(scrollY);
+  }
+}
+
+/**
+ * T4 — تحديث بيانات المستخدم الديناميكية في الهيدر
+ * يُحدِّث العناصر الموجودة أصلاً في DOM دون إعادة بناء.
+ */
+function _refreshHeaderUserData() {
+  const user = AppStore.getState('currentUser');
+  if (!user) return;
+  const roleLabel = (typeof ROLE_LABELS !== 'undefined' ? ROLE_LABELS[user.role] : null) || user.role || '';
+
+  const greetEl = document.querySelector('.header-user-greeting');
+  const roleEl  = document.querySelector('.header-user-role-tag');
+  const avatarEl = document.querySelector('.header-avatar');
+
+  if (greetEl) greetEl.textContent = `مرحباً، ${user.display_name || ''}`;
+  if (roleEl)  roleEl.textContent  = roleLabel;
+  if (avatarEl) avatarEl.textContent = (user.display_name || 'U').charAt(0);
+}
+
+/**
+ * _initSafeEnhancements — نقطة الدخول الوحيدة لكل التحسينات
+ * يُستدعى من _buildAppShell بعد _fixHeaderOverlap.
+ * لإلغاء أي تحسين: علِّق سطره هنا.
+ */
+function _initSafeEnhancements() {
+  // T3 + T4 — مستمع التمرير الموحَّد (أداء أفضل من مستمعات متعددة)
+  window.addEventListener('scroll', _onScrollEnhancements, { passive: true });
+
+  // T4 — ربط حدث store لتحديث بيانات المستخدم عند تغييرها
+  AppStore.addEventListener('store:settingsLoaded', _refreshHeaderUserData);
+
+  // إعادة حساب padding عند انتهاء transition الـ nav-hidden
+  const nav = document.querySelector('.app-nav');
+  if (nav) {
+    nav.addEventListener('transitionend', () => {
+      if (!nav.classList.contains('nav-hidden')) _fixHeaderOverlap();
+    }, { passive: true });
+  }
+}
+
+console.log('✅ App.js v3.0 — هيدر محسَّن + QuickLoginBanner + last_login + Safe Enhancements v1.0');
