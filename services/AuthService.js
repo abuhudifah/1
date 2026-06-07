@@ -81,6 +81,21 @@ async function login(email, password) {
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
+    // إذا كان المستخدم لديه Quick Login مُفعَّل في DB، احفظ مفتاح localStorage
+    // حتى تظهر الآلة الحاسبة في الجلسة القادمة بدون الحاجة لإعادة التفعيل
+    if (profile.quick_equation_hash) {
+      try {
+        const key = `ahu_quick_${profile.id}`;
+        const existing = localStorage.getItem(key);
+        if (!existing) {
+          localStorage.setItem(key, JSON.stringify({
+            hash   : profile.quick_equation_hash,
+            userId : profile.id,
+          }));
+        }
+      } catch {}
+    }
+
     console.log(`✅ AuthService: دخل ${profile.display_name} (${profile.role})`);
     return ok({ user: authData.user, profile });
 
@@ -403,7 +418,7 @@ async function _fetchUserProfile(userId) {
     try {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)
-        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, phone, email')
+        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors')
         .eq('id', userId).single();
       if (!error && data) return ok(data);
       console.warn('⚠️ _fetchUserProfile Supabase فشل:', error?.message);
