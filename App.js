@@ -58,9 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     else _restoreDarkMode();
 
     // 4. التحقق من الجلسة
-    console.log('[AUTH TRACE] App.js: calling checkSession...');
     const sessionResult = await AuthService.checkSession();
-    console.log('[AUTH TRACE] App.js: checkSession result — ok:', isOk(sessionResult), 'error:', sessionResult.error);
     if (isOk(sessionResult)) {
       await _bootApp(sessionResult.data.profile);
     } else {
@@ -190,23 +188,22 @@ function _buildAppShell() {
 }
 
 // ============================================================
-// الهيدر — Fintech Banking Style v4.0
+// الهيدر — تصميم عمودي مركزي v5.0
 // ============================================================
 function _buildHeader() {
   const user    = AppStore.getState('currentUser');
   const state   = AppStore.getState();
   const logoUrl = state.logoUrl;
-  const accNum  = state.accountNumber;
 
   const header = document.createElement('header');
   header.id        = 'app-header';
   header.className = 'app-header';
 
   // ════════════════════════════════════════
-  // اليمين: شعار + اسم النظام + تاريخ ميلادي
+  // قسم العلامة التجارية: شعار + عناوين
   // ════════════════════════════════════════
-  const rightSection = document.createElement('div');
-  rightSection.className = 'header-right';
+  const brandSection = document.createElement('div');
+  brandSection.className = 'header-brand-section';
 
   const logoArea = document.createElement('div');
   logoArea.className = 'header-logo-area';
@@ -220,114 +217,49 @@ function _buildHeader() {
     const ph = document.createElement('div');
     ph.id = 'header-logo-placeholder'; ph.className = 'header-logo-placeholder';
     ph.innerHTML = `
-      <svg viewBox="0 0 40 40" fill="none" width="40" height="40">
-        <rect width="40" height="40" rx="12" fill="url(#hG)"/>
-        <text x="20" y="28" text-anchor="middle" fill="white" font-size="20" font-weight="800"
+      <svg viewBox="0 0 56 56" fill="none" width="56" height="56">
+        <rect width="56" height="56" rx="16" fill="url(#hGv5)"/>
+        <text x="28" y="38" text-anchor="middle" fill="white" font-size="28" font-weight="800"
           font-family="system-ui,sans-serif">أ</text>
         <defs>
-          <linearGradient id="hG" x1="0" y1="0" x2="40" y2="40">
-            <stop offset="0%" stop-color="#6366f1"/>
-            <stop offset="100%" stop-color="#4f46e5"/>
+          <linearGradient id="hGv5" x1="0" y1="0" x2="56" y2="56">
+            <stop offset="0%" stop-color="#f59e0b"/>
+            <stop offset="100%" stop-color="#d97706"/>
           </linearGradient>
         </defs>
       </svg>`;
     logoArea.appendChild(ph);
   }
-  rightSection.appendChild(logoArea);
+  brandSection.appendChild(logoArea);
 
-  // اسم النظام + التاريخ الميلادي
-  const titleArea = document.createElement('div');
-  titleArea.className = 'header-title-area';
-  const todayStr = new Date().toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-  titleArea.innerHTML = `
-    <div class="header-app-name">${escapeHtml(APP_CONFIG.NAME_SHORT || 'أبو حذيفة')}</div>
-    <div class="header-date-line" id="header-date">${escapeHtml(todayStr)}</div>`;
-  rightSection.appendChild(titleArea);
-  header.appendChild(rightSection);
+  const titlesDiv = document.createElement('div');
+  titlesDiv.className = 'header-titles';
+  titlesDiv.innerHTML = `
+    <div class="header-main-title">نظام إدارة التحصيلات والإيداعات</div>
+    <div class="header-sub-title">${escapeHtml(APP_CONFIG?.NAME || 'أبو حذيفة للصرافة والتحويلات')}</div>`;
+  brandSection.appendChild(titlesDiv);
+  header.appendChild(brandSection);
 
   // ════════════════════════════════════════
-  // الوسط: بطاقة المستخدم القابلة للنقر
+  // بطاقة المستخدم: صف المعلومات + صف الأزرار
   // ════════════════════════════════════════
-  const centerSection = document.createElement('div');
-  centerSection.className = 'header-center';
-  centerSection.title     = 'عرض بطاقة الحساب';
+  const userCardV2 = document.createElement('div');
+  userCardV2.className = 'header-user-card-v2';
 
-  const roleLabel   = ROLE_LABELS[user?.role] || user?.role || '';
-  const roleSvgMap  = {
-    admin           : `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
-    admin_assistant : `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>`,
-    agent           : `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>`,
-  };
-  const roleIcon = roleSvgMap[user?.role] || roleSvgMap.agent;
+  // الصف الأول: اسم المستخدم + أيقونة الثيم + جرس الإشعارات
+  const userRow = document.createElement('div');
+  userRow.className = 'header-user-row';
 
-  centerSection.innerHTML = `
-    <div class="header-user-avatar">
-      ${escapeHtml((user?.display_name || '?').charAt(0).toUpperCase())}
-    </div>
-    <div class="header-user-info">
-      <div class="header-user-name">${escapeHtml(user?.display_name || '')}</div>
-      <div class="header-user-meta">
-        <span class="header-role-badge">${roleIcon} ${escapeHtml(roleLabel)}</span>
-        ${accNum ? `
-          <span class="header-acc-num" id="header-acc-copy" title="انقر لنسخ رقم الحساب">
-            <svg class="header-copy-icon" width="10" height="10" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2.5">
-              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-            </svg>
-            ${escapeHtml(accNum.slice(0, 16))}
-          </span>` : ''}
-      </div>
-    </div>
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2.5" style="margin-right:2px;">
-      <polyline points="6 9 12 15 18 9"/>
-    </svg>`;
+  const roleLabel = ROLE_LABELS[user?.role] || user?.role || '';
+  const userLabel = document.createElement('div');
+  userLabel.className = 'header-user-label';
+  userLabel.innerHTML = `<span class="header-role-prefix">${escapeHtml(roleLabel)}:</span> ${escapeHtml(user?.display_name || '')}`;
+  userRow.appendChild(userLabel);
 
-  // بطاقة المعلومات المنسدلة
-  const userCard = _buildUserCard(user, accNum);
-  centerSection.appendChild(userCard);
+  const actionsGroup = document.createElement('div');
+  actionsGroup.className = 'header-actions-group';
 
-  // نسخ رقم الحساب
-  centerSection.addEventListener('click', (e) => {
-    const copyEl = e.target.closest('#header-acc-copy');
-    if (copyEl && accNum) {
-      navigator.clipboard?.writeText(accNum).then(() => {
-        showToast('✅ تم نسخ رقم الحساب', 'success', 2000);
-      }).catch(() => showToast('✅ ' + accNum, 'info', 2000));
-      e.stopPropagation();
-      return;
-    }
-    // toggle البطاقة
-    userCard.classList.toggle('open');
-  });
-
-  // إغلاق البطاقة بالنقر خارجها
-  document.addEventListener('click', (e) => {
-    if (!centerSection.contains(e.target)) userCard.classList.remove('open');
-  });
-
-  header.appendChild(centerSection);
-
-  // ════════════════════════════════════════
-  // اليسار: أدوات (مزامنة + ثيم + إشعارات + خروج)
-  // ════════════════════════════════════════
-  const leftSection = document.createElement('div');
-  leftSection.className = 'header-left';
-
-  // مؤشر المزامنة مع أيقونة SVG
-  const syncBtn = document.createElement('button');
-  syncBtn.id        = 'sync-indicator';
-  syncBtn.className = 'header-sync-btn';
-  syncBtn.title     = 'انقر للمزامنة اليدوية';
-  syncBtn.innerHTML = `
-    <div id="sync-dot" class="sync-dot synced"></div>
-    <span id="sync-label" class="sync-label">متزامن</span>
-    <span id="sync-count" class="sync-count" style="display:none;"></span>`;
-  syncBtn.addEventListener('click', () => SyncService?.manualSync?.());
-  leftSection.appendChild(syncBtn);
-
-  // زر الوضع الداكن — أيقونة SVG عصرية
+  // زر تبديل الثيم
   const themeBtn = document.createElement('button');
   themeBtn.id        = 'theme-toggle-btn';
   themeBtn.className = 'header-icon-btn';
@@ -342,9 +274,9 @@ function _buildHeader() {
     themeBtn.innerHTML = _themeIcon(isDark);
     showToast(isDark ? '🌙 الوضع المظلم' : '☀️ الوضع الفاتح', 'info', 1500);
   });
-  leftSection.appendChild(themeBtn);
+  actionsGroup.appendChild(themeBtn);
 
-  // زر الإشعارات — أيقونة SVG
+  // زر الإشعارات
   if (AuthService.canAccessTab(TABS.NOTIFICATIONS)) {
     const notifBtn = document.createElement('button');
     notifBtn.id        = 'notif-btn';
@@ -357,23 +289,55 @@ function _buildHeader() {
       </svg>
       <span id="notif-badge" class="notif-badge" style="display:none;"></span>`;
     notifBtn.addEventListener('click', () => _navigateTo(TABS.NOTIFICATIONS));
-    leftSection.appendChild(notifBtn);
+    actionsGroup.appendChild(notifBtn);
+  } else {
+    // الحفاظ على العنصر في DOM لأن كود آخر يرجع إليه
+    const hiddenBadge = document.createElement('span');
+    hiddenBadge.id = 'notif-badge';
+    hiddenBadge.className = 'notif-badge';
+    hiddenBadge.style.display = 'none';
+    actionsGroup.appendChild(hiddenBadge);
   }
 
-  // زر الخروج — أيقونة SVG
+  userRow.appendChild(actionsGroup);
+  userCardV2.appendChild(userRow);
+
+  // الصف الثاني: زر الخروج + زر المزامنة
+  const btnRow = document.createElement('div');
+  btnRow.className = 'header-btn-row';
+
   const logoutBtn = document.createElement('button');
-  logoutBtn.className = 'header-icon-btn header-logout-btn';
+  logoutBtn.className = 'header-logout-btn';
   logoutBtn.title     = 'تسجيل الخروج';
-  logoutBtn.innerHTML = `
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  logoutBtn.innerHTML = `خروج
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+      stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
       <polyline points="16 17 21 12 16 7"/>
       <line x1="21" y1="12" x2="9" y2="12"/>
     </svg>`;
   logoutBtn.addEventListener('click', _handleLogout);
-  leftSection.appendChild(logoutBtn);
+  btnRow.appendChild(logoutBtn);
 
-  header.appendChild(leftSection);
+  const syncBtn = document.createElement('button');
+  syncBtn.id        = 'sync-indicator';
+  syncBtn.className = 'header-sync-btn';
+  syncBtn.title     = 'انقر للمزامنة اليدوية';
+  syncBtn.innerHTML = `
+    <div id="sync-dot" class="sync-dot synced"></div>
+    <span id="sync-label" class="sync-label">مزامنة</span>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+      stroke-linecap="round" style="vertical-align:middle;">
+      <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </svg>
+    <span id="sync-count" class="sync-count" style="display:none;"></span>`;
+  syncBtn.addEventListener('click', () => SyncService?.manualSync?.());
+  btnRow.appendChild(syncBtn);
+
+  userCardV2.appendChild(btnRow);
+  header.appendChild(userCardV2);
+
   return header;
 }
 
