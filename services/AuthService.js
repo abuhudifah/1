@@ -247,29 +247,59 @@ async function quickLogin(equation) {
 
     // ─── وضع الاتصال ───
     if (isOnline()) {
-      // timeout 6 ثوانٍ على RPC لمنع التجمد عند بطء الشبكة
-      const rpcPromise = callRPC(RPC.VERIFY_QUICK_LOGIN, { p_equation_hash: hash });
-      const timeoutPromise = new Promise(resolve =>
-        setTimeout(() => resolve(err('انتهت مهلة الاتصال — جرّب مجدداً')), 6000)
-      );
-      const result = await Promise.race([rpcPromise, timeoutPromise]);
-      console.log('[QuickLogin] RPC result:', JSON.stringify(result?.data));
-
-      if (!isOk(result) || !result.data?.success) {
+      // استدعاء Edge Function التي تنشئ جلسة Supabase Auth حقيقية
+      const EDGE_URL = `${SUPABASE_CONFIG.URL}/functions/v1/quick-login`;
+      let edgeResult;
+      try {
+        const fetchPromise = fetch(EDGE_URL, {
+          method  : 'POST',
+          headers : { 'Content-Type': 'application/json', 'apikey': SUPABASE_CONFIG.ANON_KEY },
+          body    : JSON.stringify({ equation_hash: hash }),
+        }).then(r => r.json());
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('انتهت مهلة الاتصال')), 8000)
+        );
+        edgeResult = await Promise.race([fetchPromise, timeoutPromise]);
+      } catch (fetchErr) {
         _recordFailedAttempt('quick_login');
-        return err(result.data?.message || 'معادلة غير صحيحة أو الحساب معطل');
+        return err(fetchErr.message || 'فشل الاتصال بالخادم');
       }
 
-      // استخدام profile المُعاد من RPC مباشرة (تتجاوز RLS)
-      const profile = result.data.profile;
+      console.log('[QuickLogin] Edge result:', JSON.stringify(edgeResult));
+
+      if (!edgeResult?.success) {
+        _recordFailedAttempt('quick_login');
+        return err(edgeResult?.message || 'معادلة غير صحيحة أو الحساب معطل');
+      }
+
+      const profile = edgeResult.profile;
       if (!profile) return err('فشل جلب بيانات المستخدم من الخادم');
       if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
+
+      // تفعيل جلسة Supabase Auth الحقيقية (يُصلح auth.uid() في جميع RPCs)
+      if (edgeResult.session?.access_token) {
+        try {
+          const { error: sessionErr } = await supabaseClient.auth.setSession({
+            access_token  : edgeResult.session.access_token,
+            refresh_token : edgeResult.session.refresh_token,
+          });
+          if (sessionErr) {
+            console.warn('[QuickLogin] setSession warning:', sessionErr.message);
+          } else {
+            AuthState.authUser = edgeResult.session.user || null;
+            console.log('✅ [QuickLogin] جلسة Supabase Auth فعّالة — auth.uid() سيعمل');
+          }
+        } catch (sessErr) {
+          console.warn('[QuickLogin] setSession exception:', sessErr.message);
+        }
+      } else {
+        console.warn('[QuickLogin] لم تُعَد جلسة — RPCs تحتاج auth.uid() ستفشل');
+      }
 
       AuthState.currentUser   = profile;
       AuthState.isInitialized = true;
       _loginAttempts.delete('quick_login');
 
-      // حفظ device token
       try {
         const uid = profile.id;
         let deviceToken = localStorage.getItem(`ahu_device_${uid}`);
@@ -278,6 +308,8 @@ async function quickLogin(equation) {
           localStorage.setItem(`ahu_device_${uid}`, deviceToken);
         }
         sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
+        // حفظ بيانات الجهاز للوضع offline
+        localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify({ hash, userId: uid }));
       } catch {}
 
       saveSession({
