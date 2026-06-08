@@ -95,6 +95,7 @@ const TRANSACTION_TYPES = Object.freeze({
   COLLECTION        : 'collection',
   DEPOSIT           : 'deposit',
   BANK_WITHDRAWAL   : 'bank_withdrawal',
+  BANK_WITHDRAWAL   : 'bank_withdrawal',
   EXPENSE           : 'expense',
   RECEIPT           : 'receipt',
   DELIVERY          : 'delivery',
