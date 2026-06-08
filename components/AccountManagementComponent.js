@@ -409,23 +409,38 @@ const AccountManagementComponent = {
       if (accounts.length) {
         const tableWrap = document.createElement('div');
         tableWrap.className = 'table-wrapper';
+        const _getShortId = (accountId, allInCat) => {
+          const pfx = ['AGT_','BNK_','COMP_','CUST_','EXP_','REV_','SUSP_'].find(p => accountId.startsWith(p));
+          if (!pfx) return accountId.length > 12 ? accountId.slice(0,8)+'…' : accountId;
+          const tag = pfx.slice(0,-1)+'-';
+          const idx = allInCat.findIndex(a => a.account_id === accountId);
+          return `${tag}${String(idx + 1).padStart(4, '0')}`;
+        };
+
         tableWrap.innerHTML = `
-          <table class="data-table">
+          <table class="data-table" style="table-layout:fixed;width:100%;">
+            <colgroup>
+              <col style="width:auto;min-width:130px;">
+              <col style="width:100px;">
+              <col style="width:130px;">
+              <col style="width:130px;">
+            </colgroup>
             <thead><tr>
               <th>الحساب</th>
-              <th>معرف الحساب</th>
+              <th>رقم الحساب</th>
               <th>الرصيد</th>
               <th>إجراءات</th>
             </tr></thead>
             <tbody>
-              ${accounts.map(acc => {
+              ${accounts.map((acc) => {
                 const bal = Math.round(parseFloat(acc.balance || 0));
+                const shortId = _getShortId(acc.account_id, accounts);
                 const parentBadge = acc.parent_name
                   ? `<span class="acct-parent-badge">🏢 ${escapeHtml(acc.parent_name)}</span>`
                   : '';
                 return `<tr class="acct-row" data-name="${escapeHtml((acc.name || acc.account_id).toLowerCase())}">
-                  <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
-                  <td style="direction:ltr;font-family:monospace;font-size:0.72rem;color:var(--text-muted);">${escapeHtml(acc.account_id)}</td>
+                  <td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(acc.name || acc.account_id)}">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
+                  <td style="direction:ltr;font-family:monospace;font-size:0.82rem;color:var(--accent);font-weight:600;">${escapeHtml(shortId)}</td>
                   <td style="font-weight:700;direction:ltr;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">
                     ${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
                   </td>
