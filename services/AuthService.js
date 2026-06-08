@@ -584,19 +584,32 @@ async function verifyIsActive() {
 function getCurrentUser()    { return AuthState.currentUser; }
 function getCurrentRole()    { return AuthState.currentUser?.role || null; }
 function getCurrentUserId()  { return AuthState.currentUser?.id   || null; }
-function isAdmin()           { return AuthState.currentUser?.role === ROLES.ADMIN; }
+function isAdmin() {
+  const appRole = window.AppStore?.getState?.('role');
+  if (appRole === ROLES.ADMIN) return true;
+  return AuthState.currentUser?.role === ROLES.ADMIN;}
 function isAgent()           { return AuthState.currentUser?.role === ROLES.AGENT; }
 function isAdminAssistant()  { return AuthState.currentUser?.role === ROLES.ADMIN_ASSISTANT; }
 function canAccessTab(tabId) { return getAllowedTabs().includes(tabId); }
 
 function getAllowedTabs() {
+  // حاول القراءة من AppStore أولاً (المصدر الأحدث)
+  const appRole = window.AppStore?.getState?.('role');
+  const appAllowedTabs = window.AppStore?.getState?.('allowedTabs');
+  
+  if (appRole === ROLES.ADMIN) return [...ADMIN_TABS];
+  if (appRole === ROLES.ADMIN_ASSISTANT && Array.isArray(appAllowedTabs) && appAllowedTabs.length) {
+    return [...appAllowedTabs];
+  }
+  
+  // fallback إلى AuthState
   const user = AuthState.currentUser;
   if (!user) return [];
   if (user.role === ROLES.ADMIN) return [...ADMIN_TABS];
   if (user.role === ROLES.ADMIN_ASSISTANT) {
     const tabs = user.allowed_tabs;
-    const parsed = Array.isArray(tabs) ? tabs
-      : (typeof tabs === 'string' ? (() => { try { return JSON.parse(tabs); } catch { return []; } })() : []);
+    const parsed = Array.isArray(tabs) ? tabs :
+      (typeof tabs === 'string' ? (() => { try { return JSON.parse(tabs); } catch { return []; } })() : []);
     return parsed.length ? parsed : [...AGENT_TABS];
   }
   return [...AGENT_TABS];
