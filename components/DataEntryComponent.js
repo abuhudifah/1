@@ -337,28 +337,54 @@ const DataEntryComponent = {
   },
 
   /* ═══════════════════════════════════════════════
-     1. نموذج التحصيل (نقدي فقط)
+     1. نموذج التحصيل — عميل أو شركة
   ═══════════════════════════════════════════════ */
   _buildCollectionForm() {
     const frag = document.createDocumentFragment();
 
     const title = document.createElement('h3');
-    title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--success);display:flex;align-items:center;gap:8px;';
+    title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:16px;color:var(--success);display:flex;align-items:center;gap:8px;';
     title.innerHTML = '<span>💰</span><span>تحصيل نقدي</span>';
     frag.appendChild(title);
 
-    /* المبلغ */
-    const amtField = this._field('col-amount', 'المبلغ', true);
-    const amtInput = this._input('col-amount', 'number', 'أدخل المبلغ بالريال', { min:'1', step:'1' });
-    amtField.appendChild(amtInput);
-    amtField.appendChild(this._errMsg('col-amount-err'));
-    frag.appendChild(amtField);
+    /* ── toggle عميل / شركة ── */
+    const toggleWrap = document.createElement('div');
+    toggleWrap.style.cssText = 'display:flex;gap:6px;margin-bottom:18px;padding:5px;background:var(--bg-input);border-radius:14px;';
 
-    /* البحث عن العميل */
-    frag.appendChild(this._buildCustomerSearch());
+    let colMode = 'customer';
 
-    /* الشركة */
-    const compField = this._field('col-company', 'لصالح شركة (اختياري)');
+    const customerSection = document.createElement('div');
+    const companySection  = document.createElement('div');
+
+    const btnCust = document.createElement('button');
+    btnCust.type = 'button'; btnCust.textContent = '👤 عميل مدين';
+    btnCust.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;font-family:inherit;font-size:0.88rem;font-weight:600;cursor:pointer;transition:all 0.18s;';
+
+    const btnComp = document.createElement('button');
+    btnComp.type = 'button'; btnComp.textContent = '🏢 شركة';
+    btnComp.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;font-family:inherit;font-size:0.88rem;font-weight:600;cursor:pointer;transition:all 0.18s;';
+
+    const refreshToggle = () => {
+      btnCust.style.background = colMode === 'customer' ? 'var(--accent)' : 'transparent';
+      btnCust.style.color      = colMode === 'customer' ? '#fff' : 'var(--text-secondary)';
+      btnComp.style.background = colMode === 'company'  ? 'var(--accent)' : 'transparent';
+      btnComp.style.color      = colMode === 'company'  ? '#fff' : 'var(--text-secondary)';
+      customerSection.style.display = colMode === 'customer' ? '' : 'none';
+      companySection.style.display  = colMode === 'company'  ? '' : 'none';
+    };
+
+    btnCust.addEventListener('click', () => { colMode = 'customer'; refreshToggle(); });
+    btnComp.addEventListener('click', () => { colMode = 'company';  refreshToggle(); });
+    toggleWrap.appendChild(btnCust);
+    toggleWrap.appendChild(btnComp);
+    frag.appendChild(toggleWrap);
+
+    /* ── قسم العميل المدين ── */
+    customerSection.appendChild(this._buildCustomerSearch());
+    frag.appendChild(customerSection);
+
+    /* ── قسم الشركة ── */
+    const compField = this._field('col-company', 'الشركة', true);
     const compSelect = document.createElement('select');
     compSelect.id = 'col-company'; compSelect.className = 'form-control';
     compSelect.innerHTML = `<option value="">— اختر شركة —</option>`;
@@ -367,25 +393,147 @@ const DataEntryComponent = {
       o.value = c.id; o.textContent = c.name; compSelect.appendChild(o);
     });
     compField.appendChild(compSelect);
-    frag.appendChild(compField);
+    companySection.appendChild(compField);
+    frag.appendChild(companySection);
 
-    const hint = document.createElement('div');
-    hint.style.cssText = 'padding:9px 13px;border-radius:9px;background:rgba(5,150,105,0.07);border:1px solid rgba(5,150,105,0.15);font-size:0.78rem;color:var(--success);margin-bottom:14px;';
-    hint.textContent = 'ℹ️ للسحب من بطاقة بنكية استخدم تبويب "سحب بنكي"';
-    frag.appendChild(hint);
+    /* ── المبلغ ── */
+    const amtField = this._field('col-amount', 'المبلغ', true);
+    const amtInput = this._input('col-amount', 'number', 'أدخل المبلغ بالريال', { min:'1', step:'1' });
+    amtField.appendChild(amtInput);
+    amtField.appendChild(this._errMsg('col-amount-err'));
+    frag.appendChild(amtField);
+
+    /* ── ملاحظات ── */
+    const notesField = this._field('col-notes', 'ملاحظات (اختياري)');
+    const notesInput = document.createElement('textarea');
+    notesInput.id = 'col-notes'; notesInput.className = 'form-control';
+    notesInput.rows = 2; notesInput.placeholder = 'أي تفاصيل إضافية';
+    notesField.appendChild(notesInput);
+    frag.appendChild(notesField);
+
+    refreshToggle();
 
     frag.appendChild(this._saveBtn('col-save-btn', '💾 حفظ التحصيل', async () => {
       await this._saveCollection({
+        mode      : colMode,
         amount    : amtInput.value,
         customer  : document.getElementById('col-customer-search')?.value?.trim() || '',
         customerId: document.getElementById('col-debtor-id')?.value || null,
-        companyId : compSelect.value || null,
+        companyId : colMode === 'company' ? (compSelect.value || null) : null,
+        notes     : notesInput.value.trim(),
       });
     }));
 
     return frag;
   },
 
+  /* ── بحث العملاء المديونين (مع فلترة المندوب + إنشاء عميل جديد) ── */
+  _buildCustomerSearch() {
+    const field = this._field('col-customer-search', 'بحث عن عميل مدين');
+    const wrap  = document.createElement('div');
+    wrap.style.position = 'relative';
+
+    const input = document.createElement('input');
+    input.id = 'col-customer-search'; input.type = 'text';
+    input.className = 'form-control';
+    input.placeholder = 'اكتب اسم العميل للبحث أو إضافة جديد...'; input.autocomplete = 'off';
+
+    const dd = document.createElement('div');
+    dd.id = 'col-customer-dropdown';
+    dd.style.cssText = `
+      position:absolute;top:100%;right:0;left:0;z-index:500;
+      background:var(--glass-bg-heavy);border:1px solid var(--border-color);
+      border-radius:12px;box-shadow:var(--shadow-lg);
+      max-height:240px;overflow-y:auto;display:none;
+      backdrop-filter:blur(16px);margin-top:4px;`;
+
+    const custId = document.createElement('input');
+    custId.type = 'hidden'; custId.id = 'col-debtor-id';
+
+    const debtInfo = document.createElement('div');
+    debtInfo.id = 'col-debt-display';
+    debtInfo.style.cssText = 'display:none;margin-top:6px;padding:8px 12px;background:rgba(220,38,38,0.08);border-radius:8px;font-size:0.82rem;';
+
+    const isAgent = AuthService.isAgent();
+    const uid     = AuthService.getCurrentUserId();
+    let allDebtors = AppStore.getState('debtors') || [];
+
+    if (isAgent) {
+      allDebtors = allDebtors.filter(d => {
+        const agents = Array.isArray(d.assigned_agents)
+          ? d.assigned_agents
+          : (typeof d.assigned_agents === 'string' ? JSON.parse(d.assigned_agents || '[]') : []);
+        return agents.includes(uid);
+      });
+    }
+
+    const render = q => {
+      const trimQ = q.trim().toLowerCase();
+      dd.innerHTML = '';
+      const matches = trimQ
+        ? allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ))
+        : allDebtors.slice(0, 12);
+
+      if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ)) {
+        const newItem = document.createElement('div');
+        newItem.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-color);color:var(--accent);font-size:0.88rem;font-weight:600;';
+        newItem.innerHTML = `<span>➕</span><span>إضافة عميل جديد: <strong>${escapeHtml(q.trim())}</strong></span>`;
+        newItem.addEventListener('click', async () => {
+          dd.style.display = 'none';
+          input.disabled = true;
+          const newDebtor = { name: q.trim(), debt_amount: 0, assigned_agents: isAgent ? [uid] : [] };
+          try {
+            const r = await repo.create(TABLES.DEBTORS, newDebtor);
+            if (isOk(r)) {
+              const created = r.data?.[0] || r.data;
+              input.value  = q.trim();
+              custId.value = created?.id || '';
+              debtInfo.style.display = '';
+              debtInfo.style.background = 'rgba(5,150,105,0.08)';
+              debtInfo.innerHTML = `✅ تم إنشاء عميل جديد: <strong>${escapeHtml(q.trim())}</strong>`;
+              allDebtors.push({ ...newDebtor, id: created?.id });
+            } else { showToast(`فشل إضافة العميل: ${r.error}`, 'error'); }
+          } catch(e) { showToast(`خطأ: ${e.message}`, 'error'); }
+          input.disabled = false;
+        });
+        dd.appendChild(newItem);
+      }
+
+      matches.forEach(d => {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-color);transition:background 150ms;';
+        item.innerHTML = `
+          <div>
+            <div style="font-weight:600;font-size:0.88rem;">${escapeHtml(d.name)}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted);">${escapeHtml(d.region || '—')}</div>
+          </div>
+          <div style="font-weight:700;color:${(d.debt_amount||0) > 0 ? 'var(--danger)' : 'var(--success)'};">
+            ${formatCurrency(d.debt_amount || 0)}
+          </div>`;
+        item.addEventListener('mouseenter', () => { item.style.background = 'var(--bg-hover)'; });
+        item.addEventListener('mouseleave', () => { item.style.background = ''; });
+        item.addEventListener('click', () => {
+          input.value  = d.name;
+          custId.value = d.id;
+          dd.style.display = 'none';
+          debtInfo.style.display = '';
+          debtInfo.style.background = 'rgba(220,38,38,0.08)';
+          debtInfo.innerHTML = `💳 المديونية: <strong style="color:var(--danger);">${formatCurrency(d.debt_amount || 0)}</strong>`;
+        });
+        dd.appendChild(item);
+      });
+
+      dd.style.display = (matches.length || trimQ) ? '' : 'none';
+    };
+
+    input.addEventListener('input', () => { custId.value = ''; debtInfo.style.display = 'none'; render(input.value); });
+    input.addEventListener('focus', () => render(input.value));
+    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dd.style.display = 'none'; });
+
+    wrap.appendChild(input); wrap.appendChild(dd); wrap.appendChild(custId);
+    field.appendChild(wrap); field.appendChild(debtInfo);
+    return field;
+  },
   /* ═══════════════════════════════════════════════
      1ب. نموذج السحب البنكي (مستقل)
   ═══════════════════════════════════════════════ */
@@ -894,29 +1042,29 @@ const DataEntryComponent = {
 
   /* ═══════════════ منطق الحفظ ═══════════════ */
 
-  async _saveCollection({ amount, customer, customerId, companyId }) {
+  async _saveCollection({ mode, amount, customer, customerId, companyId, notes }) {
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
-    // تحقق من التعارض: لا يمكن تحديد شركة وعميل مديون في نفس الوقت
-    if (companyId && customerId) {
-      showToast('لا يمكن تحديد شركة وعميل مديون في نفس الوقت', 'error');
-      return;
-    }
+    if (mode === 'company' && !companyId) { showToast('اختر شركة', 'error'); return; }
+    if (mode === 'customer' && !customer)  { showToast('أدخل اسم العميل', 'error'); return; }
 
     const rounded = roundAmount(amount);
 
-    // Fix #15 — BR-002: تحقق من مبلغ التحصيل مقابل الدين المتبقي
+    /* تحقق من الدين المتبقي عند التحصيل من عميل */
+    let debtorRecord = null;
     if (customerId) {
-      const debtor = AppStore.getState('debtors')?.find(d => d.id === customerId);
-      const debtRemaining = parseFloat(debtor?.debt_amount || 0);
+      debtorRecord = AppStore.getState('debtors')?.find(d => d.id === customerId);
+      const debtRemaining = parseFloat(debtorRecord?.debt_amount || 0);
       if (debtRemaining > 0 && rounded > debtRemaining) {
-        const overage = formatCurrency(rounded - debtRemaining);
         const confirmed = await confirmDialog(
-          `⚠️ المبلغ يتجاوز الدين المسجَّل!\n`
-          + `الدين المتبقي: ${formatCurrency(debtRemaining)}\n`
-          + `المبلغ المُدخَل: ${formatCurrency(rounded)}\n`
-          + `الزيادة: ${overage}\n\n`
-          + `قد تكون دفعة مقدَّمة أو خطأ في المبلغ. هل تريد المتابعة؟`,
+          `⚠️ المبلغ يتجاوز الدين المسجَّل!
+`
+          + `الدين المتبقي: ${formatCurrency(debtRemaining)}
+`
+          + `المبلغ المُدخَل: ${formatCurrency(rounded)}
+
+`
+          + `هل تريد المتابعة؟`,
           'متابعة', 'مراجعة', 'warning'
         );
         if (!confirmed) return;
@@ -935,14 +1083,29 @@ const DataEntryComponent = {
       company_id    : companyId || null,
       customer_name : customer  || null,
       customer_id   : customerId || null,
+      details       : notes || null,
     };
 
     const result = await AccountingService.createTransactionWithEntries(txData);
     restore();
+
     if (isOk(result)) {
+      /* تحديث رصيد المدين تلقائياً بعد التحصيل */
+      if (customerId && debtorRecord) {
+        const newDebt = Math.max(0, parseFloat(debtorRecord.debt_amount || 0) - rounded);
+        try { await repo.update(TABLES.DEBTORS, customerId, { debt_amount: newDebt }); } catch {}
+      }
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
-      await this._showShareModal({ type:'تحصيل', amount:rounded, customer, agentId, date:txData.date });
+      await this._showResultModal({
+        title    : '✅ تم تسجيل تحصيل جديد',
+        type     : 'تحصيل',
+        amount   : rounded,
+        customer : customer || null,
+        newDebt  : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
+        agentId,
+        date     : txData.date,
+      });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -969,6 +1132,8 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ السحب البنكي', 'success');
       this._resetForm('wd');
+      const bank_wd = this._sortedBanks.find(b => b.id === bankId) || AppStore.getState('bankAccounts').find(b => b.id === bankId);
+      await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank_wd?.name, agentId: AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId(), date:AppStore.getState('selectedDate') || getCurrentSaudiDate() });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1015,10 +1180,7 @@ const DataEntryComponent = {
       this._resetForm('dep');
       const ceil = Math.round(bank?.financial_ceiling || 0);
       const used = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
-      await this._showShareModal({
-        type:'إيداع', amount:rounded, bankName:bank?.name, agentId, date:txData.date,
-        ceilingRemain: Math.max(0, ceil - used),
-      });
+      await this._showResultModal({ title:'✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: Math.max(0, ceil - used) });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1139,26 +1301,87 @@ const DataEntryComponent = {
     if (debtDisplay) debtDisplay.style.display = 'none';
   },
 
-  /* ── مودال المشاركة ── */
-  async _showShareModal({ type, amount, bankName, customer, agentId, date, ceilingRemain }) {
+  /* ── نافذة تفاصيل العملية ── */
+  async _showResultModal(data) {
+    /* بناء النص المنسق */
     const users   = AppStore.getState('users');
-    const agent   = users.find(u => u.id === agentId);
+    const agent   = users.find(u => u.id === data.agentId);
     const agentNm = agent?.display_name || '—';
-    const amtStr  = Math.round(amount).toLocaleString('en-US');
+    const now     = new Date();
+    const timeStr = now.toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' });
 
-    let text = `✅ ${type}: ${amtStr} ر.س`;
-    if (customer) text += `\n👤 العميل: ${customer}`;
-    if (bankName) text += `\n🏦 البنك: ${bankName}`;
-    if (ceilingRemain !== undefined) text += `\n📊 المتبقي: ${Math.round(ceilingRemain).toLocaleString('en-US')} ر.س`;
-    text += `\n👨‍💼 المندوب: ${agentNm}`;
-    text += `\n📅 التاريخ: ${date}`;
+    let lines = [];
+    lines.push(data.title || '✅ تمت العملية');
+    lines.push('');
+    lines.push(`📌 نوع العملية: ${data.type}`);
+    lines.push(`💰 المبلغ: ${formatCurrency(data.amount)}`);
+    if (data.customer) lines.push(`👤 العميل: ${data.customer}`);
+    if (data.newDebt !== null && data.newDebt !== undefined) lines.push(`💰 الرصيد المتبقي عند العميل: ${formatCurrency(data.newDebt)}`);
+    if (data.bankName) lines.push(`🏦 الحساب البنكي: ${data.bankName}`);
+    if (data.ceilingRemain !== undefined && data.ceilingRemain !== null) lines.push(`🏦 المتبقي من السقف المالي: ${formatCurrency(data.ceilingRemain)}`);
+    if (data.fromAccount) lines.push(`📤 من حساب: ${data.fromAccount}`);
+    if (data.toAccount) lines.push(`📥 إلى حساب: ${data.toAccount}`);
+    lines.push(`📅 التاريخ: ${data.date}`);
+    lines.push(`⏰ الوقت: ${timeStr}`);
+    lines.push(`👤 المندوب: ${agentNm}`);
+    lines.push('');
+    lines.push('─────────────────────');
+    if (data.agentBalance !== undefined && data.agentBalance !== null) lines.push(`💵 المبلغ المتبقي في الصندوق: ${formatCurrency(data.agentBalance)}`);
+    if (data.status) lines.push(`⏳ حالة الطلب: ${data.status}`);
 
-    if (navigator.share) {
-      try { await navigator.share({ text }); } catch { /* المستخدم رفض */ }
-    } else {
-      try { await navigator.clipboard.writeText(text); showToast('تم نسخ التفاصيل للحافظة', 'info'); }
-      catch { /* لا يدعم الحافظة */ }
-    }
+    const text = lines.join('
+');
+
+    /* إنشاء Modal */
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'display:flex;z-index:9999;';
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    const box = document.createElement('div');
+    box.className = 'modal-box';
+    box.style.maxWidth = '420px';
+
+    box.innerHTML = `
+      <div class="modal-header">
+        <h3 class="modal-title" style="color:var(--success);">${escapeHtml(data.title || '✅ تمت العملية')}</h3>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+      </div>
+      <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.88rem;line-height:1.8;padding:12px;background:var(--bg-input);border-radius:10px;margin-bottom:16px;direction:rtl;text-align:right;">${escapeHtml(lines.slice(1).join('
+'))}</pre>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" style="flex:1;" id="result-copy-btn">📋 نسخ</button>
+        <button class="btn btn-secondary" style="flex:1;" id="result-share-btn">📤 مشاركة</button>
+        <button class="btn btn-secondary" style="flex:1;" onclick="this.closest('.modal-overlay').remove()">✖️ إغلاق</button>
+      </div>`;
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    box.querySelector('#result-copy-btn').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(text); showToast('تم النسخ', 'success'); }
+      catch { showToast('لا يدعم النسخ التلقائي', 'error'); }
+    });
+
+    box.querySelector('#result-share-btn').addEventListener('click', async () => {
+      if (navigator.share) {
+        try { await navigator.share({ text }); }
+        catch { /* المستخدم ألغى */ }
+      } else {
+        try { await navigator.clipboard.writeText(text); showToast('تم نسخ النص للمشاركة اليدوية', 'info'); }
+        catch { showToast('انسخ النص يدوياً', 'info'); }
+      }
+    });
+  },
+
+  /* ── مودال المشاركة (إرث) ── */
+  async _showShareModal({ type, amount, bankName, customer, agentId, date, ceilingRemain }) {
+    await this._showResultModal({
+      title   : `✅ تم تسجيل ${type}`,
+      type, amount,
+      bankName, customer, agentId, date,
+      ceilingRemain,
+    });
   },
 };
 
