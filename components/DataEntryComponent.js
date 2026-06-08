@@ -608,76 +608,6 @@ const DataEntryComponent = {
     return frag;
   },
 
-  /* ── بحث العملاء المديونين ── */
-  _buildCustomerSearch() {
-    const field = this._field('col-customer-search', 'بحث عن عميل');
-    const wrap  = document.createElement('div');
-    wrap.style.position = 'relative';
-
-    const input = document.createElement('input');
-    input.id = 'col-customer-search'; input.type = 'text';
-    input.className = 'form-control';
-    input.placeholder = 'اكتب اسم العميل...'; input.autocomplete = 'off';
-
-    const dd = document.createElement('div');
-    dd.id = 'col-customer-dropdown';
-    dd.style.cssText = `
-      position:absolute;top:100%;right:0;left:0;z-index:500;
-      background:var(--glass-bg-heavy);border:1px solid var(--border-color);
-      border-radius:12px;box-shadow:var(--shadow-lg);
-      max-height:220px;overflow-y:auto;display:none;
-      backdrop-filter:blur(16px);margin-top:4px;`;
-
-    const custId   = document.createElement('input');
-    custId.type = 'hidden'; custId.id = 'col-debtor-id';
-
-    const debtInfo = document.createElement('div');
-    debtInfo.id = 'col-debt-display';
-    debtInfo.style.cssText = 'display:none;margin-top:6px;padding:8px 12px;background:rgba(220,38,38,0.08);border-radius:8px;font-size:0.82rem;';
-
-    const allDebtors = AppStore.getState('debtors');
-
-    const render = q => {
-      const trimQ = q.trim().toLowerCase();
-      dd.innerHTML = '';
-      const matches = trimQ
-        ? allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ))
-        : allDebtors.slice(0, 10);
-      if (!matches.length) { dd.style.display = 'none'; return; }
-      matches.forEach(d => {
-        const item = document.createElement('div');
-        item.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-color);transition:background 150ms;';
-        item.innerHTML = `
-          <div>
-            <div style="font-weight:600;font-size:0.88rem;">${escapeHtml(d.name)}</div>
-            <div style="font-size:0.75rem;color:var(--text-muted);">${escapeHtml(d.region || '—')}</div>
-          </div>
-          <div style="font-weight:700;color:${d.debt_amount > 0 ? 'var(--danger)' : 'var(--success)'};">
-            ${formatCurrency(d.debt_amount || 0)}
-          </div>`;
-        item.addEventListener('mouseenter', () => { item.style.background = 'var(--bg-hover)'; });
-        item.addEventListener('mouseleave', () => { item.style.background = ''; });
-        item.addEventListener('click', () => {
-          input.value   = d.name;
-          custId.value  = d.id;
-          dd.style.display = 'none';
-          debtInfo.style.display = '';
-          debtInfo.innerHTML = `💳 المديونية: <strong style="color:var(--danger);">${formatCurrency(d.debt_amount || 0)}</strong>`;
-        });
-        dd.appendChild(item);
-      });
-      dd.style.display = '';
-    };
-
-    input.addEventListener('input', () => { custId.value = ''; debtInfo.style.display = 'none'; render(input.value); });
-    input.addEventListener('focus', () => render(input.value));
-    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dd.style.display = 'none'; });
-
-    wrap.appendChild(input); wrap.appendChild(dd); wrap.appendChild(custId);
-    field.appendChild(wrap); field.appendChild(debtInfo);
-    return field;
-  },
-
   /* ═══════════════════════════════════════════════
      2. نموذج الإيداع
   ═══════════════════════════════════════════════ */
@@ -1329,8 +1259,7 @@ const DataEntryComponent = {
     if (data.agentBalance !== undefined && data.agentBalance !== null) lines.push(`💵 المبلغ المتبقي في الصندوق: ${formatCurrency(data.agentBalance)}`);
     if (data.status) lines.push(`⏳ حالة الطلب: ${data.status}`);
 
-    const text = lines.join('
-');
+    const text = lines.join('\n');
 
     /* إنشاء Modal */
     const overlay = document.createElement('div');
@@ -1347,8 +1276,8 @@ const DataEntryComponent = {
         <h3 class="modal-title" style="color:var(--success);">${escapeHtml(data.title || '✅ تمت العملية')}</h3>
         <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
       </div>
-      <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.88rem;line-height:1.8;padding:12px;background:var(--bg-input);border-radius:10px;margin-bottom:16px;direction:rtl;text-align:right;">${escapeHtml(lines.slice(1).join('
-'))}</pre>
+      <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.88rem;line-height:1.8;padding:12px;background:var(--bg-input);border-radius:10px;margin-bottom:16px;direction:rtl;text-align:right;"${escapeHtml(lines.slice(1).join('\n'))}
+      
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary" style="flex:1;" id="result-copy-btn">📋 نسخ</button>
         <button class="btn btn-secondary" style="flex:1;" id="result-share-btn">📤 مشاركة</button>
