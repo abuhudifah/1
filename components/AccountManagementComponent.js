@@ -255,19 +255,9 @@ const AccountManagementComponent = {
     el.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:40px;">
       <div class="spinner spinner-dark"></div></div>`;
 
-    let chartData = null;
-    try {
-      if (this._isOnline()) {
-        const { data, error } = await supabaseClient.rpc('get_chart_of_accounts');
-        if (!error && data) {
-          chartData = data;
-          // ✅ إضافة أرقام الحسابات الحقيقية للشركات والمصروفات
-          await this._enrichChartWithAccountNumbers(chartData);
-        }
-      }
-    } catch { /* سقوط إلى البيانات المحلية */ }
-
-    if (!chartData) chartData = await this._buildLocalChartData();
+    // ✅ يُبنى الدليل محلياً من account_balances + الكيانات (أداء أفضل ومطابقة للمرجع):
+    //    يشمل المستخدمين والشركات وتسويات العملاء والمصروفات، ويستبعد BNK_ والحسابات القديمة.
+    const chartData = await this._buildLocalChartData();
 
     if (!chartData?.categories?.length) {
       el.innerHTML = this._renderEmptyChart();
@@ -281,10 +271,13 @@ const AccountManagementComponent = {
 
     el.innerHTML = '';
     this._renderChart(el, chartData);
-    
-    /* إضافة قسم أرصدة الشركات المحسوبة (بعد دليل الحسابات) */
+
+    /* قسم الحسابات البنكية (حركة يومية فقط — كشوف من جدول المعاملات) */
+    await this._renderBankAccountsSection(el);
+
+    /* قسم أرصدة الشركات المحسوبة (تحصيلات/إيداعات/سحوبات + عهدة المناديب) */
     await this._renderCompanyBalancesSection(el);
-    
+
     if (window.lucide) lucide.createIcons();
   },
 
@@ -413,7 +406,8 @@ const AccountManagementComponent = {
       // ربط الأحداث
       body.querySelectorAll('.view-company-statement-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          this._showCompanyStatement(btn.dataset.companyId, btn.dataset.companyName);
+          // ✅ توحيد: نفس مسار الكشف الدفتري (COMP_) بالصيغة المرجعية
+          this._showStatement('COMP_' + btn.dataset.companyId, btn.dataset.companyName);
         });
       });
       body.querySelectorAll('.view-agent-custody-btn').forEach(btn => {
@@ -634,6 +628,7 @@ const AccountManagementComponent = {
       agents: { icon: '👤', label: 'حسابات المستخدمين', color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
       debtors: { icon: '👥', label: 'حسابات العملاء المديونين', color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
       companies: { icon: '🏢', label: 'حسابات الشركات', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+      settlements: { icon: '🧾', label: 'تسويات العملاء المديونين', color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
       banks: { icon: '🏦', label: 'الحسابات البنكية', color: '#059669', bg: 'rgba(5,150,105,0.08)' },
       expenses: { icon: '💸', label: 'حسابات المصروفات', color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
       treasury: { icon: '🏛️', label: 'الخزينة والحسابات العامة', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
@@ -884,134 +879,76 @@ const AccountManagementComponent = {
 
   // ✅ بناء البيانات محلياً مع أرقام حسابات حقيقية (السلوك 3 و 5)
   async _buildLocalChartData() {
+    // ── الأرصدة التراكمية من account_balances (متصل: Supabase، أوفلاين: Dexie) ──
     let balances = [];
     try {
       if (this._isOnline()) {
-        const { data } = await supabaseClient.from('account_balances').select('*').order('account_id');
+        const { data } = await supabaseClient.from('account_balances').select('account_id, balance');
         balances = data || [];
       } else if (typeof db !== 'undefined' && db.isOpen()) {
         balances = await db.account_balances.toArray();
       }
     } catch { balances = []; }
+    const balById = new Map(balances.map(b => [b.account_id, Math.round(parseFloat(b.balance || 0))]));
 
-    if (!balances.length) return null;
-
-    // ✅ السلوك 3: جلب جميع المستخدمين النشطين (بغض النظر عن دورهم)
-    const users     = (typeof AppStore !== 'undefined') ? (AppStore.getState('users') || []) : [];
-    const banks     = (typeof AppStore !== 'undefined') ? (AppStore.getState('bankAccounts') || []) : [];
-    const companies = (typeof AppStore !== 'undefined') ? (AppStore.getState('companies') || []) : [];
-    // ✅ السلوك 5: تجاهل debtors تماماً في دليل الحسابات
-    const expenses  = (typeof AppStore !== 'undefined') ? (AppStore.getState('expenseAccounts') || []) : [];
-
-    // ✅ السلوك 3: جميع المستخدمين النشطين يظهرون كحسابات مناديب (AGT_xxx)
-    // حتى لو كان دورهم admin أو admin_assistant
-    const cats = { 
-      agents: [],      // ✅ جميع المستخدمين النشطين
-      debtors: [],     // ✅ سيتم إخفاؤها (تبقى مصفوفة فارغة)
-      companies: [], 
-      banks: [], 
-      expenses: [], 
-      revenue: [], 
-      suspense: [], 
-      treasury: [] 
-    };
-    
-    const catLabels = {
-      agents:'حسابات المستخدمين',
-      debtors:'حسابات العملاء المديونين',
-      companies:'حسابات الشركات',
-      banks:'الحسابات البنكية',
-      expenses:'حسابات المصروفات',
-      revenue:'حسابات الإيرادات',
-      suspense:'الحسابات المعلقة',
-      treasury:'الخزينة والحسابات العامة',
-    };
-
-    for (const b of balances) {
-      const bal = Math.round(parseFloat(b.balance || 0));
-      let name = b.account_id, cat = 'treasury', parent_name = null;
-      let accountNumber = null;
-
-      // ✅ السلوك 3: حسابات المستخدمين (جميع المستخدمين النشطين)
-      if (b.account_id.startsWith('AGT_')) {
-        const id = b.account_id.slice(4);
-        const u = users.find(u => u.id === id);
-        name = u?.display_name || id;
-        cat = 'agents';
-        // عرض رقم الحساب الفعلي من جدول users إن وجد
-        accountNumber = u?.account_number || b.account_id;
-      } 
-      // ✅ السلوك 5: إخفاء حسابات العملاء المديونين (لا نضيفها إلى cats[cat])
-      else if (b.account_id.startsWith('DBT_') || b.account_id.startsWith('CUST_')) {
-        // ✅ لا نضيفها إلى أي فئة – تبقى مخفية
-        continue;
-      } 
-      else if (b.account_id.startsWith('COMP_')) {
-        const id = b.account_id.slice(5);
-        const c = companies.find(c => c.id === id);
-        name = c?.name || id;
-        cat = 'companies';
-        accountNumber = c?.account_number || b.account_id;
-      } 
-      else if (b.account_id.startsWith('BNK_')) {
-        const id = b.account_id.slice(4);
-        const bk = banks.find(bk => bk.id === id);
-        if (bk) {
-          name = bk.name;
-          const co = companies.find(c => c.id === bk.company_id);
-          parent_name = co?.name || null;
-        } else { name = id; }
-        cat = 'banks';
-        accountNumber = bk?.account_number || b.account_id;
-      } 
-      else if (b.account_id.startsWith('EXP_')) {
-        const codeOrId = b.account_id.slice(4);
-        const exp = expenses.find(e => e.code === codeOrId || e.id === codeOrId);
-        name = exp?.name || codeOrId;
-        cat = 'expenses';
-        accountNumber = exp?.code || codeOrId;
-      } 
-      else if (b.account_id.startsWith('REV_')) {
-        name = b.account_id.slice(4);
-        cat = 'revenue';
-        accountNumber = b.account_id;
-      } 
-      else if (b.account_id.startsWith('SUSP_')) {
-        if (bal === 0) continue;
-        name = 'معلق: ' + b.account_id.slice(5);
-        cat = 'suspense';
-        accountNumber = b.account_id;
+    // ── الكيانات (من المخزن، ومع سقوط للجلب عند الفراغ) ──
+    let users     = (typeof AppStore !== 'undefined') ? (AppStore.getState('users') || []) : [];
+    let companies = (typeof AppStore !== 'undefined') ? (AppStore.getState('companies') || []) : [];
+    try {
+      if (!users.length) {
+        if (this._isOnline()) {
+          const { data } = await supabaseClient.from('users').select('id, display_name, is_active, account_number');
+          users = data || [];
+        } else if (typeof db !== 'undefined' && db.isOpen()) {
+          users = await db.users.toArray();
+        }
       }
-      else {
-        accountNumber = b.account_id;
+      if (!companies.length) {
+        if (this._isOnline()) {
+          const { data } = await supabaseClient.from('companies').select('id, name, account_number');
+          companies = data || [];
+        } else if (typeof db !== 'undefined' && db.isOpen()) {
+          companies = await db.companies.toArray();
+        }
       }
+    } catch { /* تجاهل — نعرض المتاح */ }
 
-      cats[cat].push({ 
-        account_id: b.account_id, 
-        name, 
-        balance: bal, 
-        parent_name,
-        account_number: accountNumber
-      });
+    // ── حسابات المستخدمين (AGT_) لكل مستخدم نشط، مع رصيده (0 إن لم يتحرك) ──
+    const agents = [];
+    for (const u of users) {
+      if (u.is_active === false) continue;
+      const id = 'AGT_' + u.id;
+      agents.push({ account_id: id, name: u.display_name || u.id, balance: balById.get(id) || 0,
+        parent_name: null, account_number: u.account_number || id });
     }
 
-    // ✅ السلوك 5: إزالة فئة debtors بالكامل من النتيجة إذا كانت فارغة
-    const filteredCategories = Object.entries(cats)
-      .filter(([key, accs]) => {
-        // إخفاء فئة debtors نهائياً
-        if (key === 'debtors') return false;
-        return accs.length > 0;
-      })
-      .map(([key, accs]) => ({
-        category      : key,
-        label         : catLabels[key] || key,
-        total_balance : accs.reduce((s, a) => s + a.balance, 0),
-        accounts      : accs,
-      }));
+    // ── حسابات الشركات (COMP_) ──
+    const comps = [];
+    for (const c of companies) {
+      const id = 'COMP_' + c.id;
+      comps.push({ account_id: id, name: c.name || c.id, balance: balById.get(id) || 0,
+        parent_name: null, account_number: c.account_number || id });
+    }
 
-    return {
-      categories: filteredCategories,
-    };
+    // ── الحسابات المستقلة الموحّدة (تظهر دائماً) ──
+    const settlements = [{
+      account_id: 'DEBTOR_SETTLEMENT', name: 'تسويات العملاء المديونين',
+      balance: balById.get('DEBTOR_SETTLEMENT') || 0, parent_name: null, account_number: 'DEBTOR_SETTLEMENT',
+    }];
+    const expenses = [{
+      account_id: 'EXP_GENERAL', name: 'المصروفات العامة',
+      balance: balById.get('EXP_GENERAL') || 0, parent_name: null, account_number: 'EXP_GENERAL',
+    }];
+
+    // ملاحظة: BNK_ مستبعد عمداً (حركة يومية فقط — يُعرض في قسم البنوك)،
+    //         وكذلك REV_/SUSP_/GENERAL_FUND/CUST_ (حسابات قديمة لا مكان لها في المرجع).
+    const categories = [];
+    if (agents.length) categories.push({ category: 'agents',    label: 'حسابات المستخدمين', total_balance: agents.reduce((s, a) => s + a.balance, 0), accounts: agents });
+    if (comps.length)  categories.push({ category: 'companies', label: 'حسابات الشركات',    total_balance: comps.reduce((s, a) => s + a.balance, 0),  accounts: comps });
+    categories.push({ category: 'settlements', label: 'تسويات العملاء المديونين', total_balance: settlements.reduce((s, a) => s + a.balance, 0), accounts: settlements });
+    categories.push({ category: 'expenses',    label: 'حسابات المصروفات',         total_balance: expenses.reduce((s, a) => s + a.balance, 0),    accounts: expenses });
+
+    return { categories };
   },
 
   // ─────────────────────────────────────────────────────────
@@ -1041,120 +978,388 @@ const AccountManagementComponent = {
     this._loadStatement();
   },
 
-  // ✅ إصلاح جوهري: كشف الحساب (Offline-First)
+  // ─────────────────────────────────────────────────────────
+  // كشف الحساب بالصيغة المرجعية (Offline-First)
+  // الأعمدة: التاريخ | الوقت | نوع العملية | مدين | دائن | التفاصيل + إجماليات
+  // البيانات الدفترية من account_ledger، مُثراة عبر reference_id ← transactions.
+  // الحسابات البنكية (BNK_) تُوجَّه إلى كشف الحركة من جدول المعاملات.
+  // ─────────────────────────────────────────────────────────
   async _loadStatement() {
     if (!this._selectedAccount) return;
-    
+    const acc = this._selectedAccount;
+
+    // كشف البنك: حركة يومية فقط من جدول المعاملات (BNK_ لا يملك قيوداً محاسبية)
+    if (acc.startsWith('BNK_')) { await this._loadBankStatement(acc.slice(4)); return; }
+
     const fromEl = document.getElementById('stmt-from');
-    const toEl = document.getElementById('stmt-to');
+    const toEl   = document.getElementById('stmt-to');
     const from = fromEl?.value;
-    const to = toEl?.value || getCurrentSaudiDate();
-    
+    const to   = toEl?.value || getCurrentSaudiDate();
     if (!from) { showToast('حدد تاريخ البداية', 'warning'); return; }
-    
+
     const summaryEl = document.getElementById('stmt-summary');
     const entriesEl = document.getElementById('stmt-entries');
     if (!summaryEl || !entriesEl) return;
-    
-    summaryEl.innerHTML = '<div class="skeleton" style="height:70px;border-radius:10px;"></div>'.repeat(3);
+    summaryEl.innerHTML = '';
     entriesEl.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner spinner-dark"></div></div>';
-    
+
     try {
       let entries = [];
-      let openingBalance = 0;
-      let useLocal = false;
+      let useLocal = !this._isOnline();
 
-      // محاولة جلب البيانات من السحابة إذا كان متصلاً
       if (this._isOnline()) {
         try {
           const { data, error } = await supabaseClient
-            .from('account_ledger')
-            .select('*')
-            .eq('account_id', this._selectedAccount)
-            .gte('date', from)
-            .lte('date', to)
-            .order('date', { ascending: true })
-            .order('created_at', { ascending: true });
-          if (!error && data) entries = data;
-
-          // جلب الرصيد الافتتاحي من السحابة
-          const { data: prevData, error: prevErr } = await supabaseClient
-            .from('account_ledger')
-            .select('debit, credit')
-            .eq('account_id', this._selectedAccount)
-            .lt('date', from);
-          if (!prevErr && prevData) {
-            for (const pe of prevData) {
-              openingBalance += (pe.debit || 0) - (pe.credit || 0);
-            }
-          }
+            .from('account_ledger').select('*')
+            .eq('account_id', acc).gte('date', from).lte('date', to)
+            .order('date', { ascending: true }).order('created_at', { ascending: true });
+          if (error) throw error;
+          entries = data || [];
         } catch (e) {
-          console.warn('فشل جلب البيانات من السحابة، سيتم استخدام المحلي', e);
+          console.warn('فشل جلب الكشف من السحابة، سيتم استخدام المحلي', e);
           useLocal = true;
         }
-      } else {
-        useLocal = true;
       }
 
-      // Fallback إلى Dexie إذا لزم الأمر
       if (useLocal && typeof db !== 'undefined' && db.isOpen()) {
-        const allEntries = await db.account_ledger
-          .where('account_id')
-          .equals(this._selectedAccount)
-          .toArray();
-        entries = allEntries.filter(e => e.date >= from && e.date <= to);
-        entries.sort((a,b) => (a.date + a.created_at) > (b.date + b.created_at) ? 1 : -1);
-        
-        const prevEntries = allEntries.filter(e => e.date < from);
-        for (const pe of prevEntries) {
-          openingBalance += (pe.debit || 0) - (pe.credit || 0);
-        }
-      } else if (useLocal && (typeof db === 'undefined' || !db.isOpen())) {
+        const all = await db.account_ledger.where('account_id').equals(acc).toArray();
+        entries = all
+          .filter(e => e.date >= from && e.date <= to)
+          .sort((a, b) => (a.date + (a.created_at || '')) > (b.date + (b.created_at || '')) ? 1 : -1);
+      } else if (useLocal) {
         throw new Error('قاعدة البيانات المحلية غير متوفرة ولا يوجد اتصال');
       }
-      
-      const totalDebit = (entries || []).reduce((s, e) => s + (e.debit || 0), 0);
-      const totalCredit = (entries || []).reduce((s, e) => s + (e.credit || 0), 0);
-      const closingBal = openingBalance + totalDebit - totalCredit;
-      
-      summaryEl.innerHTML = `
-        ${this._stmtCard('رصيد افتتاحي', Math.round(openingBalance), 'var(--text-secondary)')}
-        ${this._stmtCard('إجمالي مدين', Math.round(totalDebit), 'var(--success)')}
-        ${this._stmtCard('إجمالي دائن', Math.round(totalCredit), 'var(--danger)')}
-        ${this._stmtCard('رصيد ختامي', Math.round(closingBal), closingBal >= 0 ? 'var(--success)' : 'var(--danger)')}`;
-      
-      if (!entries || entries.length === 0) {
+
+      // إثراء القيود ببيانات المعاملة المرتبطة (الوقت، النوع، الأسماء، التفاصيل)
+      const txMap = await this._enrichEntries(entries);
+
+      const rows = (entries || []).map(e => {
+        const tx = e.reference_id ? txMap.get(e.reference_id) : null;
+        const timeRaw = tx?.time || tx?.created_at || e.created_at || null;
+        const desc = this._describeLedgerEntry(acc, e, tx);
+        return {
+          date: e.date, timeRaw, time: this._formatTime12(timeRaw),
+          label: desc.label, details: desc.details,
+          debit: parseFloat(e.debit) || 0, credit: parseFloat(e.credit) || 0,
+        };
+      });
+      rows.sort((a, b) => (a.date + String(a.timeRaw || '')) > (b.date + String(b.timeRaw || '')) ? 1 : -1);
+
+      if (!rows.length) {
         entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات في هذه الفترة</div></div>`;
         return;
       }
-      
-      let runBal = openingBalance;
-      const table = document.createElement('div');
-      table.className = 'table-wrapper';
-      let tableHtml = `<table class="data-table" id="stmt-print-table"><thead><tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>المستخدم</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>`;
-      for (const e of entries) {
-        const d = e.debit || 0;
-        const c = e.credit || 0;
-        runBal += d - c;
-        tableHtml += `
-          <tr>
-            <td>${formatDateArabic(e.date)}</td>
-            <td style="font-family:monospace;">${escapeHtml(e.voucher_number || '—')}</td>
-            <td>${escapeHtml(e.description || '—')}</td>
-            <td style="color:var(--text-secondary);">${escapeHtml(e.agent_name || '—')}</td>
-            <td style="color:var(--success);">${d > 0 ? Math.round(d).toLocaleString('en-US') + ' ر.س' : '—'}</td>
-            <td style="color:var(--danger);">${c > 0 ? Math.round(c).toLocaleString('en-US') + ' ر.س' : '—'}</td>
-            <td style="font-weight:700;color:${runBal >= 0 ? 'var(--success)' : 'var(--danger)'};">${runBal >= 0 ? '' : '−'}${Math.abs(Math.round(runBal)).toLocaleString('en-US')} ر.س</td>
-          </tr>`;
+
+      const totalDebit  = rows.reduce((s, r) => s + r.debit, 0);
+      const totalCredit = rows.reduce((s, r) => s + r.credit, 0);
+      const net = totalDebit - totalCredit;
+      const netNature = net >= 0 ? 'مدين' : 'دائن';
+      const isExpense = acc.startsWith('EXP_');
+      const netLabelWord = acc.startsWith('COMP_') ? 'صافي الرصيد' : 'صافي الحركة';
+      const fmt = (n) => Math.round(n).toLocaleString('en-US');
+
+      let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
+        <thead><tr><th>التاريخ</th><th>الوقت</th><th>نوع العملية</th><th>مدين</th><th>دائن</th><th>التفاصيل</th></tr></thead><tbody>`;
+      for (const r of rows) {
+        html += `<tr>
+          <td style="white-space:nowrap;">${formatDateArabic(r.date)}</td>
+          <td style="white-space:nowrap;">${escapeHtml(r.time)}</td>
+          <td style="font-weight:600;">${escapeHtml(r.label)}</td>
+          <td style="color:var(--success);direction:ltr;">${r.debit > 0 ? fmt(r.debit) : '0'}</td>
+          <td style="color:var(--danger);direction:ltr;">${r.credit > 0 ? fmt(r.credit) : '0'}</td>
+          <td style="color:var(--text-secondary);">${escapeHtml(r.details || '—')}</td>
+        </tr>`;
       }
-      tableHtml += `</tbody></table>`;
-      table.innerHTML = tableHtml;
-      entriesEl.innerHTML = '';
-      entriesEl.appendChild(table);
+      html += `</tbody><tfoot>`;
+      if (isExpense) {
+        html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
+          <td colspan="3" style="text-align:left;">إجمالي المصروفات</td>
+          <td style="direction:ltr;color:var(--success);">${fmt(totalDebit)}</td><td>0</td><td></td></tr>`;
+      } else {
+        html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
+          <td colspan="3" style="text-align:left;">الإجماليات</td>
+          <td style="direction:ltr;color:var(--success);">${fmt(totalDebit)}</td>
+          <td style="direction:ltr;color:var(--danger);">${fmt(totalCredit)}</td>
+          <td style="direction:ltr;">${netLabelWord}: ${fmt(Math.abs(net))} ${netNature}</td></tr>`;
+      }
+      html += `</tfoot></table></div>`;
+
+      // ملخص نصّي أسفل الكشف (مطابق للصيغة المرجعية)
+      const totalsBox = (inner) => `<div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px;padding:12px 14px;background:rgba(0,0,0,0.03);border-radius:10px;font-size:0.92rem;">${inner}</div>`;
+      if (isExpense) {
+        html += totalsBox(`<span>إجمالي المصروفات: <b>${fmt(totalDebit)}</b></span>`);
+      } else {
+        html += totalsBox(`
+          <span>إجمالي المدين: <b>${fmt(totalDebit)}</b></span>
+          <span>إجمالي الدائن: <b>${fmt(totalCredit)}</b></span>
+          <span>${netLabelWord}: <b>${fmt(Math.abs(net))} ${netNature}</b></span>`);
+      }
+
+      entriesEl.innerHTML = html;
       if (window.lucide) lucide.createIcons();
     } catch (e) {
       entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">خطأ في جلب البيانات: ${escapeHtml(e.message)}</div></div>`;
     }
+  },
+
+  // كشف حركة البنك (من جدول المعاملات): # | الوقت | نوع العملية | المندوب | المبلغ
+  async _loadBankStatement(bankId) {
+    const fromEl = document.getElementById('stmt-from');
+    const toEl   = document.getElementById('stmt-to');
+    const from = fromEl?.value;
+    const to   = toEl?.value || getCurrentSaudiDate();
+    if (!from) { showToast('حدد تاريخ البداية', 'warning'); return; }
+
+    const summaryEl = document.getElementById('stmt-summary');
+    const entriesEl = document.getElementById('stmt-entries');
+    if (!summaryEl || !entriesEl) return;
+    summaryEl.innerHTML = '';
+    entriesEl.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner spinner-dark"></div></div>';
+
+    try {
+      let txns = [];
+      let useLocal = !this._isOnline();
+
+      if (this._isOnline()) {
+        try {
+          const { data, error } = await supabaseClient.from('transactions')
+            .select('id,date,time,type,amount,details,created_at, agent:users!transactions_agent_id_fkey(display_name)')
+            .eq('bank_account_id', bankId)
+            .in('type', ['deposit', 'bank_withdrawal'])
+            .eq('is_reversed', false)
+            .gte('date', from).lte('date', to)
+            .order('date', { ascending: true }).order('time', { ascending: true });
+          if (error) throw error;
+          txns = (data || []).map(t => ({ ...t, agentName: t.agent?.display_name || '—' }));
+        } catch (e) { console.warn('فشل كشف البنك من السحابة، fallback محلي', e); useLocal = true; }
+      }
+
+      if (useLocal && typeof db !== 'undefined' && db.isOpen()) {
+        const maps = this._nameMaps();
+        const all = await db.transactions.where('bank_account_id').equals(bankId).toArray();
+        txns = all
+          .filter(t => !t.is_reversed && ['deposit', 'bank_withdrawal'].includes(t.type) && t.date >= from && t.date <= to)
+          .map(t => ({ ...t, agentName: maps.userById.get(t.agent_id)?.display_name || '—' }))
+          .sort((a, b) => (a.date + String(a.time || '')) > (b.date + String(b.time || '')) ? 1 : -1);
+      } else if (useLocal) {
+        throw new Error('قاعدة البيانات المحلية غير متوفرة ولا يوجد اتصال');
+      }
+
+      if (!txns.length) {
+        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات بنكية في هذه الفترة</div></div>`;
+        return;
+      }
+
+      const fmt = (n) => Math.round(n).toLocaleString('en-US');
+      let totalDep = 0, totalWd = 0;
+      let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
+        <thead><tr><th>#</th><th>الوقت</th><th>نوع العملية</th><th>المندوب</th><th>المبلغ</th></tr></thead><tbody>`;
+      txns.forEach((t, i) => {
+        const isDep = t.type === 'deposit';
+        const amt = parseFloat(t.amount) || 0;
+        if (isDep) totalDep += amt; else totalWd += amt;
+        html += `<tr>
+          <td>${i + 1}</td>
+          <td style="white-space:nowrap;">${escapeHtml(this._formatTime12(t.time || t.created_at))}</td>
+          <td style="font-weight:600;color:${isDep ? 'var(--success)' : 'var(--warning)'};">${isDep ? 'إيداع نقدي' : 'سحب نقدي'}</td>
+          <td>${escapeHtml(t.agentName || '—')}</td>
+          <td style="direction:ltr;font-weight:700;">${fmt(amt)} ر.س</td>
+        </tr>`;
+      });
+      const net = totalDep - totalWd;
+      const nature = net >= 0 ? 'مدين' : 'دائن';
+      html += `</tbody></table></div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px;padding:12px 14px;background:rgba(0,0,0,0.03);border-radius:10px;font-size:0.92rem;">
+          <span>إجمالي الإيداعات: <b>${fmt(totalDep)}</b></span>
+          <span>إجمالي السحوبات: <b>${fmt(totalWd)}</b></span>
+          <span>صافي الحركة: <b>${fmt(Math.abs(net))} ${nature}</b></span>
+        </div>`;
+      entriesEl.innerHTML = html;
+    } catch (e) {
+      entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">خطأ في جلب كشف البنك: ${escapeHtml(e.message)}</div></div>`;
+    }
+  },
+
+  // تنسيق الوقت بصيغة 12 ساعة (ص/م) من transactions.time أو created_at
+  _formatTime12(t) {
+    if (!t) return '—';
+    let h, m;
+    if (/^\d{1,2}:\d{2}/.test(t)) {
+      const p = String(t).split(':'); h = parseInt(p[0], 10); m = p[1].padStart(2, '0');
+    } else {
+      const d = new Date(t); if (isNaN(d.getTime())) return '—';
+      h = d.getHours(); m = String(d.getMinutes()).padStart(2, '0');
+    }
+    const period = h < 12 ? 'ص' : 'م';
+    let h12 = h % 12; if (h12 === 0) h12 = 12;
+    return `${h12}:${m} ${period}`;
+  },
+
+  // خرائط أسماء سريعة من المخزن (لوضع عدم الاتصال)
+  _nameMaps() {
+    const users     = (typeof AppStore !== 'undefined' ? (AppStore.getState('users') || []) : []);
+    const companies = (typeof AppStore !== 'undefined' ? (AppStore.getState('companies') || []) : []);
+    const banks     = (typeof AppStore !== 'undefined' ? (AppStore.getState('bankAccounts') || []) : []);
+    return {
+      userById:    new Map(users.map(u => [u.id, u])),
+      companyById: new Map(companies.map(c => [c.id, c])),
+      bankById:    new Map(banks.map(b => [b.id, b])),
+    };
+  },
+
+  // توحيد كائن المعاملة + استخراج الأسماء (سواء عبر JOIN السحابة أو خرائط المخزن)
+  _normalizeTx(t, maps) {
+    const userName = (id) => (id && maps ? (maps.userById.get(id)?.display_name || '') : '');
+    return {
+      id: t.id, time: t.time, created_at: t.created_at, type: t.type, details: t.details || '',
+      agent_id: t.agent_id, from_agent_id: t.from_agent_id, to_agent_id: t.to_agent_id,
+      company_id: t.company_id, customer_id: t.customer_id, customer_name: t.customer_name || '',
+      expense_type: t.expense_type || '', bank_account_id: t.bank_account_id,
+      agentName:     t.agent?.display_name      || userName(t.agent_id),
+      fromAgentName: t.from_agent?.display_name  || userName(t.from_agent_id),
+      toAgentName:   t.to_agent?.display_name    || userName(t.to_agent_id),
+      companyName:   t.company?.name             || (t.company_id && maps ? (maps.companyById.get(t.company_id)?.name || '') : ''),
+      bankName:      t.bank?.name                || (t.bank_account_id && maps ? (maps.bankById.get(t.bank_account_id)?.name || '') : ''),
+    };
+  },
+
+  // جلب المعاملات المرتبطة بالقيود دفعةً واحدة (online: JOIN، offline: Dexie+المخزن)
+  async _enrichEntries(entries) {
+    const refIds = [...new Set((entries || []).map(e => e.reference_id).filter(Boolean))];
+    const txMap = new Map();
+    if (!refIds.length) return txMap;
+
+    if (this._isOnline()) {
+      try {
+        const { data } = await supabaseClient.from('transactions')
+          .select('id,time,type,details,agent_id,company_id,customer_id,customer_name,from_agent_id,to_agent_id,expense_type,bank_account_id,created_at,'
+            + 'agent:users!transactions_agent_id_fkey(display_name),'
+            + 'from_agent:users!transactions_from_agent_id_fkey(display_name),'
+            + 'to_agent:users!transactions_to_agent_id_fkey(display_name),'
+            + 'company:companies!transactions_company_id_fkey(name),'
+            + 'bank:bank_accounts!transactions_bank_account_id_fkey(name)')
+          .in('id', refIds);
+        (data || []).forEach(t => txMap.set(t.id, this._normalizeTx(t, null)));
+      } catch (e) { console.warn('فشل إثراء القيود من السحابة', e); }
+    }
+
+    const missing = refIds.filter(id => !txMap.has(id));
+    if (missing.length && typeof db !== 'undefined' && db.isOpen()) {
+      const maps = this._nameMaps();
+      for (const id of missing) {
+        try {
+          const t = await db.transactions.get(id);
+          if (t) txMap.set(id, this._normalizeTx(t, maps));
+        } catch { /* تجاهل */ }
+      }
+    }
+    return txMap;
+  },
+
+  // بناء (نوع العملية) و(التفاصيل) حسب نوع الحساب المعروض — مطابق للصيغ المعتمدة
+  _describeLedgerEntry(accountId, e, tx) {
+    const debit  = parseFloat(e.debit)  || 0;
+    const credit = parseFloat(e.credit) || 0;
+    const user   = (tx?.details || '').trim();
+    const withUser = (s) => (user ? `${s} ${user}` : s);
+
+    if (!tx) {
+      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      return { label: 'قيد محاسبي', details: e.description || `${dir} قيد محاسبي` };
+    }
+
+    // ── حساب الشركة ──
+    if (accountId.startsWith('COMP_')) {
+      if (tx.type === 'collection')
+        return { label: `تحصيل بواسطة ${tx.agentName || '—'}`, details: withUser(`لكم تحصيل نقدي بواسطة المندوب ${tx.agentName || '—'}`) };
+      if (tx.type === 'deposit')
+        return { label: 'إيداع نقدي', details: withUser(`عليكم إيداع نقدي إلى حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
+      if (tx.type === 'bank_withdrawal')
+        return { label: 'سحب بنكي', details: withUser(`لكم سحب نقدي من حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
+      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      return { label: 'قيد بسيط', details: withUser(`${dir} قيد بسيط`) };
+    }
+
+    // ── حساب المندوب ──
+    if (accountId.startsWith('AGT_')) {
+      const viewedId = accountId.slice(4);
+      if (tx.type === 'collection') {
+        if (tx.company_id)
+          return { label: `تحصيل شركة ${tx.companyName || '—'}`, details: withUser(`عليكم تحصيل نقدي لصالح ${tx.companyName || '—'}`) };
+        return { label: 'تحصيل عميل مديون', details: withUser(`عليكم تحصيل نقدي إلى حساب تسوية العملاء من ${tx.customer_name || '—'}`) };
+      }
+      if (tx.type === 'deposit')
+        return { label: 'إيداع نقدي', details: withUser(`لكم إيداع نقدي إلى حساب ${tx.bankName || '—'}`) };
+      if (tx.type === 'bank_withdrawal')
+        return { label: 'سحب بنكي', details: withUser(`عليكم سحب نقدي من حساب ${tx.bankName || '—'}`) };
+      if (tx.type === 'expense')
+        return { label: `مصروف ${tx.expense_type || 'عام'}`, details: withUser(`مصروف ${tx.expense_type || 'عام'}`) };
+      if (tx.type === 'delivery' || tx.type === 'receipt') {
+        const nameFor = (id) => id === tx.agent_id ? tx.agentName : id === tx.to_agent_id ? tx.toAgentName : id === tx.from_agent_id ? tx.fromAgentName : '';
+        const otherId = [tx.agent_id, tx.to_agent_id, tx.from_agent_id].find(id => id && id !== viewedId);
+        const otherName = nameFor(otherId) || '—';
+        if (debit > 0) {
+          if (/طلب/.test(tx.details || ''))
+            return { label: 'طلب أموال مقبول', details: withUser(`لكم حوالة نقدية تم طلبها عبركم وتمت الموافقة عليها من حساب ${otherName}`) };
+          return { label: `تحويل وارد من ${otherName}`, details: withUser(`لكم حوالة نقدية واردة من حساب ${otherName}`) };
+        }
+        return { label: `تحويل إلى ${otherName}`, details: withUser(`عليكم حوالة نقدية من حسابكم إلى حساب ${otherName}`) };
+      }
+      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      return { label: 'قيد', details: withUser(`${dir} قيد`) };
+    }
+
+    // ── تسويات العملاء المديونين ──
+    if (accountId === 'DEBTOR_SETTLEMENT')
+      return { label: `تحصيل من ${tx.customer_name || '—'}`, details: withUser(`تحصيل من ${tx.customer_name || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
+
+    // ── المصروفات ──
+    if (accountId.startsWith('EXP_'))
+      return { label: `مصروف ${tx.expense_type || 'عام'}`, details: withUser(`مصروف ${tx.expense_type || 'عام'}`) };
+
+    return { label: tx.type || 'قيد', details: withUser(e.description || '') };
+  },
+
+  // قسم الحسابات البنكية (حركة يومية فقط) مع زر كشف الحركة
+  async _renderBankAccountsSection(containerEl) {
+    let banks = (typeof AppStore !== 'undefined' ? (AppStore.getState('bankAccounts') || []) : []);
+    if (!banks.length) {
+      try {
+        if (this._isOnline()) { const { data } = await supabaseClient.from('bank_accounts').select('id, name, company_id'); banks = data || []; }
+        else if (typeof db !== 'undefined' && db.isOpen()) banks = await db.bank_accounts.toArray();
+      } catch { /* تجاهل */ }
+    }
+    if (!banks.length) return;
+
+    const companies = (typeof AppStore !== 'undefined' ? (AppStore.getState('companies') || []) : []);
+    const compById = new Map(companies.map(c => [c.id, c.name]));
+
+    const section = document.createElement('div');
+    section.className = 'glass-card acct-category';
+    section.style.marginTop = '20px';
+    section.innerHTML = `
+      <div class="acct-cat-header" style="border-bottom:2px solid rgba(5,150,105,0.13);">
+        <div class="acct-cat-header-right">
+          <div class="acct-cat-icon" style="background:rgba(5,150,105,0.08);border:1px solid rgba(5,150,105,0.2);">🏦</div>
+          <div><div class="acct-cat-title">الحسابات البنكية (حركة يومية فقط)</div><div class="acct-cat-count">${banks.length} حساب</div></div>
+        </div>
+      </div>
+      <div class="acct-cat-body"><div class="table-wrapper" style="overflow-x:auto;">
+        <table class="data-table" style="min-width:480px;">
+          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>كشف الحركة</th></tr></thead>
+          <tbody>
+            ${banks.map(b => `<tr>
+              <td style="font-weight:600;">${escapeHtml(b.name || b.id)}</td>
+              <td style="color:var(--text-secondary);">${escapeHtml(compById.get(b.company_id) || '—')}</td>
+              <td><button class="view-bank-stmt-btn btn btn-secondary btn-sm" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف الحركة</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div></div>`;
+    containerEl.appendChild(section);
+    section.querySelectorAll('.view-bank-stmt-btn').forEach(btn => {
+      btn.addEventListener('click', () => this._showStatement('BNK_' + btn.dataset.bankId, btn.dataset.bankName));
+    });
   },
 
   _stmtCard(label, value, color) {
@@ -1213,23 +1418,14 @@ const AccountManagementComponent = {
     const to   = document.getElementById('stmt-to')?.value   || '';
 
     const tbl = document.getElementById('stmt-print-table');
-    const entries = tbl ? [...tbl.querySelectorAll('tbody tr')].map(tr => {
-      const cells = [...tr.querySelectorAll('td')];
-      return {
-        date: cells[0]?.textContent.trim() || '',
-        type: cells[2]?.textContent.trim() || '',
-        amount: cells[4]?.textContent.trim() || '',
-        description: cells[3]?.textContent.trim() || ''
-      };
-    }) : [];
+    const rows = tbl ? [...tbl.querySelectorAll('tbody tr')].map(tr =>
+      [...tr.querySelectorAll('td')].map(td => td.textContent.trim()).join(' | ')) : [];
 
     const lines = [
       `📄 كشف حساب: ${name}`,
       `🗓️ الفترة: ${from} → ${to}`,
       '─'.repeat(30),
-      ...entries.map(e =>
-        `${e.date} | ${e.type} | ${e.amount} | ${e.description}`
-      ),
+      ...rows,
       '─'.repeat(30),
       `نظام أبو حذيفة للصرافة والتحويلات`,
     ].join('\n');
