@@ -245,7 +245,8 @@ const DashboardComponent = {
 
   _renderKPI(totals) {
     if (!totals) return;
-    const net = (totals.total_collections || 0) + (totals.total_receipts || 0)
+    // صافي عهدة المناديب: عليهم (تحصيل + سحب بنكي + استلام) − لهم (إيداع + مصروف + تسليم)
+    const net = (totals.total_collections || 0) + (totals.total_receipts || 0) + (totals.total_bank_withdrawals || 0)
               - (totals.total_deposits || 0) - (totals.total_expenses || 0) - (totals.total_deliveries || 0);
 
     const kpis = [
@@ -292,12 +293,13 @@ const DashboardComponent = {
       .reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0);
 
     const totals = {
-      total_collections : sum('collection'),
-      total_deposits    : sum('deposit'),
-      total_expenses    : sum('expense'),
-      total_receipts    : sum('receipt'),
-      total_deliveries  : sum('delivery'),
-      total_tx_count    : txs.length,
+      total_collections      : sum('collection'),
+      total_deposits         : sum('deposit'),
+      total_bank_withdrawals : sum('bank_withdrawal'),
+      total_expenses         : sum('expense'),
+      total_receipts         : sum('receipt'),
+      total_deliveries       : sum('delivery'),
+      total_tx_count         : txs.length,
     };
     this._renderKPI(totals);
     this._renderPieChart(totals);

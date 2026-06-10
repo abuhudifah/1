@@ -1050,23 +1050,24 @@ const AccountManagementComponent = {
         return;
       }
 
-      const totalDebit  = rows.reduce((s, r) => s + r.debit, 0);
-      const totalCredit = rows.reduce((s, r) => s + r.credit, 0);
-      const net = totalDebit - totalCredit;
-      const netNature = net >= 0 ? 'مدين' : 'دائن';
+      // تحويل العرض: مدين(debit) → عليكم ، دائن(credit) → لكم
+      const totalLakum  = rows.reduce((s, r) => s + r.credit, 0); // إجمالي لكم = Σ دائن
+      const totalAlaykum = rows.reduce((s, r) => s + r.debit, 0); // إجمالي عليكم = Σ مدين
+      const net = totalAlaykum - totalLakum; // صافي = عليكم − لكم
+      const netNature = net >= 0 ? 'عليكم' : 'لكم';
       const isExpense = acc.startsWith('EXP_');
       const netLabelWord = acc.startsWith('COMP_') ? 'صافي الرصيد' : 'صافي الحركة';
       const fmt = (n) => Math.round(n).toLocaleString('en-US');
 
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
-        <thead><tr><th>التاريخ</th><th>الوقت</th><th>نوع العملية</th><th>مدين</th><th>دائن</th><th>التفاصيل</th></tr></thead><tbody>`;
+        <thead><tr><th>التاريخ</th><th>الوقت</th><th>نوع العملية</th><th>لكم</th><th>عليكم</th><th>التفاصيل</th></tr></thead><tbody>`;
       for (const r of rows) {
         html += `<tr>
           <td style="white-space:nowrap;">${formatDateArabic(r.date)}</td>
           <td style="white-space:nowrap;">${escapeHtml(r.time)}</td>
           <td style="font-weight:600;">${escapeHtml(r.label)}</td>
-          <td style="color:var(--success);direction:ltr;">${r.debit > 0 ? fmt(r.debit) : '0'}</td>
-          <td style="color:var(--danger);direction:ltr;">${r.credit > 0 ? fmt(r.credit) : '0'}</td>
+          <td style="color:var(--success);direction:ltr;">${r.credit > 0 ? fmt(r.credit) : '0'}</td>
+          <td style="color:var(--danger);direction:ltr;">${r.debit > 0 ? fmt(r.debit) : '0'}</td>
           <td style="color:var(--text-secondary);">${escapeHtml(r.details || '—')}</td>
         </tr>`;
       }
@@ -1074,26 +1075,42 @@ const AccountManagementComponent = {
       if (isExpense) {
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
           <td colspan="3" style="text-align:left;">إجمالي المصروفات</td>
-          <td style="direction:ltr;color:var(--success);">${fmt(totalDebit)}</td><td>0</td><td></td></tr>`;
+          <td>0</td><td style="direction:ltr;color:var(--danger);">${fmt(totalAlaykum)}</td><td></td></tr>`;
       } else {
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
           <td colspan="3" style="text-align:left;">الإجماليات</td>
-          <td style="direction:ltr;color:var(--success);">${fmt(totalDebit)}</td>
-          <td style="direction:ltr;color:var(--danger);">${fmt(totalCredit)}</td>
+          <td style="direction:ltr;color:var(--success);">${fmt(totalLakum)}</td>
+          <td style="direction:ltr;color:var(--danger);">${fmt(totalAlaykum)}</td>
           <td style="direction:ltr;">${netLabelWord}: ${fmt(Math.abs(net))} ${netNature}</td></tr>`;
       }
       html += `</tfoot></table></div>`;
 
-      // ملخص نصّي أسفل الكشف (مطابق للصيغة المرجعية)
+      // ملخص نصّي أسفل الكشف (لكم/عليكم)
       const totalsBox = (inner) => `<div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px;padding:12px 14px;background:rgba(0,0,0,0.03);border-radius:10px;font-size:0.92rem;">${inner}</div>`;
+      let totalsText;
       if (isExpense) {
-        html += totalsBox(`<span>إجمالي المصروفات: <b>${fmt(totalDebit)}</b></span>`);
+        totalsText = `إجمالي المصروفات: ${fmt(totalAlaykum)}`;
+        html += totalsBox(`<span>إجمالي المصروفات: <b>${fmt(totalAlaykum)}</b></span>`);
       } else {
+        totalsText = `إجمالي لكم: ${fmt(totalLakum)} | إجمالي عليكم: ${fmt(totalAlaykum)} | ${netLabelWord}: ${fmt(Math.abs(net))} ${netNature}`;
         html += totalsBox(`
-          <span>إجمالي المدين: <b>${fmt(totalDebit)}</b></span>
-          <span>إجمالي الدائن: <b>${fmt(totalCredit)}</b></span>
+          <span>إجمالي لكم: <b>${fmt(totalLakum)}</b></span>
+          <span>إجمالي عليكم: <b>${fmt(totalAlaykum)}</b></span>
           <span>${netLabelWord}: <b>${fmt(Math.abs(net))} ${netNature}</b></span>`);
       }
+
+      // تخزين بيانات الكشف للطباعة الاحترافية
+      this._lastStatement = {
+        kind: 'ledger',
+        title: `كشف حساب: ${this._selectedAccountName || acc}`,
+        accountId: acc,
+        periodText: `الفترة: ${from} ← ${to}`,
+        columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
+        rows: rows.map(r => [formatDateArabic(r.date), r.time, r.label,
+          r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']),
+        totalsLine: totalsText.split(' | ').map(t => `<span>${t}</span>`).join(''),
+        totalsText,
+      };
 
       entriesEl.innerHTML = html;
       if (window.lucide) lucide.createIcons();
@@ -1152,28 +1169,45 @@ const AccountManagementComponent = {
 
       const fmt = (n) => Math.round(n).toLocaleString('en-US');
       let totalDep = 0, totalWd = 0;
+      const printRows = [];
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
         <thead><tr><th>#</th><th>الوقت</th><th>نوع العملية</th><th>المندوب</th><th>المبلغ</th></tr></thead><tbody>`;
       txns.forEach((t, i) => {
         const isDep = t.type === 'deposit';
         const amt = parseFloat(t.amount) || 0;
         if (isDep) totalDep += amt; else totalWd += amt;
+        const time = this._formatTime12(t.time || t.created_at);
+        const typeLbl = isDep ? 'إيداع نقدي' : 'سحب نقدي';
+        printRows.push([i + 1, time, typeLbl, t.agentName || '—', `${fmt(amt)} ر.س`]);
         html += `<tr>
           <td>${i + 1}</td>
-          <td style="white-space:nowrap;">${escapeHtml(this._formatTime12(t.time || t.created_at))}</td>
-          <td style="font-weight:600;color:${isDep ? 'var(--success)' : 'var(--warning)'};">${isDep ? 'إيداع نقدي' : 'سحب نقدي'}</td>
+          <td style="white-space:nowrap;">${escapeHtml(time)}</td>
+          <td style="font-weight:600;color:${isDep ? 'var(--success)' : 'var(--warning)'};">${typeLbl}</td>
           <td>${escapeHtml(t.agentName || '—')}</td>
           <td style="direction:ltr;font-weight:700;">${fmt(amt)} ر.س</td>
         </tr>`;
       });
       const net = totalDep - totalWd;
       const nature = net >= 0 ? 'مدين' : 'دائن';
+      const bankTotalsText = `إجمالي الإيداعات: ${fmt(totalDep)} | إجمالي السحوبات: ${fmt(totalWd)} | صافي الحركة: ${fmt(Math.abs(net))} ${nature}`;
       html += `</tbody></table></div>
         <div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px;padding:12px 14px;background:rgba(0,0,0,0.03);border-radius:10px;font-size:0.92rem;">
           <span>إجمالي الإيداعات: <b>${fmt(totalDep)}</b></span>
           <span>إجمالي السحوبات: <b>${fmt(totalWd)}</b></span>
           <span>صافي الحركة: <b>${fmt(Math.abs(net))} ${nature}</b></span>
         </div>`;
+
+      this._lastStatement = {
+        kind: 'bank',
+        title: `كشف حركة بنك: ${this._selectedAccountName || ('BNK_' + bankId)}`,
+        accountId: 'BNK_' + bankId,
+        periodText: `الفترة: ${from} ← ${to}`,
+        columns: ['#', 'الوقت', 'نوع العملية', 'المندوب', 'المبلغ'],
+        rows: printRows,
+        totalsLine: bankTotalsText.split(' | ').map(t => `<span>${t}</span>`).join(''),
+        totalsText: bankTotalsText,
+      };
+
       entriesEl.innerHTML = html;
     } catch (e) {
       entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">خطأ في جلب كشف البنك: ${escapeHtml(e.message)}</div></div>`;
@@ -1372,39 +1406,37 @@ const AccountManagementComponent = {
       </div>`;
   },
 
-  _printStatement() {
-    if (typeof PrintService === 'undefined') {
+  // زر الطباعة يفتح نافذة الطباعة الاحترافية
+  _printStatement() { this._printProfessional(); },
+
+  // نافذة طباعة احترافية (A4 + أزرار رجوع/طباعة/مشاركة/PDF)
+  _printProfessional() {
+    if (typeof PrintService === 'undefined' || typeof PrintService.printStatementAdvanced !== 'function') {
       showToast('خدمة الطباعة غير متوفرة', 'error');
       return;
     }
-    const name = this._selectedAccountName || '';
-    const from = document.getElementById('stmt-from')?.value || '';
-    const to   = document.getElementById('stmt-to')?.value   || '';
-    const logo = (typeof AppStore !== 'undefined') ? AppStore.getState('logoUrl') : '';
-    const user = AuthService.getCurrentUser();
+    const st = this._lastStatement;
+    if (!st || !st.rows || !st.rows.length) {
+      showToast('لا توجد بيانات في الكشف للطباعة', 'warning');
+      return;
+    }
+    const logo = (typeof AppStore !== 'undefined') ? (AppStore.getState('logoUrl') || '') : '';
+    const user = (typeof AuthService !== 'undefined') ? AuthService.getCurrentUser() : null;
+    const shareText = [st.title, st.periodText, '────────',
+      ...st.rows.map(r => r.join(' | ')), '────────', st.totalsText,
+      'نظام أبو حذيفة للصرافة والتحويلات'].join('\n');
 
-    const tbl     = document.getElementById('stmt-print-table');
-    const headers = tbl ? [...tbl.querySelectorAll('thead th')].map(th => th.textContent.trim()) : [];
-    const rows    = tbl
-      ? [...tbl.querySelectorAll('tbody tr')].map(tr =>
-          [...tr.querySelectorAll('td')].map(td => td.textContent.trim()))
-      : [];
-    const footerCells = tbl
-      ? [...(tbl.querySelector('tfoot tr')?.querySelectorAll('td') || [])].map(td => td.textContent.trim())
-      : [];
-
-    const tableHTML = headers.length
-      ? PrintService.buildTable(headers, rows, footerCells.length ? footerCells : null)
-      : '<p style="color:#64748b;text-align:center;padding:20px;">لا توجد بيانات في الكشف</p>';
-
-    PrintService.print({
-      title      : `كشف حساب: ${name}`,
-      subtitle   : `معرف الحساب: ${this._selectedAccount || ''} &nbsp;|&nbsp; الفترة: ${from} → ${to}`,
-      date       : from ? `${from} — ${to}` : '',
+    PrintService.printStatementAdvanced({
+      title      : st.title,
+      subtitle   : 'نظام أبو حذيفة للصرافة والتحويلات',
+      periodText : st.periodText,
       userName   : user?.display_name || '',
       logo,
-      tableHTML,
-      footerExtra: `${name} · ${this._selectedAccount || ''}`,
+      accountId  : st.accountId,
+      columns    : st.columns,
+      rows       : st.rows,
+      totalsLine : st.totalsLine,
+      shareText,
     });
   },
 

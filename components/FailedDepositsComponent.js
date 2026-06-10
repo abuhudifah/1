@@ -315,7 +315,8 @@ const FailedDepositsComponent = {
     const result = await repo.update(TABLES.FAILED_DEPOSITS, fd.id, { status: choice });
     if (!isOk(result)) { showToast(`فشل: ${result.error}`, 'error'); return; }
 
-    // قيد محاسبي عند الاسترداد: مدين BNK_ / دائن AGT_ (مثل إيداع عادي)
+    // قيد محاسبي عند الاسترداد: يُنشئ إيداعاً عادياً يتبع المصفوفة الجديدة (COMP_ مدين / AGT_ دائن).
+    // الشركة تُشتقّ تلقائياً من bank_accounts.company_id داخل buildEntries.
     if (choice === FAILED_DEPOSIT_STATUS.REFUNDED && fd.bank_account_id) {
       await AccountingService.createTransactionWithEntries({
         type            : TRANSACTION_TYPES.DEPOSIT,
