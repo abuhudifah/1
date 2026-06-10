@@ -1,25 +1,39 @@
 /**
- * services/AccountingService.js — v3.0 (BEHAVIOR FIXED)
+ * services/AccountingService.js — v4.0 (REFERENCE-ALIGNED)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * التغييرات الجوهرية (السلوك الأول):
+ * المرحلة 1 — تصحيح محرك القيود ليطابق المرجع المحاسبي المعتمد:
  * ─────────────────────────────────────────────────────────
- * ✅ الإيداع البنكي: القيد بين COMP (دائن) و AGT (مدين) فقط.
- *    الحساب البنكي ليس له دور في القيد المحاسبي، بل يبقى كوسم في transaction.
+ * المصفوفة النهائية المعتمدة (مدين ← دائن):
+ *   تحصيل لصالح شركة      : AGT_ ← COMP_
+ *   تحصيل من عميل مديون    : AGT_ ← DEBTOR_SETTLEMENT (حساب موحّد مستقل)
+ *   إيداع بنكي            : COMP_ ← AGT_
+ *   سحب بنكي             : AGT_ ← COMP_
+ *   مصروف                : EXP_GENERAL ← AGT_
+ *   تحويل بين مندوبين     : AGT_(المستلم) ← AGT_(المرسل)
  *
- * ✅ السحب البنكي: القيد بين COMP (مدين) و AGT (دائن) فقط.
- *    الحساب البنكي ليس له دور في القيد المحاسبي.
- *
- * ✅ الحساب العام (GENERAL_FUND) يستخدم فقط عند عدم وجود شركة مرتبطة.
+ * قواعد ملزمة:
+ *   • BNK_ لا يظهر في أي قيد محاسبي إطلاقاً — مجرد وسم في transactions.bank_account_id.
+ *   • الإيداع/السحب يشتقّان الشركة من bank_accounts.company_id؛ بلا شركة مرتبطة → خطأ
+ *     صريح (ممنوع استخدام GENERAL_FUND كبديل).
+ *   • تحصيل المديون يذهب دائماً إلى DEBTOR_SETTLEMENT، لا إلى الشركة ولا لحساب عميل فردي.
+ *   • المصروفات تُجمّع في EXP_GENERAL (لا تجزئة حسب النوع — يبقى النوع في الوصف فقط).
  * ─────────────────────────────────────────────────────────
  */
 
 'use strict';
 
 // ============================================================
-// الحساب العام المُستخدَم كطرف ثانٍ في القيود العامة
+// الحساب العام — يبقى معرّفاً للتوافق مع مسارات الاستلام/التسليم القديمة فقط،
+// ولا يُستخدم إطلاقاً في الإيداع/السحب/التحصيل بعد توضيح المرجع.
 // ============================================================
 const GENERAL_ACCOUNT_ID = 'GENERAL_FUND';
+
+// ============================================================
+// الحسابات المستقلة الموحّدة (مطابقة للمرجع)
+// ============================================================
+const DEBTOR_SETTLEMENT_ID = 'DEBTOR_SETTLEMENT';            // تسويات العملاء المديونين — حساب موحّد مستقل
+const EXPENSE_ACCOUNT_ID   = `${ACCOUNT_PREFIXES.EXPENSE}GENERAL`; // EXP_GENERAL — المصروفات العامة
 
 // ============================================================
 // مولّد أرقام القيود
@@ -60,6 +74,7 @@ function _buildCollectionEntries(tx, voucher) {
   const entries  = [];
 
   if (tx.company_id) {
+    // تحصيل لصالح شركة: AGT_ مدين ← COMP_ دائن
     const compAcc = AccountId.company(tx.company_id);
     entries.push(
       { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
@@ -68,54 +83,46 @@ function _buildCollectionEntries(tx, voucher) {
         description: 'تحصيل من عميل لصالح الشركة' }
     );
   } else if (tx.customer_id) {
-    const custAcc = AccountId.customer(tx.customer_id);
+    // تحصيل من عميل مديون: AGT_ مدين ← DEBTOR_SETTLEMENT دائن (حساب موحّد مستقل — لا حساب فردي)
     entries.push(
       { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
         description: `تحصيل من مدين: ${tx.customer_name || tx.customer_id}` },
-      { voucher_number: voucher, date, account_id: custAcc,  debit: 0, credit: tx.amount,
-        description: `تخفيض دين العميل: ${tx.customer_name || tx.customer_id}` }
+      { voucher_number: voucher, date, account_id: DEBTOR_SETTLEMENT_ID, debit: 0, credit: tx.amount,
+        description: `تسوية دين العميل: ${tx.customer_name || tx.customer_id}` }
     );
   } else {
-    entries.push(
-      { voucher_number: voucher, date, account_id: agentAcc,         debit: tx.amount, credit: 0,
-        description: `تحصيل نقدي${tx.customer_name ? ' من: ' + tx.customer_name : ''}` },
-      { voucher_number: voucher, date, account_id: GENERAL_ACCOUNT_ID, debit: 0, credit: tx.amount,
-        description: 'مقابل التحصيل النقدي العام' }
-    );
+    // ممنوع التحصيل بلا جهة محدّدة (شركة أو عميل مديون) — لا بديل عام
+    return err('التحصيل يتطلب تحديد شركة أو عميل مديون');
   }
 
   return entries;
 }
 
-// ✅ السلوك الأول: الإيداع البنكي — قيد بين COMP (دائن) و AGT (مدين) فقط
-function _buildDepositEntries(tx, voucher) {
+// الإيداع البنكي — قيد بين COMP (مدين) و AGT (دائن) فقط. BNK_ وسم لا يدخل القيد.
+// companyId مُشتَقّ مسبقاً في buildEntries من tx.company_id أو bank_accounts.company_id.
+function _buildDepositEntries(tx, companyId, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
-  
-  // تحديد الحساب الدائن: الشركة إن وُجدت، وإلا الحساب العام
-  const creditAcc = tx.company_id 
-    ? AccountId.company(tx.company_id) 
-    : GENERAL_ACCOUNT_ID;
+  const compAcc  = AccountId.company(companyId);
 
   return [
-    { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
+    { voucher_number: voucher, date, account_id: compAcc,  debit: tx.amount, credit: 0,
+      description: 'إيداع بنكي — خروج المال من عهدة الشركة إلى البنك' },
+    { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
       description: 'إيداع بنكي — إخلاء عهدة المندوب' },
-    { voucher_number: voucher, date, account_id: creditAcc, debit: 0, credit: tx.amount,
-      description: 'إيداع بنكي — استلام الشركة' },
   ];
 }
 
+// المصروف: EXP_GENERAL مدين ← AGT_ دائن. نوع المصروف يبقى في الوصف فقط (بلا تجزئة حسابات).
 function _buildExpenseEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
-  const expCode  = tx.expense_type || 'MISC';
-  const expAcc   = AccountId.expense(expCode);
 
   return [
-    { voucher_number: voucher, date, account_id: expAcc,   debit: tx.amount, credit: 0,
+    { voucher_number: voucher, date, account_id: EXPENSE_ACCOUNT_ID, debit: tx.amount, credit: 0,
       description: `مصروف ${tx.expense_type || 'عام'}${tx.details ? ': ' + tx.details : ''}` },
     { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
-      description: 'صرف من حساب المندوب' },
+      description: 'صرف من عهدة المندوب' },
   ];
 }
 
@@ -158,21 +165,18 @@ function _buildDeliveryEntries(tx, voucher) {
   ];
 }
 
-// ✅ السلوك الأول: السحب البنكي — قيد بين COMP (مدين) و AGT (دائن) فقط
-function _buildBankWithdrawalEntries(tx, voucher) {
+// السحب البنكي — قيد بين AGT (مدين) و COMP (دائن) فقط. BNK_ وسم لا يدخل القيد.
+// companyId مُشتَقّ مسبقاً في buildEntries من tx.company_id أو bank_accounts.company_id.
+function _buildBankWithdrawalEntries(tx, companyId, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
-  
-  // تحديد الحساب المدين: الشركة إن وُجدت، وإلا الحساب العام
-  const debitAcc = tx.company_id 
-    ? AccountId.company(tx.company_id) 
-    : GENERAL_ACCOUNT_ID;
+  const compAcc  = AccountId.company(companyId);
 
   return [
-    { voucher_number: voucher, date, account_id: debitAcc, debit: tx.amount, credit: 0,
-      description: 'سحب بنكي — خصم من حساب الشركة' },
-    { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
-      description: 'سحب بنكي — استلام المندوب' },
+    { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
+      description: 'سحب بنكي — زيادة عهدة المندوب (استلم نقداً من البنك)' },
+    { voucher_number: voucher, date, account_id: compAcc,  debit: 0, credit: tx.amount,
+      description: 'سحب بنكي — الشركة استلمت من البنك عبر المندوب' },
   ];
 }
 
@@ -187,6 +191,37 @@ function _buildRefundSettlementEntries(tx, voucher) {
     { voucher_number: voucher, date, account_id: compAcc,  debit: 0, credit: tx.amount,
       description: 'استرداد مبلغ للشركة' },
   ];
+}
+
+// ============================================================
+// اشتقاق شركة الحساب البنكي (للإيداع/السحب)
+// يُفضّل tx.company_id إن وُجد، وإلا يُقرأ من bank_accounts.company_id.
+// يُعيد null إذا لم تكن هناك شركة مرتبطة (لا بديل عام).
+// ============================================================
+async function _resolveBankCompanyId(tx) {
+  if (tx.company_id) return tx.company_id;
+  if (!tx.bank_account_id) return null;
+
+  // محلياً أولاً (Dexie) لدعم وضع عدم الاتصال
+  try {
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      const ba = await db.bank_accounts.get(tx.bank_account_id);
+      if (ba && ba.company_id) return ba.company_id;
+    }
+  } catch { /* تجاهل ونحاول عبر الشبكة */ }
+
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabaseClient
+        .from(TABLES.BANK_ACCOUNTS)
+        .select('company_id')
+        .eq('id', tx.bank_account_id)
+        .single();
+      if (!error && data && data.company_id) return data.company_id;
+    } catch { /* تجاهل */ }
+  }
+
+  return null;
 }
 
 // ============================================================
@@ -205,14 +240,20 @@ async function buildEntries(tx) {
       case TRANSACTION_TYPES.COLLECTION:
         entries = _buildCollectionEntries(tx, await _generateVoucherNumber());
         break;
-      case TRANSACTION_TYPES.DEPOSIT:
+      case TRANSACTION_TYPES.DEPOSIT: {
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للإيداع');
-        entries = _buildDepositEntries(tx, await _generateVoucherNumber());
+        const depCompanyId = await _resolveBankCompanyId(tx);
+        if (!depCompanyId) return err('الحساب البنكي غير مرتبط بشركة — لا يمكن ترحيل الإيداع');
+        entries = _buildDepositEntries(tx, depCompanyId, await _generateVoucherNumber());
         break;
-      case TRANSACTION_TYPES.BANK_WITHDRAWAL:
+      }
+      case TRANSACTION_TYPES.BANK_WITHDRAWAL: {
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للسحب البنكي');
-        entries = _buildBankWithdrawalEntries(tx, await _generateVoucherNumber());
+        const wdCompanyId = await _resolveBankCompanyId(tx);
+        if (!wdCompanyId) return err('الحساب البنكي غير مرتبط بشركة — لا يمكن ترحيل السحب');
+        entries = _buildBankWithdrawalEntries(tx, wdCompanyId, await _generateVoucherNumber());
         break;
+      }
       case TRANSACTION_TYPES.EXPENSE:
         entries = _buildExpenseEntries(tx, await _generateVoucherNumber());
         break;
@@ -228,6 +269,9 @@ async function buildEntries(tx) {
       default:
         return err(`نوع عملية غير معروف: ${tx.type}`);
     }
+
+    // بعض دوال البناء قد تُعيد نتيجة خطأ (err) بدل مصفوفة قيود — نمرّرها كما هي
+    if (entries && entries.ok === false) return entries;
 
     const validation = validateLedger(entries);
     if (!isOk(validation)) return validation;
@@ -803,10 +847,12 @@ const AccountingService = {
   approveTransaction,
   rejectTransaction,
   getPendingApprovals,
-  createTransferFromRequest, 
+  createTransferFromRequest,
   AccountId,
   GENERAL_ACCOUNT_ID,
+  DEBTOR_SETTLEMENT_ID,
+  EXPENSE_ACCOUNT_ID,
 };
 
 window.AccountingService = AccountingService;
-console.log('✅ AccountingService.js v3.0 — السلوك الأول: القيود بين COMP و AGT فقط');
+console.log('✅ AccountingService.js v4.0 — القيود مطابقة للمرجع (إيداع: COMP←AGT، سحب: AGT←COMP، مديون: AGT←DEBTOR_SETTLEMENT، مصروف: EXP_GENERAL←AGT)');
