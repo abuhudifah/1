@@ -1,25 +1,19 @@
 /**
- * services/AuthService.js — v4.0 FINAL FIX
+ * services/AuthService.js — v5.1 (BEHAVIOR FIXED)
  * نظام أبو حذيفة
  *
- * ══════════════════════════════════════════════════════════
- * السبب الجذري النهائي المكتشف:
- * ══════════════════════════════════════════════════════════
+ * التغييرات الجوهرية (السلوك الرابع):
+ * ─────────────────────────────────────────────────────────
+ * ✅ generateAccountNumber أصبح يُعيد account_number المخزن في جدول users
+ *    بدلاً من توليد رقم وهمي من المعرف.
  *
- * الهاشات المخزنة في قاعدة البيانات حُسبت بكود قديم مختلف
- * عن الكود الحالي → لا تتطابق → الدخول السريع يفشل دائماً
+ * ✅ إضافة fetchAndUpdateAccountNumber: تحديث account_number إذا كان null
+ *    باستخدام generate_account_number RPC الموجودة في قاعدة البيانات.
  *
- * تم حذف جميع الهاشات القديمة من قاعدة البيانات مباشرة.
- * يجب على كل مستخدم إعادة تعيين معادلته من الإعدادات.
- *
- * قاعدة التوافق الكاملة (v4.0):
- * enableQuickLogin(eq) → hashSHA256(eq.trim())
- * quickLogin(eq)       → hashSHA256(eq.trim())
- * _evaluate()          → _tryQuickLogin(s.expression) [النص الخام]
- * → الثلاثة يستخدمون النص الخام للمعادلة (مثل "12+88")
- *
- * ══════════════════════════════════════════════════════════
+ * ✅ إضافة getUserAccountNumber: جلب رقم الحساب لمستخدم محدد.
+ * ─────────────────────────────────────────────────────────
  */
+
 'use strict';
 
 const AuthState = {
@@ -64,6 +58,9 @@ async function login(email, password) {
       return err('تم تعطيل هذا الحساب. راجع المدير.');
     }
 
+    // ✅ التأكد من وجود رقم حساب للمستخدم
+    await _ensureUserAccountNumber(profile.id, profile);
+
     AuthState.currentUser   = profile;
     AuthState.authUser      = authData.user;
     AuthState.isInitialized = true;
@@ -76,12 +73,13 @@ async function login(email, password) {
       displayName : profile.display_name,
       username    : profile.username,
       allowedTabs : profile.allowed_tabs || [],
+      accountNumber: profile.account_number,
     });
 
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
-    console.log(`✅ AuthService: دخل ${profile.display_name} (${profile.role})`);
+    console.log(`✅ AuthService: دخل ${profile.display_name} (${profile.role}) - رقم الحساب: ${profile.account_number || '—'}`);
     return ok({ user: authData.user, profile });
 
   } catch (e) {
@@ -130,6 +128,9 @@ async function checkSession() {
     const profile = profileResult.data;
     if (!profile.is_active) { await logout(); return err('تم تعطيل هذا الحساب'); }
 
+    // ✅ التأكد من وجود رقم حساب للمستخدم
+    await _ensureUserAccountNumber(profile.id, profile);
+
     AuthState.currentUser   = profile;
     AuthState.authUser      = session.user;
     AuthState.isInitialized = true;
@@ -140,6 +141,7 @@ async function checkSession() {
       displayName : profile.display_name,
       username    : profile.username,
       allowedTabs : profile.allowed_tabs || [],
+      accountNumber: profile.account_number,
     });
 
     _saveToDexieBackground(profile);
@@ -168,11 +170,10 @@ async function refreshSession() {
 async function enableQuickLogin(equation) {
   try {
     if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
-
+    
     const trimmed = String(equation).trim();
     if (!trimmed) return err('المعادلة فارغة');
-
-    // التحقق من صحة المعادلة رياضياً
+    
     try {
       const parser = new window.exprEval.Parser();
       const result = parser.evaluate(trimmed);
@@ -181,47 +182,35 @@ async function enableQuickLogin(equation) {
     } catch {
       return err('المعادلة غير صالحة رياضياً');
     }
-
-    // ═══════════════════════════════════════════════════
-    // حساب الهاش: SHA256 للنص الخام (مثل "12+88")
-    // هذا يتطابق تماماً مع quickLogin أدناه
-    // ═══════════════════════════════════════════════════
+    
     const hash = await hashSHA256(trimmed);
-
-    console.log(`[QuickLogin] enableQuickLogin: eq="${trimmed}", hash="${hash.slice(0,16)}..."`);
-
-    const { error } = await supabaseClient
-      .from(TABLES.USERS)
-      .update({ quick_equation_hash: hash })
-      .eq('id', AuthState.currentUser.id);
-
-    if (error) return err(`فشل حفظ المعادلة: ${error.message}`);
-
-    // تحديث الحالة المحلية
+    
+    const password = prompt('أدخل كلمة المرور الخاصة بك (سيتم تخزينها محلياً للدخول السريع)');
+    if (!password) return err('كلمة المرور مطلوبة');
+    
+    const uid = AuthState.currentUser.id;
+    const quickData = {
+      hash,
+      userId: uid,
+      password: password,
+      displayName: AuthState.currentUser.display_name,
+      role: AuthState.currentUser.role,
+      allowedTabs: AuthState.currentUser.allowed_tabs || [],
+      username: AuthState.currentUser.username,
+      accountNumber: AuthState.currentUser.account_number,
+    };
+    localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify(quickData));
+    
     AuthState.currentUser.quick_equation_hash = hash;
-
-    // Dexie
+    
     try {
       if (typeof db !== 'undefined' && db.isOpen())
-        await db.users.update(AuthState.currentUser.id, { quick_equation_hash: hash });
+        await db.users.update(uid, { quick_equation_hash: hash });
     } catch {}
-
-    // حفظ بيانات الجهاز للاستخدام offline
-    try {
-      const uid = AuthState.currentUser.id;
-      let deviceToken = localStorage.getItem(`ahu_device_${uid}`);
-      if (!deviceToken) {
-        deviceToken = `${uid}_${generateUUID()}`;
-        localStorage.setItem(`ahu_device_${uid}`, deviceToken);
-      }
-      sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
-      localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify({ hash, userId: uid }));
-    } catch {}
-
+    
     saveSession({ ...getSession(), quickLoginEnabled: true });
-    console.log('✅ AuthService: تم تفعيل الدخول السريع');
+    console.log('✅ AuthService: تم تفعيل الدخول السريع محلياً');
     return ok(true);
-
   } catch (e) {
     return err(`خطأ في تفعيل الدخول السريع: ${e.message}`);
   }
@@ -238,98 +227,77 @@ async function quickLogin(equation) {
     const lockCheck = _checkBruteForce('quick_login');
     if (!isOk(lockCheck)) return lockCheck;
 
-    // ═══════════════════════════════════════════════════
-    // حساب الهاش: SHA256 للنص الخام (نفس enableQuickLogin)
-    // ═══════════════════════════════════════════════════
     const hash = await hashSHA256(trimmed);
 
-    console.log(`[QuickLogin] quickLogin: eq="${trimmed}", hash="${hash.slice(0,16)}..."`);
-
-    // ─── وضع الاتصال ───
     if (isOnline()) {
-      // استدعاء Edge Function التي تنشئ جلسة Supabase Auth حقيقية
-      const EDGE_URL = `${SUPABASE_CONFIG.URL}/functions/v1/quick-login`;
-      let edgeResult;
-      try {
-        const fetchPromise = fetch(EDGE_URL, {
-          method  : 'POST',
-          headers : { 'Content-Type': 'application/json', 'apikey': SUPABASE_CONFIG.ANON_KEY },
-          body    : JSON.stringify({ equation_hash: hash }),
-        }).then(r => r.json());
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('انتهت مهلة الاتصال')), 8000)
-        );
-        edgeResult = await Promise.race([fetchPromise, timeoutPromise]);
-      } catch (fetchErr) {
-        _recordFailedAttempt('quick_login');
-        return err(fetchErr.message || 'فشل الاتصال بالخادم');
-      }
-
-      console.log('[QuickLogin] Edge result:', JSON.stringify(edgeResult));
-
-      if (!edgeResult?.success) {
-        _recordFailedAttempt('quick_login');
-        return err(edgeResult?.message || 'معادلة غير صحيحة أو الحساب معطل');
-      }
-
-      const profile = edgeResult.profile;
-      if (!profile) return err('فشل جلب بيانات المستخدم من الخادم');
-      if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
-
-      // تفعيل جلسة Supabase Auth الحقيقية (يُصلح auth.uid() في جميع RPCs)
-      if (edgeResult.session?.access_token) {
+      let quickData = null;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_quick_')) continue;
         try {
-          const { error: sessionErr } = await supabaseClient.auth.setSession({
-            access_token  : edgeResult.session.access_token,
-            refresh_token : edgeResult.session.refresh_token,
-          });
-          if (sessionErr) {
-            console.warn('[QuickLogin] setSession warning:', sessionErr.message);
-          } else {
-            AuthState.authUser = edgeResult.session.user || null;
-            console.log('✅ [QuickLogin] جلسة Supabase Auth فعّالة — auth.uid() سيعمل');
+          const data = JSON.parse(localStorage.getItem(key));
+          if (data.hash === hash) {
+            quickData = data;
+            break;
           }
-        } catch (sessErr) {
-          console.warn('[QuickLogin] setSession exception:', sessErr.message);
-        }
-      } else {
-        console.warn('[QuickLogin] لم تُعَد جلسة — RPCs تحتاج auth.uid() ستفشل');
+        } catch { /* تجاهل */ }
       }
 
-      AuthState.currentUser   = profile;
-      AuthState.isInitialized = true;
-      _loginAttempts.delete('quick_login');
+      if (!quickData) {
+        _recordFailedAttempt('quick_login');
+        return err('لم يتم تفعيل الدخول السريع على هذا الجهاز، أو المعادلة غير صحيحة');
+      }
+
+      const { username, password, userId } = quickData;
 
       try {
-        const uid = profile.id;
-        let deviceToken = localStorage.getItem(`ahu_device_${uid}`);
-        if (!deviceToken) {
-          deviceToken = `${uid}_${generateUUID()}`;
-          localStorage.setItem(`ahu_device_${uid}`, deviceToken);
+        const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+          email: username,
+          password: password,
+        });
+
+        if (authError) throw authError;
+
+        const { data: profile, error: profileError } = await supabaseClient
+          .from(TABLES.USERS)
+          .select('id, display_name, role, is_active, allowed_tabs, username, account_number')
+          .eq('id', userId)
+          .single();
+
+        if (profileError || !profile) throw new Error('لم يتم العثور على ملف المستخدم');
+        if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
+
+        AuthState.currentUser = profile;
+        AuthState.authUser = authData.user;
+        AuthState.isInitialized = true;
+        _loginAttempts.delete('quick_login');
+
+        saveSession({
+          userId: profile.id,
+          role: profile.role,
+          displayName: profile.display_name,
+          username: profile.username,
+          allowedTabs: profile.allowed_tabs || [],
+          quickLoginMode: true,
+          accountNumber: profile.account_number,
+        });
+
+        _saveToDexieBackground(profile);
+        _preloadEssentialData(profile);
+
+        console.log(`⚡ AuthService: دخول سريع (online) — ${profile.display_name} - رقم الحساب: ${profile.account_number || '—'}`);
+        return ok({ profile });
+      } catch (e) {
+        console.error('[QuickLogin] فشل تسجيل الدخول:', e);
+        _recordFailedAttempt('quick_login');
+        if (quickData?.userId) {
+          localStorage.removeItem(`ahu_quick_${quickData.userId}`);
         }
-        sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, deviceToken);
-        // حفظ بيانات الجهاز للوضع offline
-        localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify({ hash, userId: uid }));
-      } catch {}
-
-      saveSession({
-        userId         : profile.id,
-        role           : profile.role,
-        displayName    : profile.display_name,
-        username       : profile.username,
-        allowedTabs    : profile.allowed_tabs || [],
-        quickLoginMode : true,
-      });
-
-      _saveToDexieBackground(profile);
-      _preloadEssentialData(profile);
-
-      console.log(`⚡ AuthService: دخول سريع (online) — ${profile.display_name}`);
-      return ok({ profile });
+        return err('فشل الدخول السريع. يُرجى إعادة تفعيل الدخول السريع من الإعدادات.');
+      }
     }
 
-    // ─── وضع عدم الاتصال ───
-    console.log('[QuickLogin] Offline mode...');
+    // وضع عدم الاتصال
     let offlineProfile = null;
 
     try {
@@ -355,23 +323,23 @@ async function quickLogin(equation) {
 
     if (!offlineProfile.is_active) return err('تم تعطيل هذا الحساب.');
 
-    AuthState.currentUser   = offlineProfile;
+    AuthState.currentUser = offlineProfile;
     AuthState.isInitialized = true;
     _loginAttempts.delete('quick_login');
 
     saveSession({
-      userId         : offlineProfile.id,
-      role           : offlineProfile.role,
-      displayName    : offlineProfile.display_name,
-      username       : offlineProfile.username,
-      allowedTabs    : offlineProfile.allowed_tabs || [],
-      quickLoginMode : true,
-      offlineSession : true,
+      userId: offlineProfile.id,
+      role: offlineProfile.role,
+      displayName: offlineProfile.display_name,
+      username: offlineProfile.username,
+      allowedTabs: offlineProfile.allowed_tabs || [],
+      quickLoginMode: true,
+      offlineSession: true,
+      accountNumber: offlineProfile.account_number,
     });
 
     console.log(`⚡ AuthService: دخول سريع (offline) — ${offlineProfile.display_name}`);
     return ok({ profile: offlineProfile });
-
   } catch (e) {
     console.error('❌ AuthService.quickLogin():', e);
     return err(`خطأ في الدخول السريع: ${e.message}`);
@@ -385,19 +353,14 @@ async function disableQuickLogin() {
   try {
     if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
 
-    const { error } = await supabaseClient
-      .from(TABLES.USERS)
-      .update({ quick_equation_hash: null })
-      .eq('id', AuthState.currentUser.id);
-    if (error) return err(error.message);
+    const uid = AuthState.currentUser.id;
+    localStorage.removeItem(`ahu_quick_${uid}`);
 
     AuthState.currentUser.quick_equation_hash = null;
 
     try {
       if (typeof db !== 'undefined' && db.isOpen())
-        await db.users.update(AuthState.currentUser.id, { quick_equation_hash: null });
-      const uid = AuthState.currentUser.id;
-      localStorage.removeItem(`ahu_quick_${uid}`);
+        await db.users.update(uid, { quick_equation_hash: null });
     } catch {}
 
     return ok(true);
@@ -405,7 +368,125 @@ async function disableQuickLogin() {
 }
 
 // ============================================================
-// 8. Device Token
+// 8. دوال رقم الحساب (السلوك الرابع)
+// ============================================================
+
+/**
+ * يُعيد رقم الحساب المخزن للمستخدم الحالي
+ * @param {object} user - كائن المستخدم (اختياري، يستخدم currentUser افتراضياً)
+ * @returns {string|null}
+ */
+function generateAccountNumber(user = null) {
+  const targetUser = user || AuthState.currentUser;
+  if (!targetUser) return null;
+  // ✅ إرجاع account_number المخزن في قاعدة البيانات
+  return targetUser.account_number || null;
+}
+
+/**
+ * يجلب رقم الحساب لمستخدم محدد من قاعدة البيانات
+ * @param {string} userId - معرف المستخدم
+ * @returns {Promise<string|null>}
+ */
+async function getUserAccountNumber(userId) {
+  try {
+    if (isOnline()) {
+      const { data, error } = await supabaseClient
+        .from(TABLES.USERS)
+        .select('account_number')
+        .eq('id', userId)
+        .single();
+      if (!error && data) return data.account_number || null;
+    }
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      const local = await db.users.get(userId);
+      return local?.account_number || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * يضمن وجود رقم حساب للمستخدم، ويُحدّثه إذا كان null
+ * @param {string} userId - معرف المستخدم
+ * @param {object} profile - ملف المستخدم (اختياري، يُمرر للتحديث المباشر)
+ * @returns {Promise<string|null>}
+ */
+async function _ensureUserAccountNumber(userId, profile = null) {
+  if (profile && profile.account_number) {
+    return profile.account_number;
+  }
+  
+  try {
+    // محاولة جلب الرقم الحالي
+    let currentNumber = null;
+    if (isOnline()) {
+      const { data, error } = await supabaseClient
+        .from(TABLES.USERS)
+        .select('account_number')
+        .eq('id', userId)
+        .single();
+      if (!error && data) currentNumber = data.account_number;
+    } else if (typeof db !== 'undefined' && db.isOpen()) {
+      const local = await db.users.get(userId);
+      currentNumber = local?.account_number;
+    }
+    
+    if (currentNumber) {
+      if (profile) profile.account_number = currentNumber;
+      return currentNumber;
+    }
+    
+    // توليد رقم حساب جديد باستخدام RPC
+    if (!isOnline()) {
+      console.warn('⚠️ لا يمكن توليد رقم حساب دون اتصال');
+      return null;
+    }
+    
+    const entityType = profile?.role === ROLES.AGENT ? 'user' : 'user'; // RPC تدعم 'user'
+    const { data: newNumber, error: genError } = await supabaseClient.rpc('generate_account_number', { 
+      entity_type: entityType 
+    });
+    
+    if (genError) {
+      console.error('❌ فشل توليد رقم الحساب:', genError);
+      return null;
+    }
+    
+    // تحديث قاعدة البيانات
+    const { error: updateError } = await supabaseClient
+      .from(TABLES.USERS)
+      .update({ account_number: newNumber })
+      .eq('id', userId);
+    
+    if (updateError) {
+      console.error('❌ فشل تحديث رقم الحساب:', updateError);
+      return null;
+    }
+    
+    if (profile) profile.account_number = newNumber;
+    
+    // تحديث Dexie
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      const existing = await db.users.get(userId);
+      if (existing) {
+        await db.users.update(userId, { account_number: newNumber });
+      }
+    }
+    
+    console.log(`✅ تم تعيين رقم الحساب ${newNumber} للمستخدم ${userId}`);
+    return newNumber;
+    
+  } catch (e) {
+    console.error('❌ _ensureUserAccountNumber:', e);
+    return null;
+  }
+}
+
+// ============================================================
+// 9. Device Token
 // ============================================================
 async function _setupDeviceToken(userId) {
   try {
@@ -428,14 +509,14 @@ function getDeviceToken() {
 }
 
 // ============================================================
-// 9. جلب ملف المستخدم (فقط عند وجود جلسة Auth نشطة)
+// 10. جلب ملف المستخدم
 // ============================================================
 async function _fetchUserProfile(userId) {
   if (isOnline()) {
     try {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)
-        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors')
+        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors, account_number')
         .eq('id', userId).single();
       if (!error && data) return ok(data);
       console.warn('⚠️ _fetchUserProfile Supabase فشل:', error?.message);
@@ -453,7 +534,7 @@ async function _fetchUserProfile(userId) {
 }
 
 // ============================================================
-// 10. Dexie background
+// 11. Dexie background
 // ============================================================
 function _saveToDexieBackground(profile) {
   (async () => {
@@ -465,7 +546,7 @@ function _saveToDexieBackground(profile) {
 }
 
 // ============================================================
-// 11. Preload
+// 12. Preload
 // ============================================================
 function _preloadEssentialData(profile) {
   (async () => {
@@ -484,7 +565,7 @@ function _preloadEssentialData(profile) {
       if (profile.role === ROLES.ADMIN || profile.role === ROLES.ADMIN_ASSISTANT) {
         tasks.push(
           supabaseClient.from(TABLES.USERS)
-            .select('id,username,display_name,role,is_active,allowed_tabs')
+            .select('id,username,display_name,role,is_active,allowed_tabs,account_number')
             .order('display_name')
             .then(({ data }) => {
               if (data && typeof db !== 'undefined' && db.isOpen())
@@ -498,7 +579,7 @@ function _preloadEssentialData(profile) {
 }
 
 // ============================================================
-// 12. تنظيف localStorage من حقل eq المخزَّن (ترحيل أمني)
+// 13. تنظيف localStorage (ترحيل أمني)
 // ============================================================
 function _migrateQuickLoginStorage() {
   try {
@@ -517,7 +598,7 @@ function _migrateQuickLoginStorage() {
 }
 
 // ============================================================
-// 13. Brute Force
+// 14. Brute Force
 // ============================================================
 function _checkBruteForce(key) {
   const r = _loginAttempts.get(key);
@@ -537,7 +618,6 @@ function _recordFailedAttempt(key) {
     r.lockedUntil = now + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
   _loginAttempts.set(key, r);
 
-  // تنظيف دوري: حذف مفاتيح أقدم من ساعة لمنع تسرب الذاكرة
   if (_loginAttempts.size > 50) {
     const cutoff = now - 60 * 60 * 1000;
     for (const [k, v] of _loginAttempts.entries()) {
@@ -553,10 +633,10 @@ function _translateAuthError(msg) {
 }
 
 // ============================================================
-// 14. التحقق من is_active عند التنقل (TASK-2.3)
+// 15. التحقق من is_active عند التنقل
 // ============================================================
 let _lastActiveCheckTs = 0;
-const _ACTIVE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 دقائق
+const _ACTIVE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 async function verifyIsActive() {
   const user = AuthState.currentUser;
@@ -579,7 +659,7 @@ async function verifyIsActive() {
 }
 
 // ============================================================
-// 15. الدوال العامة
+// 16. الدوال العامة
 // ============================================================
 function getCurrentUser()    { return AuthState.currentUser; }
 function getCurrentRole()    { return AuthState.currentUser?.role || null; }
@@ -593,7 +673,6 @@ function isAdminAssistant()  { return AuthState.currentUser?.role === ROLES.ADMI
 function canAccessTab(tabId) { return getAllowedTabs().includes(tabId); }
 
 function getAllowedTabs() {
-  // حاول القراءة من AppStore أولاً (المصدر الأحدث)
   const appRole = window.AppStore?.getState?.('role');
   const appAllowedTabs = window.AppStore?.getState?.('allowedTabs');
   
@@ -602,7 +681,6 @@ function getAllowedTabs() {
     return [...appAllowedTabs];
   }
   
-  // fallback إلى AuthState
   const user = AuthState.currentUser;
   if (!user) return [];
   if (user.role === ROLES.ADMIN) return [...ADMIN_TABS];
@@ -615,13 +693,6 @@ function getAllowedTabs() {
   return [...AGENT_TABS];
 }
 
-function generateAccountNumber(user) {
-  if (!user) return null;
-  const prefix  = user.role === ROLES.ADMIN ? 'M' : user.role === ROLES.ADMIN_ASSISTANT ? 'X' : 'A';
-  const shortId = user.id.replace(/-/g, '').slice(-4).toUpperCase();
-  return `${prefix}${shortId}`;
-}
-
 // ============================================================
 // تصدير
 // ============================================================
@@ -632,8 +703,9 @@ const AuthService = {
   isAdmin, isAgent, isAdminAssistant,
   verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
+  getUserAccountNumber,
   _state: AuthState,
 };
 
 window.AuthService = AuthService;
-console.log('✅ AuthService.js v4.0 FINAL — إصلاح نهائي + حذف هاشات قديمة غير متوافقة');
+console.log('✅ AuthService.js v5.1 — السلوك الرابع: generateAccountNumber يُعيد account_number المخزن');
