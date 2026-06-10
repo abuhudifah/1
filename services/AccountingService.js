@@ -1,24 +1,23 @@
 /**
- * services/AccountingService.js — v1.1 (FIXED)
+ * services/AccountingService.js — v3.0 (BEHAVIOR FIXED)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * الإصلاحات:
- * ✅ FIX-5a: استبدال 'CASH_GENERAL' المجهول بـ 'GENERAL_FUND' الموجود فعلاً
- *    في DEFAULT_CHART الخاص بـ AccountManagementComponent.
- *    CASH_GENERAL لا يُنشأ تلقائياً في account_balances، مما كان يُفشل
- *    القيود المحاسبية عند التحصيل العام بدون شركة أو عميل مديون.
+ * التغييرات الجوهرية (السلوك الأول):
+ * ─────────────────────────────────────────────────────────
+ * ✅ الإيداع البنكي: القيد بين COMP (دائن) و AGT (مدين) فقط.
+ *    الحساب البنكي ليس له دور في القيد المحاسبي، بل يبقى كوسم في transaction.
  *
- *    قبل الإصلاح:
- *      { account_id: 'CASH_GENERAL', ... } ← قد لا يوجد في الجدول
- *    بعد الإصلاح:
- *      { account_id: 'GENERAL_FUND', ... } ← موجود في DEFAULT_CHART
+ * ✅ السحب البنكي: القيد بين COMP (مدين) و AGT (دائن) فقط.
+ *    الحساب البنكي ليس له دور في القيد المحاسبي.
+ *
+ * ✅ الحساب العام (GENERAL_FUND) يستخدم فقط عند عدم وجود شركة مرتبطة.
+ * ─────────────────────────────────────────────────────────
  */
 
 'use strict';
 
 // ============================================================
 // الحساب العام المُستخدَم كطرف ثانٍ في القيود العامة
-// FIX-5a: توحيد اسم الحساب العام — كان 'CASH_GENERAL' الذي لا يُنشأ تلقائياً
 // ============================================================
 const GENERAL_ACCOUNT_ID = 'GENERAL_FUND';
 
@@ -33,7 +32,6 @@ async function _generateVoucherNumber() {
       if (!error && data) return data;
     } catch {}
   }
-  // Fallback offline: timestamp فريد لكل جلسة
   const today = getCurrentSaudiDate().replace(/-/g, '');
   return `V${today}-LOCAL-${Date.now()}`;
 }
@@ -71,7 +69,6 @@ function _buildCollectionEntries(tx, voucher) {
     );
   } else if (tx.customer_id) {
     const custAcc = AccountId.customer(tx.customer_id);
-    // BR-001: تحصيل من مدين = صندوق المندوب يرتفع (DR) + ذمة المدين تنخفض (CR)
     entries.push(
       { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
         description: `تحصيل من مدين: ${tx.customer_name || tx.customer_id}` },
@@ -79,8 +76,6 @@ function _buildCollectionEntries(tx, voucher) {
         description: `تخفيض دين العميل: ${tx.customer_name || tx.customer_id}` }
     );
   } else {
-    // FIX-5a: كان account_id: 'CASH_GENERAL' ← غير موجود في account_balances
-    //         الآن: GENERAL_FUND الموجود في DEFAULT_CHART
     entries.push(
       { voucher_number: voucher, date, account_id: agentAcc,         debit: tx.amount, credit: 0,
         description: `تحصيل نقدي${tx.customer_name ? ' من: ' + tx.customer_name : ''}` },
@@ -92,17 +87,21 @@ function _buildCollectionEntries(tx, voucher) {
   return entries;
 }
 
+// ✅ السلوك الأول: الإيداع البنكي — قيد بين COMP (دائن) و AGT (مدين) فقط
 function _buildDepositEntries(tx, voucher) {
-  // قيد بسيط ومتوازن: البنك يستلم ← المندوب يُسوَّى
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
-  const bankAcc  = AccountId.bank(tx.bank_account_id);
+  
+  // تحديد الحساب الدائن: الشركة إن وُجدت، وإلا الحساب العام
+  const creditAcc = tx.company_id 
+    ? AccountId.company(tx.company_id) 
+    : GENERAL_ACCOUNT_ID;
 
   return [
-    { voucher_number: voucher, date, account_id: bankAcc,  debit: tx.amount, credit: 0,
-      description: 'إيداع بنكي — زيادة رصيد البنك' },
-    { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
-      description: 'إيداع بنكي — تسوية عهدة المندوب' },
+    { voucher_number: voucher, date, account_id: agentAcc, debit: tx.amount, credit: 0,
+      description: 'إيداع بنكي — إخلاء عهدة المندوب' },
+    { voucher_number: voucher, date, account_id: creditAcc, debit: 0, credit: tx.amount,
+      description: 'إيداع بنكي — استلام الشركة' },
   ];
 }
 
@@ -126,8 +125,6 @@ function _buildReceiptEntries(tx, voucher) {
     ? AccountId.agent(tx.from_agent_id)
     : (tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID);
 
-  // Fix #11: RECEIPT في حالة انتظار → SUSP_ بدلاً من صندوق المندوب مباشرة
-  // عند الموافقة يُنفَّذ: DR AGT_ / CR SUSP_ (عبر approve_transaction RPC)
   if (tx.approval_status === APPROVAL_STATUS.PENDING) {
     const suspAcc = AccountId.suspense(tx.id);
     return [
@@ -138,7 +135,6 @@ function _buildReceiptEntries(tx, voucher) {
     ];
   }
 
-  // حالة عادية (approved مباشرة)
   return [
     { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id), debit: tx.amount, credit: 0,
       description: `استلام من ${tx.from_agent_id ? 'مندوب' : 'الشركة'}` },
@@ -150,7 +146,6 @@ function _buildReceiptEntries(tx, voucher) {
 function _buildDeliveryEntries(tx, voucher) {
   const date        = tx.date || getCurrentSaudiDate();
   const giverAcc    = AccountId.agent(tx.agent_id);
-  // FIX-5a: موحَّد باستخدام GENERAL_ACCOUNT_ID
   const receiverAcc = tx.to_agent_id
     ? AccountId.agent(tx.to_agent_id)
     : (tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID);
@@ -163,24 +158,27 @@ function _buildDeliveryEntries(tx, voucher) {
   ];
 }
 
+// ✅ السلوك الأول: السحب البنكي — قيد بين COMP (مدين) و AGT (دائن) فقط
 function _buildBankWithdrawalEntries(tx, voucher) {
-  // سحب من البنك: رصيد البنك يقل ← الشركة (أو الصندوق العام) تستلم
-  const date    = tx.date || getCurrentSaudiDate();
-  const bankAcc = AccountId.bank(tx.bank_account_id);
-  const compAcc = tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID;
+  const date     = tx.date || getCurrentSaudiDate();
+  const agentAcc = AccountId.agent(tx.agent_id);
+  
+  // تحديد الحساب المدين: الشركة إن وُجدت، وإلا الحساب العام
+  const debitAcc = tx.company_id 
+    ? AccountId.company(tx.company_id) 
+    : GENERAL_ACCOUNT_ID;
 
   return [
-    { voucher_number: voucher, date, account_id: bankAcc, debit: 0,         credit: tx.amount,
-      description: 'سحب بنكي — نقص رصيد البنك' },
-    { voucher_number: voucher, date, account_id: compAcc, debit: tx.amount, credit: 0,
-      description: 'سحب بنكي — استلام الشركة' },
+    { voucher_number: voucher, date, account_id: debitAcc, debit: tx.amount, credit: 0,
+      description: 'سحب بنكي — خصم من حساب الشركة' },
+    { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
+      description: 'سحب بنكي — استلام المندوب' },
   ];
 }
 
 function _buildRefundSettlementEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
-  // FIX-5a: موحَّد باستخدام GENERAL_ACCOUNT_ID
   const compAcc  = tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID;
 
   return [
@@ -254,7 +252,6 @@ async function createTransactionWithEntries(txData) {
       return err('التاريخ غير صالح');
     }
 
-    // Fix #12: RECEIPT يبدأ بحالة انتظار الموافقة إلا إذا كان المدير يسجلها مباشرة
     const isReceiptByAgent = txData.type === TRANSACTION_TYPES.RECEIPT
       && AuthService.currentUser()?.role === ROLES.AGENT;
 
@@ -289,7 +286,6 @@ async function createTransactionWithEntries(txData) {
       if (isOk(rpcResult)) {
         const realTxId = rpcResult.data?.transaction_id;
 
-        // FIX-3: التحقق من وجود db
         if (typeof db !== 'undefined' && db.isOpen()) {
           await db.transactions.put({
             ...transaction,
@@ -325,13 +321,11 @@ async function createTransactionWithEntries(txData) {
         });
       }
 
-      console.warn('⚠️  RPC فشل، الحفظ في الطابور:', rpcResult.error);
+      console.warn('⚠️ RPC فشل، الحفظ في الطابور:', rpcResult.error);
     }
 
-    // وضع عدم الاتصال أو فشل RPC
     const pendingTransaction = { ...transaction, sync_status: SYNC_STATUS.PENDING };
 
-    // FIX-3: التحقق من وجود db
     if (typeof db !== 'undefined' && db.isOpen()) {
       await db.transactions.put(pendingTransaction);
       for (const entry of enrichedEntries) {
@@ -374,7 +368,6 @@ async function createTransactionWithEntries(txData) {
 
 async function getAccountBalance(accountId) {
   try {
-    // FIX-3: التحقق من وجود db
     if (typeof db !== 'undefined' && db.isOpen()) {
       const localBalance = await getLocalAccountBalance(accountId);
       if (localBalance !== 0) return ok(localBalance);
@@ -407,7 +400,6 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
   try {
     const { page = 1, pageSize = PAGINATION_CONFIG.DEFAULT_PAGE_SIZE } = options;
 
-    // جلب الرصيد الافتتاحي مستقلاً عن الصفحة الحالية — يجب أن يكون ثابتاً لكل صفحات الفترة
     let openingBalance = 0;
     if (isOnline()) {
       const { data: balanceData, error: balanceErr } = await supabaseClient
@@ -431,16 +423,12 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
     const entries = result.data.data || [];
     const totalCount = result.data.count || entries.length;
 
-    // إجماليات الصفحة الحالية فقط (للعرض)
     let pageDebit = 0, pageCredit = 0;
     for (const entry of entries) {
       pageDebit  += parseFloat(entry.debit  || 0);
       pageCredit += parseFloat(entry.credit || 0);
     }
 
-    // الرصيد الختامي = الافتتاحي + صافي كامل الفترة (ليس الصفحة فقط)
-    // عند page=1 يكفي openingBalance + صافي الصفحة
-    // عند page>1: نحتاج مجموع ما سبق — نستخدم get_account_statement RPC إن كان متاحاً
     let closingBalance = openingBalance + pageDebit - pageCredit;
     if (isOnline() && page > 1) {
       try {
@@ -515,7 +503,6 @@ async function reverseEntries(transactionId) {
       const result = await callRPC(RPC.REVERSE_TRANSACTION, { p_transaction_id: transactionId });
       if (!isOk(result)) return result;
 
-      // FIX-3: التحقق من وجود db
       if (typeof db !== 'undefined' && db.isOpen()) {
         await db.transactions.update(transactionId, { is_reversed: true });
 
@@ -586,7 +573,6 @@ function validateLedger(entries) {
 // ============================================================
 
 async function _updateLocalBalances(entries) {
-  // FIX-3: التحقق من وجود db
   if (typeof db === 'undefined') return;
   for (const entry of entries) {
     const current = await getLocalAccountBalance(entry.account_id);
@@ -613,7 +599,6 @@ async function getDailyDepositsTotal(bankAccountId, date) {
       }
     }
 
-    // FIX-3: التحقق من وجود db
     if (typeof db === 'undefined' || !db.isOpen()) return 0;
     const local = await db.transactions
       .where('[date+type]')
@@ -641,7 +626,6 @@ async function getAgentDailySummary(agentId, date) {
         .eq('is_reversed', false);
       transactions = data || [];
     } else if (typeof db !== 'undefined' && db.isOpen()) {
-      // FIX-3: التحقق من وجود db
       transactions = await db.transactions
         .where('[date+agent_id]')
         .equals([date, agentId])
@@ -655,7 +639,6 @@ async function getAgentDailySummary(agentId, date) {
         summary[tx.type] += parseFloat(tx.amount || 0);
       }
     }
-    // Fix #18: bank_withdrawal يدخل الصندوق مثل التحصيل
     summary.net = summary.collection + summary.receipt + summary.bank_withdrawal
                 - summary.deposit - summary.expense - summary.delivery;
 
@@ -667,11 +650,7 @@ async function getAgentDailySummary(agentId, date) {
 }
 
 // ============================================================
-// تصدير
-// ============================================================
-
-// ============================================================
-// Fix #12: الموافقة على المعاملات المعلقة
+// الموافقة على المعاملات المعلقة
 // ============================================================
 
 async function approveTransaction(transactionId) {
@@ -731,6 +710,83 @@ async function getPendingApprovals() {
 }
 
 // ============================================================
+// إنشاء معاملة مالية من طلب تحويل (بعد قبوله)
+// ============================================================
+async function createTransferFromRequest(requestId) {
+  try {
+    if (!isOnline()) {
+      return err('يجب الاتصال بالإنترنت لقبول طلب التحويل');
+    }
+
+    const requestResult = await repo.getById(TABLES.TRANSFER_REQUESTS, requestId);
+    if (!isOk(requestResult) || !requestResult.data) {
+      return err('طلب التحويل غير موجود');
+    }
+    const request = requestResult.data;
+
+    if (request.status !== 'pending') {
+      return err(`لا يمكن قبول طلب بحالة ${request.status}`);
+    }
+
+    const currentUserId = AuthService.getCurrentUserId();
+    const isReceiver = (request.to_user_id === currentUserId);
+    const isAdmin = AuthService.isAdmin() || AuthService.isAdminAssistant();
+
+    if (!isReceiver && !isAdmin) {
+      return err('ليس لديك صلاحية لقبول هذا الطلب');
+    }
+
+    const txType = TRANSACTION_TYPES.RECEIPT;
+    const date = getCurrentSaudiDate();
+    const agentId = currentUserId;
+
+    const txData = {
+      type: txType,
+      amount: parseFloat(request.amount),
+      date: date,
+      agent_id: agentId,
+      from_agent_id: request.from_user_id,
+      to_agent_id: request.to_user_id,
+      company_id: request.company_id || null,
+      details: request.reason || `قبول طلب تحويل #${requestId.slice(0,8)}`,
+      approval_status: APPROVAL_STATUS.APPROVED,
+    };
+
+    const result = await createTransactionWithEntries(txData);
+    if (!isOk(result)) {
+      return err(`فشل إنشاء المعاملة: ${result.error}`);
+    }
+
+    const updateResult = await repo.update(TABLES.TRANSFER_REQUESTS, requestId, {
+      status: 'approved',
+      updated_at: new Date().toISOString(),
+    });
+    if (!isOk(updateResult)) {
+      console.warn('⚠️ تم إنشاء المعاملة ولكن فشل تحديث حالة الطلب:', updateResult.error);
+    }
+
+    const senderId = request.from_user_id;
+    if (senderId && senderId !== currentUserId) {
+      const notifData = {
+        title: 'تم قبول طلب التحويل',
+        body: `${AuthService.getCurrentUser()?.display_name || 'المستخدم'} قبل طلب تحويل مبلغ ${formatCurrency(request.amount)} إليك.`,
+        type: 'success',
+        target: [senderId],
+        sender_id: currentUserId,
+        read_by: '[]',
+        hidden_by: '[]',
+      };
+      await repo.create(TABLES.NOTIFICATIONS, notifData).catch(e => console.warn('فشل إرسال الإشعار:', e));
+    }
+
+    return ok({ transaction: result.data.transaction, request });
+  } catch (e) {
+    console.error('❌ AccountingService.createTransferFromRequest():', e);
+    return err(`خطأ: ${e.message}`);
+  }
+}
+
+// ============================================================
 // تصدير
 // ============================================================
 
@@ -747,9 +803,10 @@ const AccountingService = {
   approveTransaction,
   rejectTransaction,
   getPendingApprovals,
+  createTransferFromRequest, 
   AccountId,
   GENERAL_ACCOUNT_ID,
 };
 
 window.AccountingService = AccountingService;
-console.log('✅ AccountingService.js v2.0 — Phase C: SUSP_ accounts, approval workflow, revenue accounts');
+console.log('✅ AccountingService.js v3.0 — السلوك الأول: القيود بين COMP و AGT فقط');
