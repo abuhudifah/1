@@ -288,6 +288,12 @@ async function quickLogin(equation) {
 
       const { userId } = quickData;
 
+      // ✅ S4: فحص Brute Force الخاص بهذا المستخدم تحديداً
+      // (المفتاح العام 'quick_login' يحمي من تخمين المعادلات بمجهول)
+      // (المفتاح الخاص يحمي من استنزاف Token هذا المستخدم تحديداً)
+      const perUserLock = _checkBruteForce(`quick_login_${userId}`);
+      if (!isOk(perUserLock)) return perUserLock;
+
       try {
         // ✅ التحقق عبر Token — لا signInWithPassword، لا كلمة مرور
         const { data: tokenResult, error: tokenError } =
@@ -377,6 +383,10 @@ async function quickLogin(equation) {
       _recordFailedAttempt('quick_login');
       return err('الدخول السريع غير متاح offline.\nسجّل دخولك التقليدي مرة واحدة أولاً.');
     }
+
+    // ✅ S4: فحص Brute Force الخاص بهذا المستخدم (offline)
+    const perUserLockOffline = _checkBruteForce(`quick_login_${offlineProfile.id}`);
+    if (!isOk(perUserLockOffline)) return perUserLockOffline;
 
     if (!offlineProfile.is_active) return err('تم تعطيل هذا الحساب.');
 
