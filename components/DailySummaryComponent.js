@@ -136,6 +136,9 @@ const DailySummaryComponent = {
     openingWrap.id = 'summary-opening';
     openingWrap.className = 'glass-card-sm';
     openingWrap.style.cssText = 'margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;';
+    openingWrap.innerHTML = `
+      <div class="skeleton skeleton-text" style="width:45%;"></div>
+      <div class="skeleton skeleton-text" style="width:28%;"></div>`;
     wrap.appendChild(openingWrap);
 
     // قائمة العمليات
@@ -153,6 +156,7 @@ const DailySummaryComponent = {
     const listEl = document.createElement('div');
     listEl.id = 'summary-tx-list';
     listEl.style.minHeight = '100px';
+    listEl.innerHTML = `<div style="padding:12px 16px;">${renderSkeleton('row', 5)}</div>`;
     listCard.appendChild(listEl);
 
     const pagerEl = document.createElement('div');

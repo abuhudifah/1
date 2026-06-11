@@ -252,8 +252,19 @@ const AccountManagementComponent = {
     const el = document.getElementById('acct-chart');
     if (!el) return;
 
-    el.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:40px;">
-      <div class="spinner spinner-dark"></div></div>`;
+    el.innerHTML = `
+      <div class="glass-card" style="margin-bottom:16px;">
+        <div class="skeleton" style="height:24px;width:40%;border-radius:6px;margin-bottom:14px;"></div>
+        ${renderSkeleton('row', 3)}
+      </div>
+      <div class="glass-card" style="margin-bottom:16px;">
+        <div class="skeleton" style="height:24px;width:55%;border-radius:6px;margin-bottom:14px;"></div>
+        ${renderSkeleton('row', 4)}
+      </div>
+      <div class="glass-card">
+        <div class="skeleton" style="height:24px;width:35%;border-radius:6px;margin-bottom:14px;"></div>
+        ${renderSkeleton('row', 2)}
+      </div>`;
 
     // ✅ يُبنى الدليل محلياً من account_balances + الكيانات (أداء أفضل ومطابقة للمرجع):
     //    يشمل المستخدمين والشركات وتسويات العملاء والمصروفات، ويستبعد BNK_ والحسابات القديمة.
@@ -1001,7 +1012,7 @@ const AccountManagementComponent = {
     const entriesEl = document.getElementById('stmt-entries');
     if (!summaryEl || !entriesEl) return;
     summaryEl.innerHTML = '';
-    entriesEl.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner spinner-dark"></div></div>';
+    entriesEl.innerHTML = `<div style="padding:12px 16px;">${renderSkeleton('row', 6)}</div>`;
 
     try {
       let entries = [];
@@ -1131,7 +1142,7 @@ const AccountManagementComponent = {
     const entriesEl = document.getElementById('stmt-entries');
     if (!summaryEl || !entriesEl) return;
     summaryEl.innerHTML = '';
-    entriesEl.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner spinner-dark"></div></div>';
+    entriesEl.innerHTML = `<div style="padding:12px 16px;">${renderSkeleton('row', 6)}</div>`;
 
     try {
       let txns = [];

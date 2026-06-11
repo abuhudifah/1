@@ -943,6 +943,31 @@ Object.assign(window, {
 console.log('✅ helpers.js محمّل — جميع الدوال المساعدة جاهزة');
 
 // ============================================================
+// Skeleton States — دالة مساعدة لعرض حالة التحميل الهيكلية
+// ============================================================
+
+/**
+ * يُولّد HTML لـ Skeleton placeholders متطابقة مع شكل المحتوى الحقيقي.
+ * @param {'card'|'row'|'text'} type - شكل الـ skeleton
+ * @param {number} [count=3] - عدد العناصر
+ * @returns {string} HTML string
+ */
+function renderSkeleton(type, count = 3) {
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    if (type === 'card') {
+      html += '<div class="skeleton skeleton-card"></div>';
+    } else if (type === 'row') {
+      html += '<div class="skeleton skeleton-row"></div>';
+    } else if (type === 'text') {
+      html += '<div class="skeleton skeleton-text"></div>';
+    }
+  }
+  return html;
+}
+window.renderSkeleton = renderSkeleton;;
+
+// ============================================================
 // TASK-6.2: مُلقِّط الأخطاء غير المعالجة
 // ============================================================
 
