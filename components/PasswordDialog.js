@@ -259,6 +259,7 @@ const PasswordDialog = {
             autocomplete="current-password"
             placeholder="••••••••"
             aria-label="كلمة المرور"
+            aria-describedby="pw-error-msg"
           />
           <button
             class="pw-toggle-btn"
@@ -274,8 +275,8 @@ const PasswordDialog = {
         <div class="pw-error" id="pw-error-msg" role="alert"></div>
 
         <div class="pw-actions">
-          <button class="pw-btn-confirm" id="pw-btn-confirm">${_pwEsc(confirmLabel)}</button>
-          <button class="pw-btn-cancel"  id="pw-btn-cancel">إلغاء</button>
+          <button class="pw-btn-confirm" id="pw-btn-confirm" aria-label="${_pwEsc(confirmLabel)}">${_pwEsc(confirmLabel)}</button>
+          <button class="pw-btn-cancel"  id="pw-btn-cancel"  aria-label="إلغاء">إلغاء</button>
         </div>
       </div>
     `;

@@ -288,6 +288,7 @@ function _buildHeader() {
   notifBtn.id        = 'notif-btn';
   notifBtn.className = 'header-action-btn' + (AuthService.canAccessTab(TABS.NOTIFICATIONS) ? '' : ' header-action-btn--hidden');
   notifBtn.title     = 'الإشعارات';
+  notifBtn.setAttribute('aria-label', 'الإشعارات');
   notifBtn.innerHTML = `
     <div class="header-action-icon">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -308,6 +309,7 @@ function _buildHeader() {
   themeBtn.id        = 'theme-toggle-btn';
   themeBtn.className = 'header-action-btn';
   themeBtn.title     = 'تبديل المظهر';
+  themeBtn.setAttribute('aria-label', isDarkNow ? 'التبديل إلى الوضع الفاتح' : 'التبديل إلى الوضع الليلي');
   themeBtn.innerHTML = `
     <div class="header-action-icon">${_themeIcon(isDarkNow)}</div>
     <span class="header-action-label">${isDarkNow ? 'الوضع الفاتح' : 'الوضع الليلي'}</span>`;
@@ -326,6 +328,7 @@ function _buildHeader() {
   const logoutBtn = document.createElement('button');
   logoutBtn.className = 'header-action-btn header-action-btn--logout';
   logoutBtn.title     = 'تسجيل الخروج';
+  logoutBtn.setAttribute('aria-label', 'تسجيل الخروج');
   logoutBtn.innerHTML = `
     <div class="header-action-icon">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -361,6 +364,7 @@ function _buildHeader() {
   syncBtn.id        = 'sync-indicator';
   syncBtn.className = 'header-sync-pill';
   syncBtn.title     = 'انقر للمزامنة اليدوية';
+  syncBtn.setAttribute('aria-label', 'مزامنة يدوية');
   syncBtn.innerHTML = `
     <div id="sync-dot" class="sync-dot synced"></div>
     <span id="sync-label" class="sync-label">مزامنة</span>

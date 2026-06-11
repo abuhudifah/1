@@ -120,7 +120,7 @@ const LocalOperationsService = {
       if (e.name === 'ConstraintError') {
         return err('العملية موجودة بالفعل في قاعدة البيانات المحلية');
       }
-      return err('فشل حفظ العملية محلياً: ' + e.message);
+      return err(formatErrorMessage(e));
     }
   },
 
@@ -143,7 +143,7 @@ const LocalOperationsService = {
 
       return ok(ops);
     } catch (e) {
-      return err('فشل جلب العمليات المحلية: ' + e.message);
+      return err(formatErrorMessage(e));
     }
   },
 
@@ -181,7 +181,7 @@ const LocalOperationsService = {
       return ok(true);
 
     } catch (e) {
-      return err('فشل حذف العملية: ' + e.message);
+      return err(formatErrorMessage(e));
     }
   },
 

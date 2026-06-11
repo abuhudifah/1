@@ -98,7 +98,7 @@ async function login(email, password) {
 
   } catch (e) {
     console.error('❌ AuthService.login():', e);
-    return err(`خطأ غير متوقع: ${e.message}`);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -169,7 +169,7 @@ async function checkSession() {
     return ok({ user: session.user, profile });
 
   } catch (e) {
-    return err(`فشل التحقق من الجلسة: ${e.message}`);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -179,9 +179,9 @@ async function checkSession() {
 async function refreshSession() {
   try {
     const { data, error } = await supabaseClient.auth.refreshSession();
-    if (error) return err(error.message);
+    if (error) return err(formatErrorMessage(error));
     return ok(data.session);
-  } catch (e) { return err(e.message); }
+  } catch (e) { return err(formatErrorMessage(e)); }
 }
 
 // ============================================================
@@ -266,7 +266,7 @@ async function enableQuickLogin(equation) {
     saveSession({ ...getSession(), quickLoginEnabled: true });
     return ok(true);
   } catch (e) {
-    return err(`خطأ في تفعيل الدخول السريع: ${e.message}`);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -379,7 +379,7 @@ async function quickLogin(equation) {
           return err('انقطع الاتصال. يُرجى المحاولة مجدداً عند عودة الشبكة');
         }
         _recordFailedAttempt(`quick_login_${quickData.userId}`);
-        return err('فشل الدخول السريع: ' + e.message);
+        return err(formatErrorMessage(e));
       }
     }
 
@@ -434,7 +434,7 @@ async function quickLogin(equation) {
     return ok({ profile: offlineProfile });
   } catch (e) {
     console.error('❌ AuthService.quickLogin():', e);
-    return err(`خطأ في الدخول السريع: ${e.message}`);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -456,7 +456,7 @@ async function disableQuickLogin() {
     } catch (e) { console.warn('⚠️ [disableQuickLogin] Dexie تحديث فشل:', e.message); }
 
     return ok(true);
-  } catch (e) { return err(e.message); }
+  } catch (e) { return err(formatErrorMessage(e)); }
 }
 
 // ============================================================

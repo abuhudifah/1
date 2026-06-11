@@ -296,7 +296,7 @@ function _pinRender() {
       </div>
 
       <!-- رسائل الخطأ والمحاولات -->
-      <div class="pin-error"    id="pin-error-msg"></div>
+      <div class="pin-error"    id="pin-error-msg" role="alert" aria-live="assertive"></div>
       <div class="pin-attempts" id="pin-attempts-msg"></div>
 
       <!-- لوحة الأرقام -->
