@@ -690,7 +690,7 @@ const AccountManagementComponent = {
                 <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
                 <td style="direction:ltr;font-family:monospace;font-size:0.82rem;color:var(--accent);font-weight:600;">
                   ${escapeHtml(accountNumber)}
-                  <button class="copy-account-number-btn btn btn-secondary btn-sm" style="margin-left:6px;padding:2px 6px;font-size:0.7rem;" data-number="${escapeHtml(accountNumber)}" title="نسخ رقم الحساب">📋</button>
+                  <button class="copy-account-number-btn btn btn-secondary btn-sm" style="margin-left:6px;padding:2px 6px;font-size:0.7rem;" data-number="${escapeHtml(accountNumber)}" data-name="${escapeHtml(acc.name || acc.account_id)}" title="نسخ رقم الحساب">📋</button>
                 </td>
                 <td style="font-weight:700;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ر.س</td>
                 <td>
@@ -722,10 +722,11 @@ const AccountManagementComponent = {
         e.stopPropagation();
         const num = btn.dataset.number;
         if (!num) return;
-        if (typeof copyToClipboard !== 'undefined') {
-          copyToClipboard(num, `تم نسخ رقم الحساب: ${num}`);
+        // نسخ + (للمدير/المساعد) نافذة مشاركة كإشعار
+        if (typeof copyAccountNumberWithShare === 'function') {
+          copyAccountNumberWithShare(num, btn.dataset.name || '');
         } else {
-          navigator.clipboard.writeText(num).then(() => showToast(`تم نسخ: ${num}`, 'success'));
+          copyToClipboard(num, `تم نسخ رقم الحساب: ${num}`);
         }
       });
     });

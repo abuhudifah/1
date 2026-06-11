@@ -632,6 +632,69 @@ async function copyToClipboard(text, successMsg = 'تم النسخ إلى الح
   }
 }
 
+/**
+ * ينسخ رقم الحساب، ثم — للمدير/المساعد فقط — يعرض نافذة لمشاركته كإشعار مع مستخدم.
+ * المندوب العادي: نسخ مباشر بلا نافذة.
+ * @param {string} accountNumber - رقم الحساب
+ * @param {string} entityName - اسم الحساب/الشركة/البنك (للعنوان)
+ */
+async function copyAccountNumberWithShare(accountNumber, entityName = '') {
+  if (!accountNumber) return;
+  await copyToClipboard(accountNumber, `تم نسخ رقم الحساب: ${accountNumber}`);
+
+  const role = (typeof AuthService !== 'undefined') ? AuthService.getCurrentRole?.() : null;
+  const isManager = role === ROLES.ADMIN || role === ROLES.ADMIN_ASSISTANT;
+  if (!isManager) return; // المندوب: نسخ مباشر فقط
+
+  const myId  = (typeof AuthService !== 'undefined') ? AuthService.getCurrentUserId?.() : null;
+  const users = ((typeof AppStore !== 'undefined' ? AppStore.getState('users') : []) || [])
+    .filter(u => u.is_active !== false && u.id !== myId);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.cssText = 'display:flex;z-index:1300;';
+  const optionsHtml = users.length
+    ? users.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name || u.username || u.id)}</option>`).join('')
+    : '<option value="">لا يوجد مستخدمون</option>';
+
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+  box.style.maxWidth = '420px';
+  box.innerHTML = `
+    <div class="modal-header">
+      <h3 class="modal-title">📤 مشاركة رقم الحساب</h3>
+      <button class="modal-close" id="acc-share-close">✕</button>
+    </div>
+    <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;">
+      تم نسخ الرقم <b style="direction:ltr;">${escapeHtml(accountNumber)}</b>${entityName ? ` (${escapeHtml(entityName)})` : ''}.
+    </div>
+    <div style="font-size:0.85rem;margin-bottom:10px;">هل تريد مشاركته مع مستخدم محدد عبر إشعار داخلي؟</div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">المستخدم المستهدف</label>
+      <select id="acc-share-user" class="form-control" ${users.length ? '' : 'disabled'}>${optionsHtml}</select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <button id="acc-share-send" class="btn btn-primary" ${users.length ? '' : 'disabled'}>إرسال</button>
+      <button id="acc-share-skip" class="btn btn-secondary">تخطي</button>
+    </div>`;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  const close = () => { if (overlay.parentNode) document.body.removeChild(overlay); };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  box.querySelector('#acc-share-close').addEventListener('click', close);
+  box.querySelector('#acc-share-skip').addEventListener('click', close);
+  box.querySelector('#acc-share-send').addEventListener('click', async () => {
+    const userId = box.querySelector('#acc-share-user').value;
+    if (!userId) { close(); return; }
+    if (typeof NotificationService === 'undefined') { showToast('خدمة الإشعارات غير متوفرة', 'error'); close(); return; }
+    const res = await NotificationService.shareAccountNumber(userId, entityName, accountNumber);
+    if (isOk(res)) showToast('تم إرسال رقم الحساب كإشعار ✓', 'success');
+    else showToast(`تعذّر الإرسال: ${res.error || ''}`, 'error');
+    close();
+  });
+}
+
 // ============================================================
 // 11. مشاركة نص (واتساب / الحافظة)
 // ============================================================

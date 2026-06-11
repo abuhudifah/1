@@ -73,6 +73,8 @@ const DataEntryComponent = {
       });
       localStorage.setItem(`company_beneficiaries_${userId}`, JSON.stringify(this._companyBeneficiaries));
     }
+    // ✅ توحيد مع المخزن المركزي
+    AppStore.addBeneficiaryCompany?.({ id: companyId, name: companyName, account_number: accountNumber });
   },
 
   // ✅ حفظ بنك كمستفيد
@@ -90,6 +92,8 @@ const DataEntryComponent = {
       });
       await this._loadBeneficiaries();
     }
+    // ✅ توحيد مع المخزن المركزي
+    AppStore.addBeneficiaryBank?.({ id: bankId, name: bankName, account_number: accountNumber });
   },
 
   /* ── جلب البنوك وترتيبها ── */
@@ -690,15 +694,7 @@ const DataEntryComponent = {
 
     frag.appendChild(this._saveBtn('col-save-btn', '💾 حفظ التحصيل', async () => {
       const companyId = document.getElementById('col-company-id')?.value;
-      const saveBeneficiary = document.getElementById('col-save-beneficiary')?.checked;
-      let companyToSave = null;
-      if (saveBeneficiary && companyId) {
-        const companies = AppStore.getState('companies') || [];
-        companyToSave = companies.find(c => c.id === companyId);
-        if (companyToSave) {
-          await this._saveCompanyBeneficiary(companyToSave.id, companyToSave.name, companyToSave.account_number);
-        }
-      }
+      // الحفظ كمستفيد يتم تلقائياً بعد نجاح العملية داخل _saveCollection
       await this._saveCollection({
         mode      : colMode,
         amount    : amtInput.value,
@@ -1187,7 +1183,7 @@ const DataEntryComponent = {
     frag.appendChild(recentWrap);
 
     const refreshBeneficiariesList = () => {
-      const beneficiaries = AppStore.getState('beneficiaries') || [];
+      const beneficiaries = AppStore.getBeneficiaryUsers?.() || [];
       recentList.innerHTML = '';
       if (beneficiaries.length === 0) {
         recentList.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا يوجد مستفيدون محفوظون</span>';
@@ -1200,14 +1196,15 @@ const DataEntryComponent = {
         chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
         chip.textContent = b.display_name;
         chip.addEventListener('click', () => {
-          acctInput.value = `AGT-${b.beneficiary_id.slice(0,6)}`;
-          hiddenRecipientId.value = b.beneficiary_id;
+          acctInput.value = b.account_number || '';
+          hiddenRecipientId.value = b.id;
+          this._selectedRecipient = b;
           acctResult.style.display = '';
           acctResult.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <span style="font-weight:700;">${escapeHtml(b.display_name)}</span>
-                <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">(مندوب)</span>
+                <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;direction:ltr;">${escapeHtml(b.account_number || '—')}</span>
               </div>
               <span style="color:var(--success);font-size:0.75rem;">✓ مستفيد محفوظ</span>
             </div>`;
@@ -1219,6 +1216,7 @@ const DataEntryComponent = {
 
     refreshBeneficiariesList();
     AppStore.addEventListener('store:beneficiariesLoaded', refreshBeneficiariesList);
+    AppStore.addEventListener('store:beneficiariesChanged', refreshBeneficiariesList);
 
     const lookupRecipient = async () => {
       const num = acctInput.value.trim();
@@ -1229,7 +1227,11 @@ const DataEntryComponent = {
       const match = num.match(/AGT-([a-f0-9]+)/i) || num.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
       let searchId = match ? (match[1] || match[0]) : num;
       const users = AppStore.getState('users') || [];
-      const foundUser = users.find(u => u.id === searchId || u.id.startsWith(searchId) || (u.account_number && u.account_number === num));
+      let foundUser = users.find(u => u.id === searchId || u.id.startsWith(searchId) || (u.account_number && u.account_number === num));
+      // سقوط إلى البحث المباشر عبر AuthService (يفيد المندوب الذي لا تُحمَّل لديه قائمة المستخدمين)
+      if (!foundUser && AuthService.getUserByAccountNumber) {
+        foundUser = await AuthService.getUserByAccountNumber(num);
+      }
       if (!foundUser) {
         document.getElementById('tr-account-num-err').textContent = 'لم يتم العثور على مستخدم بهذا الرقم';
         acctResult.style.display = 'none';
@@ -1244,17 +1246,20 @@ const DataEntryComponent = {
         return;
       }
       hiddenRecipientId.value = foundUser.id;
+      this._selectedRecipient = foundUser;
       acctResult.style.display = '';
       acctResult.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
             <span style="font-weight:700;">${escapeHtml(foundUser.display_name)}</span>
+            <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;direction:ltr;">${escapeHtml(foundUser.account_number || '—')}</span>
             <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">(${ROLE_LABELS[foundUser.role] || foundUser.role})</span>
           </div>
           <span style="color:var(--success);font-size:0.75rem;">✓ تم العثور عليه</span>
         </div>`;
       document.getElementById('tr-account-num-err').textContent = '';
-      saveBeneficiaryWrap.style.display = 'block';
+      // الحفظ كمستفيد يتم تلقائياً بعد نجاح العملية — لا حاجة لخانة يدوية
+      saveBeneficiaryWrap.style.display = 'none';
     };
 
     acctLookupBtn.addEventListener('click', lookupRecipient);
@@ -1354,6 +1359,11 @@ const DataEntryComponent = {
         const newDebt = Math.max(0, parseFloat(debtorRecord.debt_amount || 0) - rounded);
         try { await repo.update(TABLES.DEBTORS, customerId, { debt_amount: newDebt }); } catch {}
       }
+      // ✅ حفظ تلقائي للشركة كمستفيد بعد أول تحصيل ناجح
+      if (mode === 'company' && companyId) {
+        const comp = (AppStore.getState('companies') || []).find(c => c.id === companyId);
+        if (comp) await this._saveCompanyBeneficiary(comp.id, comp.name, comp.account_number);
+      }
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
       await this._showResultModal({
@@ -1393,6 +1403,8 @@ const DataEntryComponent = {
     });
     restore();
     if (isOk(result)) {
+      // ✅ حفظ تلقائي للبنك كمستفيد بعد أول سحب ناجح
+      if (bank) await this._saveBankBeneficiary(bankId, bank.name, bank.account_number);
       showToast('✅ تم حفظ السحب البنكي', 'success');
       this._resetForm('wd');
       await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate() });
@@ -1436,6 +1448,8 @@ const DataEntryComponent = {
     const result = await AccountingService.createTransactionWithEntries(txData);
     restore();
     if (isOk(result)) {
+      // ✅ حفظ تلقائي للبنك كمستفيد بعد أول إيداع ناجح
+      if (bank) await this._saveBankBeneficiary(bankId, bank.name, bank.account_number);
       showToast('✅ تم حفظ الإيداع', 'success');
       this._resetForm('dep');
       const ceil = Math.round(bank?.financial_ceiling || 0);
@@ -1480,15 +1494,10 @@ const DataEntryComponent = {
     try {
       const myUserId = AuthService.getCurrentUserId();
       const myName = AuthService.getCurrentUser()?.display_name || 'مستخدم';
-      const recipient = AppStore.getState('users').find(u => u.id === recipientId);
+      const recipient = (this._selectedRecipient && this._selectedRecipient.id === recipientId)
+        ? this._selectedRecipient
+        : AppStore.getState('users').find(u => u.id === recipientId);
       const recipientName = recipient?.display_name || 'المستخدم الآخر';
-
-      if (saveBeneficiary && mode === 'transfer') {
-        const addResult = await AppStore.addBeneficiary(myUserId, recipientId);
-        if (isOk(addResult)) {
-          console.log('تم حفظ المستفيد بنجاح');
-        }
-      }
 
       const txDate = AppStore.getState('selectedDate') || getCurrentSaudiDate();
 
@@ -1551,6 +1560,13 @@ const DataEntryComponent = {
         await repo.create(TABLES.NOTIFICATIONS, notifData);
         showToast(`✅ تم إرسال طلب الأموال إلى ${recipientName}. بانتظار الموافقة.`, 'success');
       }
+
+      // ✅ حفظ تلقائي للمستخدم كمستفيد بعد أول عملية ناجحة
+      AppStore.addBeneficiaryUser?.({
+        id: recipientId,
+        display_name: recipientName,
+        account_number: recipient?.account_number || null,
+      });
 
       this._resetForm('tr');
     } catch (err) {

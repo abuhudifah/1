@@ -151,19 +151,6 @@ function _buildReceiptEntries(tx, voucher) {
   ];
 }
 
-function _buildDeliveryEntries(tx, voucher) {
-  const date = tx.date || getCurrentSaudiDate();
-
-  // تحويل بين مندوبين (مرسِل): AGT_(المستلم) مدين ← AGT_(المرسِل) دائن — بلا حساب وسيط
-  if (!tx.to_agent_id) return err('التسليم يتطلب تحديد المندوب المستلم');
-  return [
-    { voucher_number: voucher, date, account_id: AccountId.agent(tx.to_agent_id), debit: tx.amount, credit: 0,
-      description: 'استلام حوالة من مندوب' },
-    { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id),    debit: 0, credit: tx.amount,
-      description: 'تسليم حوالة إلى مندوب آخر' },
-  ];
-}
-
 // السحب البنكي — قيد بين AGT (مدين) و COMP (دائن) فقط. BNK_ وسم لا يدخل القيد.
 // companyId مُشتَقّ مسبقاً في buildEntries من tx.company_id أو bank_accounts.company_id.
 function _buildBankWithdrawalEntries(tx, companyId, voucher) {
@@ -258,9 +245,6 @@ async function buildEntries(tx) {
         break;
       case TRANSACTION_TYPES.RECEIPT:
         entries = _buildReceiptEntries(tx, await _generateVoucherNumber());
-        break;
-      case TRANSACTION_TYPES.DELIVERY:
-        entries = _buildDeliveryEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.REFUND_SETTLEMENT:
         entries = _buildRefundSettlementEntries(tx, await _generateVoucherNumber());
@@ -676,14 +660,14 @@ async function getAgentDailySummary(agentId, date) {
         .toArray();
     }
 
-    const summary = { collection: 0, deposit: 0, bank_withdrawal: 0, expense: 0, receipt: 0, delivery: 0 };
+    const summary = { collection: 0, deposit: 0, bank_withdrawal: 0, expense: 0, receipt: 0 };
     for (const tx of transactions) {
       if (Object.prototype.hasOwnProperty.call(summary, tx.type)) {
         summary[tx.type] += parseFloat(tx.amount || 0);
       }
     }
     summary.net = summary.collection + summary.receipt + summary.bank_withdrawal
-                - summary.deposit - summary.expense - summary.delivery;
+                - summary.deposit - summary.expense;
 
     return ok(summary);
 

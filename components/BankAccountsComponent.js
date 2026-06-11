@@ -236,11 +236,15 @@ const BankAccountsComponent = {
           </div>
         </div>
 
-        <!-- رقم الحساب -->
+        <!-- رقم الحساب البنكي مع زر نسخ مباشر -->
         ${bank.account_number?`
-        <div style="font-size:0.88rem;letter-spacing:0.18em;direction:ltr;
-          font-family:monospace;opacity:0.75;margin-bottom:12px;">
-          •••• •••• ${escapeHtml(bank.account_number.slice(-4))}
+        <div style="display:flex;align-items:center;gap:8px;direction:ltr;margin-bottom:12px;">
+          <span style="font-size:0.88rem;letter-spacing:0.12em;font-family:monospace;opacity:0.9;">
+            ${escapeHtml(bank.account_number)}
+          </span>
+          <button type="button" title="نسخ رقم الحساب"
+            onclick="event.stopPropagation();copyToClipboard('${escapeHtml(bank.account_number)}','تم نسخ رقم الحساب البنكي: ${escapeHtml(bank.account_number)}')"
+            style="background:rgba(255,255,255,0.18);border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;color:inherit;font-size:0.8rem;">📋</button>
         </div>`:''}
 
         <!-- رقم البطاقة -->

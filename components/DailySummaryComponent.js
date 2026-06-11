@@ -93,8 +93,7 @@ const DailySummaryComponent = {
       <option value="deposit">🏦 إيداع</option>
       <option value="bank_withdrawal">💳 سحب بنكي</option>
       <option value="expense">💸 مصروف</option>
-      <option value="receipt">📥 استلام</option>
-      <option value="delivery">📤 تسليم</option>`;
+      <option value="receipt">🔄 تحويل</option>`;
     typeSelect.addEventListener('change', () => {
       this._typeFilter = typeSelect.value;
       this._page = 1;
@@ -184,18 +183,17 @@ const DailySummaryComponent = {
     const el = document.getElementById('summary-stats');
     if (!el) return;
     const txs = AppStore.getState('transactions').filter(tx=>!tx.is_reversed);
-    const s = {collection:0,deposit:0,bank_withdrawal:0,expense:0,receipt:0,delivery:0};
+    const s = {collection:0,deposit:0,bank_withdrawal:0,expense:0,receipt:0};
     txs.forEach(tx=>{if(s.hasOwnProperty(tx.type))s[tx.type]+=parseFloat(tx.amount||0);});
     // Fix #18: bank_withdrawal يدخل الصندوق مثل التحصيل
-    const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense-s.delivery;
+    const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense;
 
     const kpis = [
       {label:'تحصيلات',  value:s.collection,     icon:'💰',cls:'kpi-success'},
       {label:'إيداعات',  value:s.deposit,         icon:'🏦',cls:'kpi-accent'},
       {label:'سحب بنكي', value:s.bank_withdrawal, icon:'💳',cls:'kpi-info'},
       {label:'مصروفات',  value:s.expense,         icon:'💸',cls:'kpi-danger'},
-      {label:'استلامات', value:s.receipt,         icon:'📥',cls:'kpi-info'},
-      {label:'تسليمات',  value:s.delivery,        icon:'📤',cls:'kpi-warning'},
+      {label:'تحويلات', value:s.receipt,         icon:'🔄',cls:'kpi-info'},
       {label:'المتبقي',  value:net,               icon:'📊',cls:net>=0?'kpi-success':'kpi-danger'},
     ];
 
@@ -381,9 +379,9 @@ const DailySummaryComponent = {
   async _shareQuickSummary() {
     const txs  = AppStore.getState('transactions').filter(t=>!t.is_reversed);
     const date = AppStore.getState('selectedDate')||getCurrentSaudiDate();
-    const s    = {collection:0,deposit:0,bank_withdrawal:0,expense:0,receipt:0,delivery:0};
+    const s    = {collection:0,deposit:0,bank_withdrawal:0,expense:0,receipt:0};
     txs.forEach(tx=>{if(s.hasOwnProperty(tx.type))s[tx.type]+=Math.round(parseFloat(tx.amount||0));});
-    const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense-s.delivery;
+    const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense;
     const agentId = AuthService.isAgent()
       ? AuthService.getCurrentUserId()
       : (AppStore.getState('selectedAgentId')||AuthService.getCurrentUserId());
@@ -399,8 +397,7 @@ const DailySummaryComponent = {
       `🏦 إيداعات:  *${s.deposit.toLocaleString('en-US')} ر.س*`,
       s.bank_withdrawal?`💳 سحب بنكي: *${s.bank_withdrawal.toLocaleString('en-US')} ر.س*`:'',
       `💸 مصروفات:  *${s.expense.toLocaleString('en-US')} ر.س*`,
-      s.receipt?`📤 استلامات: *${s.receipt.toLocaleString('en-US')} ر.س*`:'',
-      s.delivery?`📦 تسليمات:  *${s.delivery.toLocaleString('en-US')} ر.س*`:'',
+      s.receipt?`🔄 تحويلات: *${s.receipt.toLocaleString('en-US')} ر.س*`:'',
       `────────────────`,
       `💰 *المتبقي في الصندوق: ${bal>=0?'':'−'}${Math.abs(bal).toLocaleString('en-US')} ر.س*`,
       `— نظام أبو حذيفة 🔐`,
@@ -437,9 +434,9 @@ const DailySummaryComponent = {
     const txs  = AppStore.getState('transactions').filter(t=>!t.is_reversed);
     const date = AppStore.getState('selectedDate')||getCurrentSaudiDate();
     const user = AuthService.getCurrentUser();
-    const s    = {collection:0,deposit:0,bank_withdrawal:0,expense:0,receipt:0,delivery:0};
+    const s    = {collection:0,deposit:0,bank_withdrawal:0,expense:0,receipt:0};
     txs.forEach(tx=>{if(s.hasOwnProperty(tx.type))s[tx.type]+=Math.round(parseFloat(tx.amount||0));});
-    const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense-s.delivery;
+    const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense;
     const lines = [
       `📋 *تقرير مفصل — ${formatDateArabic(date)}*`,
       `👤 ${user?.display_name||''}`,
@@ -485,9 +482,9 @@ const DailySummaryComponent = {
     const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
     const user = AuthService.getCurrentUser();
     const logo = AppStore.getState('logoUrl') || '';
-    const s    = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
+    const s    = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0 };
     txs.forEach(tx => { if (s.hasOwnProperty(tx.type)) s[tx.type] += Math.round(parseFloat(tx.amount || 0)); });
-    const net   = s.collection + s.receipt + s.bank_withdrawal - s.deposit - s.expense - s.delivery;
+    const net   = s.collection + s.receipt + s.bank_withdrawal - s.deposit - s.expense;
     const total = Math.round(txs.reduce((acc, t) => acc + parseFloat(t.amount || 0), 0));
 
     const tableHTML = PrintService.buildTable(
@@ -515,8 +512,7 @@ const DailySummaryComponent = {
         { label:'🏦 الإيداعات',   value:`−${s.deposit.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
         { label:'💳 السحب البنكي', value:`+${s.bank_withdrawal.toLocaleString('en-US')} ر.س`, color:'#0284c7' },
         { label:'💸 المصروفات',   value:`−${s.expense.toLocaleString('en-US')} ر.س`,   color:'#dc2626' },
-        { label:'📤 الاستلامات',  value:`+${s.receipt.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
-        { label:'📦 التسليمات',   value:`−${s.delivery.toLocaleString('en-US')} ر.س`,  color:'#dc2626' },
+        { label:'🔄 التحويلات',  value:`${s.receipt.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
         { label:'💰 المتبقي',     value:`${net>=0?'+':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س`, color: net>=0?'#059669':'#dc2626' },
       ],
       tableHTML,

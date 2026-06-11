@@ -236,7 +236,12 @@ const ProfileSettingsComponent = {
       const user = AuthService.getCurrentUser();
       const accountNumber = user?.account_number;
       if (accountNumber) {
-        copyToClipboard(accountNumber, `تم نسخ رقم الحساب: ${accountNumber}`);
+        // نسخ + (للمدير/المساعد) نافذة مشاركة كإشعار؛ المندوب: نسخ مباشر
+        if (typeof copyAccountNumberWithShare === 'function') {
+          copyAccountNumberWithShare(accountNumber, user?.display_name || '');
+        } else {
+          copyToClipboard(accountNumber, `تم نسخ رقم الحساب: ${accountNumber}`);
+        }
       } else {
         showToast('لا يوجد رقم حساب مسجل', 'warning');
       }

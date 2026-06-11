@@ -409,7 +409,35 @@ async function getUserAccountNumber(userId) {
 }
 
 /**
- * يضمن وجود رقم حساب للمستخدم، ويُحدّثه إذا كان null
+ * يبحث عن مستخدم برقم حسابه (Supabase أولاً ثم Dexie)
+ * @param {string} accountNumber
+ * @returns {Promise<object|null>}
+ */
+async function getUserByAccountNumber(accountNumber) {
+  const num = String(accountNumber || '').trim();
+  if (!num) return null;
+  try {
+    if (isOnline()) {
+      const { data, error } = await supabaseClient
+        .from(TABLES.USERS)
+        .select('id, username, display_name, role, is_active, account_number')
+        .eq('account_number', num)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!error && data) return data;
+    }
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      const local = await db.users.where('account_number').equals(num).first().catch(() => null);
+      if (local && local.is_active !== false) return local;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * يضمن وجود رقم حساب للمستخدم, ويُحدّثه إذا كان null
  * @param {string} userId - معرف المستخدم
  * @param {object} profile - ملف المستخدم (اختياري، يُمرر للتحديث المباشر)
  * @returns {Promise<string|null>}
@@ -703,7 +731,7 @@ const AuthService = {
   isAdmin, isAgent, isAdminAssistant,
   verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
-  getUserAccountNumber,
+  getUserAccountNumber, getUserByAccountNumber,
   _state: AuthState,
 };
 
