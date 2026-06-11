@@ -29,13 +29,13 @@ const AuthState = {
 const _BF_PREFIX = 'ahu_bf_';
 function _bfRead(key) {
   try { return JSON.parse(sessionStorage.getItem(_BF_PREFIX + key) || 'null'); }
-  catch { return null; }
+  catch (e) { return null; }
 }
 function _bfWrite(key, data) {
-  try { sessionStorage.setItem(_BF_PREFIX + key, JSON.stringify(data)); } catch {}
+  try { sessionStorage.setItem(_BF_PREFIX + key, JSON.stringify(data)); } catch (e) { /* sessionStorage غير متاح */ }
 }
 function _resetAttempts(key) {
-  try { sessionStorage.removeItem(_BF_PREFIX + key); } catch {}
+  try { sessionStorage.removeItem(_BF_PREFIX + key); } catch (e) { /* sessionStorage غير متاح */ }
 }
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -199,7 +199,7 @@ async function enableQuickLogin(equation) {
       const result = parser.evaluate(trimmed);
       if (typeof result !== 'number' || !isFinite(result))
         return err('المعادلة لا تُنتج رقماً صحيحاً');
-    } catch {
+    } catch (e) {
       return err('المعادلة غير صالحة رياضياً');
     }
     
@@ -210,10 +210,10 @@ async function enableQuickLogin(equation) {
     // ✅ إنشاء Token من الخادم — لا نخزن كلمة المرور إطلاقاً
     if (!isOnline()) return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت');
 
-    // ✅ S6: التحقق من كلمة المرور قبل تفعيل الدخول السريع
+    // ✅ S6 + UX-4: التحقق من كلمة المرور مع شرح الغرض للمستخدم
     const password = await PasswordDialog.show({
       title   : 'تأكيد هويتك',
-      subtitle : 'أدخل كلمة المرور لتفعيل الدخول السريع',
+      subtitle : 'سيتم استخدام هذه المعادلة للدخول السريع مستقبلاً — حتى بدون إنترنت',
     });
     if (!password) return err('تم إلغاء تفعيل الدخول السريع');
 
@@ -298,7 +298,7 @@ async function quickLogin(equation) {
             quickData = data;
             break;
           }
-        } catch { /* تجاهل */ }
+        } catch (e) { /* تجاهل أخطاء JSON في localStorage */ }
       }
 
       if (!quickData) {
@@ -371,6 +371,13 @@ async function quickLogin(equation) {
         return ok({ profile });
       } catch (e) {
         console.error('[QuickLogin] فشل تسجيل الدخول:', e);
+        // ✅ L1: خطأ الشبكة لا يحذف بيانات الدخول السريع ولا يُسجّل محاولة فاشلة
+        const isNetworkError = e?.message?.includes('Failed to fetch')
+          || e?.message?.includes('NetworkError')
+          || e?.name === 'TypeError';
+        if (isNetworkError) {
+          return err('انقطع الاتصال. يُرجى المحاولة مجدداً عند عودة الشبكة');
+        }
         _recordFailedAttempt(`quick_login_${quickData.userId}`);
         return err('فشل الدخول السريع: ' + e.message);
       }
@@ -384,7 +391,7 @@ async function quickLogin(equation) {
         const key = localStorage.key(i);
         if (!key?.startsWith('ahu_quick_')) continue;
         let stored;
-        try { stored = JSON.parse(localStorage.getItem(key) || '{}'); } catch { continue; }
+        try { stored = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) { continue; }
         if (!stored?.userId) continue;
         // نفس منطق Online: نحسب الهاش per-userId
         const candidateHash = await hashSHA256(trimmed, stored.userId);
@@ -446,7 +453,7 @@ async function disableQuickLogin() {
     try {
       if (typeof db !== 'undefined' && db.isOpen())
         await db.users.update(uid, { quick_equation_hash: null });
-    } catch {}
+    } catch (e) { console.warn('⚠️ [disableQuickLogin] Dexie تحديث فشل:', e.message); }
 
     return ok(true);
   } catch (e) { return err(e.message); }
@@ -488,7 +495,8 @@ async function getUserAccountNumber(userId) {
       return local?.account_number || null;
     }
     return null;
-  } catch {
+  } catch (e) {
+    console.warn('⚠️ getUserAccountNumber:', e.message);
     return null;
   }
 }
@@ -540,13 +548,24 @@ async function _ensureUserAccountNumber(userId, profile = null) {
       return null;
     }
     
-    // تحديث قاعدة البيانات
+    // ✅ A1: UPDATE مشروط (فقط إذا كان الحقل لا يزال NULL) لمنع Race Condition
     const { error: updateError } = await supabaseClient
       .from(TABLES.USERS)
       .update({ account_number: newNumber })
-      .eq('id', userId);
-    
+      .eq('id', userId)
+      .is('account_number', null);
+
     if (updateError) {
+      // 23505 = Unique Violation أو PGRST116 = لا صفوف تحقق الشرط
+      // كلاهما يعني أن عملية أخرى سبقتنا وعيّنت رقماً → نجلب القيمة الحالية
+      if (updateError.code === '23505' || updateError.code === 'PGRST116') {
+        const { data: refetched } = await supabaseClient
+          .from(TABLES.USERS).select('account_number').eq('id', userId).single();
+        if (refetched?.account_number) {
+          if (profile) profile.account_number = refetched.account_number;
+          return refetched.account_number;
+        }
+      }
       console.error('❌ فشل تحديث رقم الحساب:', updateError);
       return null;
     }
@@ -581,7 +600,7 @@ async function _setupDeviceToken(userId) {
     }
     sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, dt);
     return dt;
-  } catch { return generateUUID(); }
+  } catch (e) { return generateUUID(); }
 }
 
 function getDeviceToken() {
@@ -589,7 +608,7 @@ function getDeviceToken() {
     return sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
       || localStorage.getItem(`ahu_device_${AuthState.currentUser?.id}`)
       || null;
-  } catch { return null; }
+  } catch (e) { return null; }
 }
 
 // ============================================================
@@ -613,7 +632,7 @@ async function _fetchUserProfile(userId) {
       const local = await db.users.get(userId);
       if (local) return ok(local);
     }
-  } catch {}
+  } catch (e) { console.warn('⚠️ _fetchUserProfile Dexie:', e.message); }
   return err('لم يُعثر على ملف المستخدم. تواصل مع المدير.');
 }
 
@@ -625,7 +644,7 @@ function _saveToDexieBackground(profile) {
     try {
       if (typeof db !== 'undefined' && db.isOpen())
         await db.users.put({ ...profile, sync_status: SYNC_STATUS.SYNCED });
-    } catch {}
+    } catch (e) { console.warn('⚠️ _saveToDexieBackground:', e.message); }
   })();
 }
 
@@ -658,7 +677,7 @@ function _preloadEssentialData(profile) {
         );
       }
       await Promise.allSettled(tasks);
-    } catch {}
+    } catch (e) { console.warn('⚠️ _preloadEssentialData:', e.message); }
   })();
 }
 
@@ -676,9 +695,9 @@ function _migrateQuickLoginStorage() {
           delete val.eq;
           localStorage.setItem(key, JSON.stringify(val));
         }
-      } catch {}
+      } catch (e) { /* تجاهل أخطاء JSON في مفاتيح localStorage الفردية */ }
     }
-  } catch {}
+  } catch (e) { console.warn('⚠️ _migrateQuickLoginStorage:', e.message); }
 }
 
 // ============================================================
@@ -715,7 +734,7 @@ function _translateAuthError(msg) {
 // 15. التحقق من is_active عند التنقل
 // ============================================================
 let _lastActiveCheckTs = 0;
-const _ACTIVE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const _ACTIVE_CHECK_INTERVAL_MS = 60 * 1000; // ✅ L2: 60 ثانية للكشف السريع عن تعطيل الحساب
 
 async function verifyIsActive() {
   const user = AuthState.currentUser;
@@ -732,7 +751,8 @@ async function verifyIsActive() {
     if (!error && data) AuthState.currentUser.is_active = data.is_active;
     const active = error ? user.is_active : data.is_active;
     return active ? ok(true) : err('تم تعطيل هذا الحساب');
-  } catch {
+  } catch (e) {
+    console.warn('⚠️ verifyIsActive:', e.message);
     return user.is_active ? ok(true) : err('تم تعطيل هذا الحساب');
   }
 }
@@ -766,7 +786,7 @@ function getAllowedTabs() {
   if (user.role === ROLES.ADMIN_ASSISTANT) {
     const tabs = user.allowed_tabs;
     const parsed = Array.isArray(tabs) ? tabs :
-      (typeof tabs === 'string' ? (() => { try { return JSON.parse(tabs); } catch { return []; } })() : []);
+      (typeof tabs === 'string' ? (() => { try { return JSON.parse(tabs); } catch (e) { return []; } })() : []);
     return parsed.length ? parsed : [...AGENT_TABS];
   }
   return [...AGENT_TABS];

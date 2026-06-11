@@ -212,7 +212,7 @@ function formatDateArabic(dateStr) {
       month    : 'long',
       day      : 'numeric',
     });
-  } catch {
+  } catch (e) {
     return String(dateStr);
   }
 }
@@ -234,7 +234,7 @@ function formatDateTimeArabic(dateStr) {
       hour     : '2-digit',
       minute   : '2-digit',
     });
-  } catch {
+  } catch (e) {
     return String(dateStr);
   }
 }
@@ -258,7 +258,7 @@ function timeAgo(dateStr) {
     if (hours < 24)  return `منذ ${hours} ساعة`;
     if (days  < 7)   return `منذ ${days} يوم`;
     return formatDateArabic(dateStr);
-  } catch {
+  } catch (e) {
     return '—';
   }
 }
@@ -619,7 +619,7 @@ async function copyToClipboard(text, successMsg = 'تم النسخ إلى الح
     await navigator.clipboard.writeText(String(text));
     showToast(successMsg, 'success', 2000);
     return true;
-  } catch {
+  } catch (e) {
     // fallback للمتصفحات القديمة
     try {
       const ta = document.createElement('textarea');
@@ -632,7 +632,7 @@ async function copyToClipboard(text, successMsg = 'تم النسخ إلى الح
       document.body.removeChild(ta);
       showToast(successMsg, 'success', 2000);
       return true;
-    } catch {
+    } catch (e) {
       showToast('فشل النسخ', 'error');
       return false;
     }
@@ -653,7 +653,7 @@ async function shareText(text, title = APP_CONFIG.NAME_SHORT) {
     try {
       await navigator.share({ title, text });
       return;
-    } catch { /* المستخدم أغلق نافذة المشاركة */ }
+    } catch (e) { /* المستخدم أغلق نافذة المشاركة أو رفض الإذن */ }
   }
   // fallback: نسخ للحافظة
   await copyToClipboard(text, 'تم نسخ التقرير للحافظة — يمكنك لصقه في واتساب ✓');
@@ -727,7 +727,7 @@ function getSession() {
   try {
     const raw = sessionStorage.getItem(SECURITY_CONFIG.SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }
@@ -739,7 +739,7 @@ function clearSession() {
   try {
     sessionStorage.removeItem(SECURITY_CONFIG.SESSION_KEY);
     sessionStorage.removeItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY);
-  } catch { /* تجاهل */ }
+  } catch (e) { /* sessionStorage غير متاح */ }
 }
 
 // ============================================================

@@ -200,7 +200,8 @@ const LocalOperationsService = {
         .where('sync_status')
         .equals(SYNC_STATUS.PENDING)
         .count();
-    } catch {
+    } catch (e) {
+      console.warn('⚠️ getPendingCount:', e.message);
       return 0;
     }
   },
