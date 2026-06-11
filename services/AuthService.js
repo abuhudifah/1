@@ -205,6 +205,22 @@ async function enableQuickLogin(equation) {
     // ✅ إنشاء Token من الخادم — لا نخزن كلمة المرور إطلاقاً
     if (!isOnline()) return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت');
 
+    // ✅ S6: التحقق من كلمة المرور قبل تفعيل الدخول السريع
+    const password = await PasswordDialog.show({
+      title   : 'تأكيد هويتك',
+      subtitle : 'أدخل كلمة المرور لتفعيل الدخول السريع',
+    });
+    if (!password) return err('تم إلغاء تفعيل الدخول السريع');
+
+    const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
+      email   : AuthState.currentUser.username,
+      password,
+    });
+    if (verifyError) {
+      PasswordDialog.showError('كلمة المرور غير صحيحة');
+      return err('كلمة المرور غير صحيحة. فشل تفعيل الدخول السريع');
+    }
+
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوماً
 
     const { data: token, error: tokenError } = await supabaseClient.rpc(
