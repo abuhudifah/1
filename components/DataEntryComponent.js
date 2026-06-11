@@ -28,9 +28,14 @@ const DataEntryComponent = {
 
   async render(container) {
     this._container = container;
-    container.innerHTML = '';
+    container.innerHTML = `<div style="padding:20px;">
+      <div class="skeleton skeleton-card" style="height:48px;margin-bottom:16px;"></div>
+      ${renderSkeleton('card', 1)}
+      ${renderSkeleton('row', 4)}
+    </div>`;
     await this._prepareSortedBanks();
     await this._loadBeneficiaries();
+    container.innerHTML = '';
     container.appendChild(await this._buildPage());
   },
 

@@ -863,6 +863,112 @@ textarea.form-control {
   text-align   : center;
 }
 
+/* مؤشر حالة الاتصال (Online / Offline) */
+.header-conn-pill {
+  display      : flex;
+  align-items  : center;
+  gap          : 5px;
+  border-radius: 20px;
+  padding      : 5px 10px;
+  font-size    : 0.70rem;
+  font-family  : var(--font-arabic);
+  border       : 1px solid transparent;
+  transition   : all var(--transition-fast);
+  pointer-events: none;
+}
+.header-conn-pill .conn-dot {
+  width        : 7px;
+  height       : 7px;
+  border-radius: 50%;
+  flex-shrink  : 0;
+}
+.header-conn-pill .conn-label { font-size: 0.70rem; }
+
+.conn-online {
+  background  : rgba(16,185,129,0.10);
+  border-color: rgba(16,185,129,0.25);
+  color       : #34d399;
+}
+.conn-online .conn-dot {
+  background: #10b981;
+  box-shadow: 0 0 5px rgba(16,185,129,0.6);
+  animation : connPulse 2.5s ease infinite;
+}
+.conn-offline {
+  background  : rgba(239,68,68,0.10);
+  border-color: rgba(239,68,68,0.25);
+  color       : #f87171;
+}
+.conn-offline .conn-dot {
+  background: #ef4444;
+}
+.conn-degraded {
+  background  : rgba(251,191,36,0.10);
+  border-color: rgba(251,191,36,0.25);
+  color       : #fbbf24;
+}
+.conn-degraded .conn-dot {
+  background: #f59e0b;
+}
+
+@keyframes connPulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+/* ── Sync Queue Widget (لوحة العمليات المعلقة) ── */
+.sqw-pill {
+  display      : flex;
+  align-items  : center;
+  gap          : 6px;
+  background   : rgba(245,158,11,0.12);
+  border       : 1px solid rgba(245,158,11,0.30);
+  border-radius: 20px;
+  color        : #fbbf24;
+  padding      : 5px 10px;
+  font-size    : 0.72rem;
+  font-family  : var(--font-arabic);
+  transition   : all var(--transition-fast);
+  white-space  : nowrap;
+}
+.sqw-pill--syncing {
+  background  : rgba(99,102,241,0.12);
+  border-color: rgba(99,102,241,0.30);
+  color       : #a5b4fc;
+}
+.sqw-dot {
+  width        : 7px;
+  height       : 7px;
+  border-radius: 50%;
+  background   : #fbbf24;
+  flex-shrink  : 0;
+  animation    : sqwPulse 1.4s ease-in-out infinite;
+}
+.sqw-pill--syncing .sqw-dot {
+  background: #818cf8;
+}
+@keyframes sqwPulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.sqw-btn {
+  background   : rgba(245,158,11,0.20);
+  border       : 1px solid rgba(245,158,11,0.40);
+  border-radius: 10px;
+  color        : #fbbf24;
+  font-size    : 0.65rem;
+  font-family  : var(--font-arabic);
+  padding      : 2px 8px;
+  cursor       : pointer;
+  transition   : all 0.12s;
+  line-height  : 1.6;
+}
+.sqw-btn:hover:not(:disabled) {
+  background  : rgba(245,158,11,0.35);
+  border-color: rgba(245,158,11,0.60);
+}
+.sqw-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* شارة الإشعارات */
 .notif-badge {
   position    : absolute;
@@ -1780,6 +1886,11 @@ body.dark-mode input[type="time"]        {
   animation  : shimmer 1.5s infinite;
   border-radius: 8px;
 }
+
+/* Skeleton Shapes — قابلة للتركيب مع .skeleton */
+.skeleton-text { height: 16px; margin-bottom: 8px;  border-radius: 4px; }
+.skeleton-card { height: 100px; margin-bottom: 16px; border-radius: 8px; }
+.skeleton-row  { height: 40px;  margin-bottom: 8px;  border-radius: 6px; }
 
 /* قسم بطاقة الحساب البنكي */
 .bank-card {
