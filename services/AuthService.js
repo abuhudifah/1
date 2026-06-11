@@ -201,30 +201,48 @@ async function enableQuickLogin(equation) {
     const uid  = AuthState.currentUser.id;
     const hash = await hashSHA256(trimmed, uid);
 
-    const password = prompt('أدخل كلمة المرور الخاصة بك (سيتم تخزينها محلياً للدخول السريع)');
-    if (!password) return err('كلمة المرور مطلوبة');
+    // ✅ إنشاء Token من الخادم — لا نخزن كلمة المرور إطلاقاً
+    if (!isOnline()) return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت');
 
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوماً
+
+    const { data: token, error: tokenError } = await supabaseClient.rpc(
+      'create_quick_login_token',
+      {
+        p_user_id      : uid,
+        p_equation_hash: hash,
+        p_device_id    : getDeviceToken(),
+        p_expires_at   : expiresAt.toISOString(),
+      }
+    );
+
+    if (tokenError || !token) {
+      console.error('[enableQuickLogin] فشل إنشاء Token:', tokenError);
+      return err('فشل تفعيل الدخول السريع: ' + (tokenError?.message || 'خطأ غير معروف'));
+    }
+
+    // ✅ نخزن Token فقط — بلا كلمة مرور، بلا role، بلا allowedTabs
     const quickData = {
       hash,
-      userId: uid,
-      password: password,
+      userId     : uid,
+      token,
       displayName: AuthState.currentUser.display_name,
-      role: AuthState.currentUser.role,
-      allowedTabs: AuthState.currentUser.allowed_tabs || [],
-      username: AuthState.currentUser.username,
-      accountNumber: AuthState.currentUser.account_number,
+      expiresAt  : expiresAt.toISOString(),
+      createdAt  : new Date().toISOString(),
     };
     localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify(quickData));
-    
+
     AuthState.currentUser.quick_equation_hash = hash;
-    
+
     try {
       if (typeof db !== 'undefined' && db.isOpen())
         await db.users.update(uid, { quick_equation_hash: hash });
-    } catch {}
-    
+    } catch (e) {
+      console.warn('[enableQuickLogin] تحديث Dexie فشل:', e.message);
+    }
+
     saveSession({ ...getSession(), quickLoginEnabled: true });
-    console.log('✅ AuthService: تم تفعيل الدخول السريع محلياً');
+    console.log(`✅ AuthService: تم تفعيل الدخول السريع لـ ${AuthState.currentUser.display_name}`);
     return ok(true);
   } catch (e) {
     return err(`خطأ في تفعيل الدخول السريع: ${e.message}`);
@@ -267,55 +285,58 @@ async function quickLogin(equation) {
         return err('لم يتم تفعيل الدخول السريع على هذا الجهاز، أو المعادلة غير صحيحة');
       }
 
-      const { username, password, userId } = quickData;
+      const { userId } = quickData;
 
       try {
-        const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
-          email: username,
-          password: password,
-        });
+        // ✅ التحقق عبر Token — لا signInWithPassword، لا كلمة مرور
+        const { data: tokenResult, error: tokenError } =
+          await supabaseClient.rpc('quick_login_with_token', {
+            p_token    : quickData.token,
+            p_device_id: getDeviceToken(),
+          });
 
-        if (authError) throw authError;
+        if (tokenError) throw tokenError;
 
-        const { data: profile, error: profileError } = await supabaseClient
-          .from(TABLES.USERS)
-          .select('id, display_name, role, is_active, allowed_tabs, username, account_number')
-          .eq('id', userId)
-          .single();
+        if (!tokenResult?.success) {
+          // Token منتهي الصلاحية أو غير صالح → حذف البيانات المحلية
+          localStorage.removeItem(`ahu_quick_${userId}`);
+          return err(tokenResult?.error || 'انتهت صلاحية الدخول السريع. يُرجى إعادة التفعيل');
+        }
 
-        if (profileError || !profile) throw new Error('لم يتم العثور على ملف المستخدم');
+        const profile = tokenResult.user;
         if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
 
-        AuthState.currentUser = profile;
-        AuthState.authUser = authData.user;
+        // ✅ Token Rotation: نحدّث الـ Token المخزن للاستخدام التالي
+        if (tokenResult.new_token) {
+          const updated = { ...quickData, token: tokenResult.new_token };
+          localStorage.setItem(`ahu_quick_${userId}`, JSON.stringify(updated));
+        }
+
+        AuthState.currentUser   = profile;
+        AuthState.authUser      = null; // لا Supabase JWT — نعتمد على SECURITY DEFINER RPCs
         AuthState.isInitialized = true;
-        // نمسح المفتاحين: العام ومفتاح هذا المستخدم تحديداً
         _resetAttempts('quick_login');
         _resetAttempts(`quick_login_${userId}`);
 
         saveSession({
-          userId: profile.id,
-          role: profile.role,
-          displayName: profile.display_name,
-          username: profile.username,
-          allowedTabs: profile.allowed_tabs || [],
-          quickLoginMode: true,
-          accountNumber: profile.account_number,
+          userId      : profile.id,
+          role        : profile.role,
+          displayName : profile.display_name,
+          username    : profile.username,
+          allowedTabs : profile.allowed_tabs || [],
+          quickLoginMode : true,
+          accountNumber  : profile.account_number,
         });
 
         _saveToDexieBackground(profile);
         _preloadEssentialData(profile);
 
-        console.log(`⚡ AuthService: دخول سريع (online) — ${profile.display_name} - رقم الحساب: ${profile.account_number || '—'}`);
+        console.log(`⚡ AuthService: دخول سريع (online) — ${profile.display_name}`);
         return ok({ profile });
       } catch (e) {
         console.error('[QuickLogin] فشل تسجيل الدخول:', e);
-        // نسجّل الفشل بمفتاح userId-specific لعزل قفل كل مستخدم عن الآخر
         _recordFailedAttempt(`quick_login_${quickData.userId}`);
-        if (quickData?.userId) {
-          localStorage.removeItem(`ahu_quick_${quickData.userId}`);
-        }
-        return err('فشل الدخول السريع. يُرجى إعادة تفعيل الدخول السريع من الإعدادات.');
+        return err('فشل الدخول السريع: ' + e.message);
       }
     }
 
