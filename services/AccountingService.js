@@ -127,13 +127,12 @@ function _buildExpenseEntries(tx, voucher) {
 }
 
 function _buildReceiptEntries(tx, voucher) {
-  const date      = tx.date || getCurrentSaudiDate();
-  const senderAcc = tx.from_agent_id
-    ? AccountId.agent(tx.from_agent_id)
-    : (tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID);
+  const date = tx.date || getCurrentSaudiDate();
 
+  // الاستلام المعلّق (بانتظار موافقة المدير) — يُحجز مؤقتاً ثم يُرحّل عند الموافقة
   if (tx.approval_status === APPROVAL_STATUS.PENDING) {
-    const suspAcc = AccountId.suspense(tx.id);
+    const suspAcc   = AccountId.suspense(tx.id);
+    const senderAcc = tx.from_agent_id ? AccountId.agent(tx.from_agent_id) : suspAcc;
     return [
       { voucher_number: voucher, date, account_id: suspAcc,   debit: tx.amount, credit: 0,
         description: `استلام معلق — بانتظار موافقة المدير` },
@@ -142,26 +141,26 @@ function _buildReceiptEntries(tx, voucher) {
     ];
   }
 
+  // تحويل بين مندوبين (مستلم): AGT_(المستلم) مدين ← AGT_(المرسِل) دائن — بلا حساب وسيط
+  if (!tx.from_agent_id) return err('الاستلام يتطلب تحديد المندوب المرسِل');
   return [
     { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id), debit: tx.amount, credit: 0,
-      description: `استلام من ${tx.from_agent_id ? 'مندوب' : 'الشركة'}` },
-    { voucher_number: voucher, date, account_id: senderAcc, debit: 0, credit: tx.amount,
-      description: 'تسليم إلى المندوب' },
+      description: 'استلام حوالة من مندوب' },
+    { voucher_number: voucher, date, account_id: AccountId.agent(tx.from_agent_id), debit: 0, credit: tx.amount,
+      description: 'تسليم حوالة للمندوب المستلم' },
   ];
 }
 
 function _buildDeliveryEntries(tx, voucher) {
-  const date        = tx.date || getCurrentSaudiDate();
-  const giverAcc    = AccountId.agent(tx.agent_id);
-  const receiverAcc = tx.to_agent_id
-    ? AccountId.agent(tx.to_agent_id)
-    : (tx.company_id ? AccountId.company(tx.company_id) : GENERAL_ACCOUNT_ID);
+  const date = tx.date || getCurrentSaudiDate();
 
+  // تحويل بين مندوبين (مرسِل): AGT_(المستلم) مدين ← AGT_(المرسِل) دائن — بلا حساب وسيط
+  if (!tx.to_agent_id) return err('التسليم يتطلب تحديد المندوب المستلم');
   return [
-    { voucher_number: voucher, date, account_id: receiverAcc, debit: tx.amount, credit: 0,
-      description: 'استلام من مندوب' },
-    { voucher_number: voucher, date, account_id: giverAcc,    debit: 0, credit: tx.amount,
-      description: 'تسليم إلى مندوب آخر' },
+    { voucher_number: voucher, date, account_id: AccountId.agent(tx.to_agent_id), debit: tx.amount, credit: 0,
+      description: 'استلام حوالة من مندوب' },
+    { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id),    debit: 0, credit: tx.amount,
+      description: 'تسليم حوالة إلى مندوب آخر' },
   ];
 }
 
@@ -198,7 +197,7 @@ function _buildRefundSettlementEntries(tx, voucher) {
 // يُفضّل tx.company_id إن وُجد، وإلا يُقرأ من bank_accounts.company_id.
 // يُعيد null إذا لم تكن هناك شركة مرتبطة (لا بديل عام).
 // ============================================================
-async function _resolveBankCompanyId(tx) {
+async function _resolveCompanyFromBank(tx) {
   if (tx.company_id) return tx.company_id;
   if (!tx.bank_account_id) return null;
 
@@ -242,14 +241,14 @@ async function buildEntries(tx) {
         break;
       case TRANSACTION_TYPES.DEPOSIT: {
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للإيداع');
-        const depCompanyId = await _resolveBankCompanyId(tx);
+        const depCompanyId = await _resolveCompanyFromBank(tx);
         if (!depCompanyId) return err('الحساب البنكي غير مرتبط بشركة — لا يمكن ترحيل الإيداع');
         entries = _buildDepositEntries(tx, depCompanyId, await _generateVoucherNumber());
         break;
       }
       case TRANSACTION_TYPES.BANK_WITHDRAWAL: {
         if (!tx.bank_account_id) return err('الحساب البنكي مطلوب للسحب البنكي');
-        const wdCompanyId = await _resolveBankCompanyId(tx);
+        const wdCompanyId = await _resolveCompanyFromBank(tx);
         if (!wdCompanyId) return err('الحساب البنكي غير مرتبط بشركة — لا يمكن ترحيل السحب');
         entries = _buildBankWithdrawalEntries(tx, wdCompanyId, await _generateVoucherNumber());
         break;
@@ -694,6 +693,38 @@ async function getAgentDailySummary(agentId, date) {
 }
 
 // ============================================================
+// صافي حركة عهدة المندوب ليوم محدّد — من دفتر الأستاذ مباشرة
+// (المصدر الوحيد الصحيح: يشمل التحويلات الواردة، ومطابق لـ account_balances)
+// net = Σ(مدين) − Σ(دائن) لحساب AGT_<id> في ذلك اليوم
+// ============================================================
+async function getAgentDailyLedgerNet(agentId, date) {
+  try {
+    const accId = AccountId.agent(agentId);
+    let entries = [];
+
+    if (isOnline()) {
+      const { data, error } = await supabaseClient
+        .from(TABLES.ACCOUNT_LEDGER)
+        .select('debit, credit')
+        .eq('account_id', accId)
+        .eq('date', date);
+      if (!error && data) entries = data;
+    } else if (typeof db !== 'undefined' && db.isOpen()) {
+      entries = await db.account_ledger
+        .where('account_id').equals(accId)
+        .filter(e => e.date === date)
+        .toArray();
+    }
+
+    let net = 0;
+    for (const e of entries) net += (parseFloat(e.debit) || 0) - (parseFloat(e.credit) || 0);
+    return ok(Math.round(net));
+  } catch (e) {
+    return err(`فشل حساب صافي العهدة: ${e.message}`);
+  }
+}
+
+// ============================================================
 // الموافقة على المعاملات المعلقة
 // ============================================================
 
@@ -844,6 +875,7 @@ const AccountingService = {
   validateLedger,
   getDailyDepositsTotal,
   getAgentDailySummary,
+  getAgentDailyLedgerNet,
   approveTransaction,
   rejectTransaction,
   getPendingApprovals,
