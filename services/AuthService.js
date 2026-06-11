@@ -306,6 +306,17 @@ async function quickLogin(equation) {
         const profile = tokenResult.user;
         if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
 
+        // ✅ الحصول على JWT حقيقي عبر كلمة المرور المؤقتة
+        const { data: authData, error: authError } =
+          await supabaseClient.auth.signInWithPassword({
+            email   : profile.username,
+            password: tokenResult.temp_password,
+          });
+        if (authError) {
+          console.error('[QuickLogin] فشل الدخول بكلمة المرور المؤقتة:', authError);
+          return err('فشل تسجيل الدخول السريع: ' + authError.message);
+        }
+
         // ✅ Token Rotation: نحدّث الـ Token المخزن للاستخدام التالي
         if (tokenResult.new_token) {
           const updated = { ...quickData, token: tokenResult.new_token };
@@ -313,7 +324,7 @@ async function quickLogin(equation) {
         }
 
         AuthState.currentUser   = profile;
-        AuthState.authUser      = null; // لا Supabase JWT — نعتمد على SECURITY DEFINER RPCs
+        AuthState.authUser      = authData.user; // ✅ JWT حقيقي من Supabase
         AuthState.isInitialized = true;
         _resetAttempts('quick_login');
         _resetAttempts(`quick_login_${userId}`);
