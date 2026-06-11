@@ -3018,3 +3018,80 @@ body.dark-mode .header-user-center {
   50%       { opacity: 0.5; transform: scale(0.8); }
 }
 
+/* ============================================================
+   PHASE 5 — Mobile Responsiveness Enhancements
+   تعزيزات الاستجابة للهواتف المحمولة
+   ============================================================ */
+
+/* ── 1. جداول البيانات: تمرير أفقي بدلاً من الفيضان ── */
+.table-wrapper {
+  overflow-x            : auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 640px) {
+  /* جعل data-table قابلة للتمرير أفقياً حتى بدون table-wrapper */
+  .data-table {
+    display                   : block;
+    overflow-x                : auto;
+    -webkit-overflow-scrolling: touch;
+    white-space               : nowrap;
+  }
+  .data-table tbody tr td,
+  .data-table thead tr th {
+    white-space: nowrap;
+  }
+}
+
+/* ── 2. Touch Targets: أهداف لمس مريحة (≥44px) ── */
+@media (max-width: 768px) {
+  /* حقول الإدخال */
+  .form-control {
+    min-height : 44px;
+    font-size  : 1rem; /* يمنع التكبير التلقائي على iOS */
+  }
+
+  /* الأزرار العادية */
+  .btn     { min-height: 44px; }
+  .btn-sm  { min-height: 36px; }
+
+  /* أزرار PasswordDialog */
+  .pw-btn-confirm,
+  .pw-btn-cancel  { min-height: 48px; }
+
+  /* select و textarea */
+  select, textarea {
+    min-height: 44px;
+    font-size : 1rem;
+  }
+}
+
+/* ── 3. Sync Queue Widget على الشاشات الضيقة ── */
+@media (max-width: 480px) {
+  /* إخفاء نص العدد — تبقى النقطة والزر */
+  .sqw-pill > span:not(.sqw-dot) { display: none; }
+  .sqw-pill { gap: 6px; padding: 5px 8px; }
+}
+
+@media (max-width: 399px) {
+  /* إخفاء كامل للـ widget والـ conn-pill على الشاشات الصغيرة جداً */
+  .sqw-pill         { display: none !important; }
+  .header-conn-pill { display: none; }
+
+  /* أزرار PasswordDialog تُكدَّس عمودياً */
+  .pw-actions {
+    flex-direction: column;
+  }
+  .pw-btn-cancel { order: 2; }
+  .pw-btn-confirm,
+  .pw-btn-cancel  { width: 100%; min-height: 48px; }
+}
+
+/* ── 4. حجم الخط الأدنى على الموبايل للقراءة المريحة ── */
+@media (max-width: 768px) {
+  .kpi-label    { font-size: 0.80rem; }
+  .kpi-value    { font-size: 1.15rem; }
+  .glass-card   { font-size: 0.88rem; }
+  p, li, td, th { font-size: 0.88rem; }
+}
+
