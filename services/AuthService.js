@@ -318,14 +318,13 @@ async function quickLogin(equation) {
         _resetAttempts('quick_login');
         _resetAttempts(`quick_login_${userId}`);
 
+        // role و allowedTabs لا تُخزَّن في localStorage — تُقرأ دائماً من AuthState.currentUser
         saveSession({
-          userId      : profile.id,
-          role        : profile.role,
-          displayName : profile.display_name,
-          username    : profile.username,
-          allowedTabs : profile.allowed_tabs || [],
-          quickLoginMode : true,
-          accountNumber  : profile.account_number,
+          userId        : profile.id,
+          displayName   : profile.display_name,
+          username      : profile.username,
+          quickLoginMode: true,
+          accountNumber : profile.account_number,
         });
 
         _saveToDexieBackground(profile);
@@ -374,15 +373,14 @@ async function quickLogin(equation) {
     _resetAttempts('quick_login');
     _resetAttempts(`quick_login_${offlineProfile.id}`);
 
+    // role و allowedTabs لا تُخزَّن في localStorage — تُقرأ من AuthState.currentUser (مُحمَّل من Dexie)
     saveSession({
-      userId: offlineProfile.id,
-      role: offlineProfile.role,
-      displayName: offlineProfile.display_name,
-      username: offlineProfile.username,
-      allowedTabs: offlineProfile.allowed_tabs || [],
+      userId        : offlineProfile.id,
+      displayName   : offlineProfile.display_name,
+      username      : offlineProfile.username,
       quickLoginMode: true,
       offlineSession: true,
-      accountNumber: offlineProfile.account_number,
+      accountNumber : offlineProfile.account_number,
     });
 
     console.log(`⚡ AuthService: دخول سريع (offline) — ${offlineProfile.display_name}`);
