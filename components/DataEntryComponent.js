@@ -364,25 +364,21 @@ const DataEntryComponent = {
 
     let allBanks = this._sortedBanks;
 
+    // ✅ خصوصية: مطابقة دقيقة لرقم الحساب فقط — لا تصفّح بالاسم ولا عرض للقائمة الكاملة
     const renderDropdown = (query) => {
-      const q = query.trim().toLowerCase();
+      const q = query.trim();
       dropdown.innerHTML = '';
-      
-      let matches = [];
-      if (q) {
-        matches = allBanks.filter(b => 
-          b.name?.toLowerCase().includes(q) || 
-          b.account_number?.toLowerCase().includes(q)
-        );
-      } else {
-        matches = allBanks.slice(0, 10);
-      }
+      if (!q) { dropdown.style.display = 'none'; return; }
 
-      if (matches.length === 0 && q) {
+      const matches = allBanks.filter(b => b.account_number && String(b.account_number) === q);
+
+      if (matches.length === 0) {
         const noResult = document.createElement('div');
         noResult.style.cssText = 'padding:10px 14px;color:var(--text-muted);font-size:0.82rem;';
-        noResult.textContent = 'لا توجد نتائج';
+        noResult.textContent = 'لا يوجد حساب بنكي بهذا الرقم';
         dropdown.appendChild(noResult);
+        dropdown.style.display = '';
+        return;
       }
 
       matches.forEach(bank => {
@@ -432,7 +428,7 @@ const DataEntryComponent = {
     input.id = 'col-company-search';
     input.type = 'text';
     input.className = 'form-control';
-    input.placeholder = 'ابحث برقم حساب الشركة أو الاسم';
+    input.placeholder = 'أدخل رقم حساب الشركة المُشارَك';
     input.autocomplete = 'off';
 
     const dropdown = document.createElement('div');
@@ -453,25 +449,21 @@ const DataEntryComponent = {
 
     const companies = AppStore.getState('companies') || [];
 
+    // ✅ خصوصية: مطابقة دقيقة لرقم الحساب فقط — لا تصفّح بالاسم ولا عرض للقائمة الكاملة
     const renderDropdown = (query) => {
-      const q = query.trim().toLowerCase();
+      const q = query.trim();
       dropdown.innerHTML = '';
-      
-      let matches = [];
-      if (q) {
-        matches = companies.filter(c => 
-          c.name?.toLowerCase().includes(q) || 
-          c.account_number?.toLowerCase().includes(q)
-        );
-      } else {
-        matches = companies.slice(0, 10);
-      }
+      if (!q) { dropdown.style.display = 'none'; return; }
 
-      if (matches.length === 0 && q) {
+      const matches = companies.filter(c => c.account_number && String(c.account_number) === q);
+
+      if (matches.length === 0) {
         const noResult = document.createElement('div');
         noResult.style.cssText = 'padding:10px 14px;color:var(--text-muted);font-size:0.82rem;';
-        noResult.textContent = 'لا توجد شركات تطابق البحث';
+        noResult.textContent = 'لا توجد شركة بهذا الرقم';
         dropdown.appendChild(noResult);
+        dropdown.style.display = '';
+        return;
       }
 
       matches.forEach(company => {
@@ -527,25 +519,29 @@ const DataEntryComponent = {
     
     const refreshList = () => {
       listDiv.innerHTML = '';
-      if (this._companyBeneficiaries.length === 0) {
-        listDiv.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا توجد شركات محفوظة</span>';
+      // ✅ المحفوظون فقط (لا تُعرض كل الشركات) — الخصوصية: لا وصول إلا بالرقم المُشارَك
+      const saved = AppStore.getBeneficiaryCompanies?.() || this._companyBeneficiaries || [];
+      if (saved.length === 0) {
+        listDiv.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا توجد شركات محفوظة — ابحث برقم الحساب المُشارَك</span>';
         return;
       }
-      this._companyBeneficiaries.forEach(b => {
+      saved.forEach(b => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'btn btn-secondary btn-sm';
         chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
         chip.textContent = b.name;
         chip.addEventListener('click', () => {
-          const company = AppStore.getState('companies').find(c => c.id === b.id);
-          if (company) onSelect(company);
+          const company = (AppStore.getState('companies') || []).find(c => c.id === b.id);
+          onSelect(company || b);
         });
         listDiv.appendChild(chip);
       });
     };
-    
+
     refreshList();
+    AppStore.addEventListener('store:beneficiariesChanged', refreshList);
+    AppStore.addEventListener('store:beneficiariesLoaded', refreshList);
     wrap.appendChild(listDiv);
     return wrap;
   },
@@ -565,24 +561,31 @@ const DataEntryComponent = {
     
     const refreshList = () => {
       listDiv.innerHTML = '';
-      if (this._beneficiariesCache.length === 0 && this._sortedBanks.length === 0) {
-        listDiv.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا توجد حسابات بنكية محفوظة</span>';
+      // ✅ المحفوظون فقط (لا تُعرض كل البنوك) — الخصوصية: لا وصول إلا بالرقم المُشارَك
+      const saved = AppStore.getBeneficiaryBanks?.() || [];
+      if (saved.length === 0) {
+        listDiv.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا توجد حسابات بنكية محفوظة — ابحث برقم الحساب المُشارَك</span>';
         return;
       }
-      // عرض جميع البنوك المتاحة (وليس فقط المحفوظة)
-      this._sortedBanks.slice(0, 8).forEach(bank => {
+      saved.forEach(b => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'btn btn-secondary btn-sm';
         chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
-        chip.textContent = bank.name.length > 20 ? bank.name.slice(0, 18) + '…' : bank.name;
-        chip.title = bank.account_number || '';
-        chip.addEventListener('click', () => onSelect(bank));
+        chip.textContent = b.name.length > 20 ? b.name.slice(0, 18) + '…' : b.name;
+        chip.title = b.account_number || '';
+        chip.addEventListener('click', () => {
+          // استخدام بيانات البنك الكاملة إن توفّرت (company_id/السقف) وإلا بيانات المستفيد
+          const full = (AppStore.getState('bankAccounts') || []).find(x => x.id === b.id);
+          onSelect(full || b);
+        });
         listDiv.appendChild(chip);
       });
     };
-    
+
     refreshList();
+    AppStore.addEventListener('store:beneficiariesChanged', refreshList);
+    AppStore.addEventListener('store:beneficiariesLoaded', refreshList);
     wrap.appendChild(listDiv);
     return wrap;
   },

@@ -687,7 +687,13 @@ const AccountManagementComponent = {
           const parentBadge = acc.parent_name ? `<span class="acct-parent-badge">🏢 ${escapeHtml(acc.parent_name)}</span>` : '';
           tableHtml += `
               <tr class="acct-row" data-name="${escapeHtml((acc.name || acc.account_id).toLowerCase())}">
-                <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
+                <td style="font-weight:600;">
+                  ${parentBadge}${escapeHtml(acc.name || acc.account_id)}
+                  <span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;direction:ltr;font-family:monospace;font-size:0.74rem;color:var(--accent);">
+                    ${escapeHtml(accountNumber)}
+                    <button class="copy-account-number-btn" data-number="${escapeHtml(accountNumber)}" data-name="${escapeHtml(acc.name || acc.account_id)}" title="نسخ رقم الحساب" style="background:var(--bg-hover);border:none;border-radius:5px;padding:1px 5px;font-size:0.7rem;cursor:pointer;">📋</button>
+                  </span>
+                </td>
                 <td style="direction:ltr;font-family:monospace;font-size:0.82rem;color:var(--accent);font-weight:600;">
                   ${escapeHtml(accountNumber)}
                   <button class="copy-account-number-btn btn btn-secondary btn-sm" style="margin-left:6px;padding:2px 6px;font-size:0.7rem;" data-number="${escapeHtml(accountNumber)}" data-name="${escapeHtml(acc.name || acc.account_id)}" title="نسخ رقم الحساب">📋</button>
