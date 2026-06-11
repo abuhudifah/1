@@ -22,7 +22,21 @@ const AuthState = {
   isInitialized : false,
 };
 
-const _loginAttempts = new Map();
+// ── Brute Force helpers ─────────────────────────────────────────────────────
+// مخزّنة في sessionStorage لتبقى بعد F5 وتُمسح تلقائياً عند إغلاق التبويب.
+// لا تُخزَّن في localStorage لتجنب تسرب بيانات القفل بين جلسات مختلفة.
+const _BF_PREFIX = 'ahu_bf_';
+function _bfRead(key) {
+  try { return JSON.parse(sessionStorage.getItem(_BF_PREFIX + key) || 'null'); }
+  catch { return null; }
+}
+function _bfWrite(key, data) {
+  try { sessionStorage.setItem(_BF_PREFIX + key, JSON.stringify(data)); } catch {}
+}
+function _resetAttempts(key) {
+  try { sessionStorage.removeItem(_BF_PREFIX + key); } catch {}
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 // ============================================================
 // 1. تسجيل الدخول التقليدي
@@ -44,7 +58,7 @@ async function login(email, password) {
       return err(_translateAuthError(authError.message));
     }
 
-    _loginAttempts.delete(email);
+    _resetAttempts(email);
 
     const profileResult = await _fetchUserProfile(authData.user.id);
     if (!isOk(profileResult)) {
@@ -224,6 +238,7 @@ async function quickLogin(equation) {
     const trimmed = String(equation).trim();
     if (!trimmed) return err('معادلة فارغة');
 
+    // مفتاح عام على مستوى الجهاز — نستخدمه قبل معرفة userId
     const lockCheck = _checkBruteForce('quick_login');
     if (!isOk(lockCheck)) return lockCheck;
 
@@ -270,7 +285,9 @@ async function quickLogin(equation) {
         AuthState.currentUser = profile;
         AuthState.authUser = authData.user;
         AuthState.isInitialized = true;
-        _loginAttempts.delete('quick_login');
+        // نمسح المفتاحين: العام ومفتاح هذا المستخدم تحديداً
+        _resetAttempts('quick_login');
+        _resetAttempts(`quick_login_${userId}`);
 
         saveSession({
           userId: profile.id,
@@ -289,7 +306,8 @@ async function quickLogin(equation) {
         return ok({ profile });
       } catch (e) {
         console.error('[QuickLogin] فشل تسجيل الدخول:', e);
-        _recordFailedAttempt('quick_login');
+        // نسجّل الفشل بمفتاح userId-specific لعزل قفل كل مستخدم عن الآخر
+        _recordFailedAttempt(`quick_login_${quickData.userId}`);
         if (quickData?.userId) {
           localStorage.removeItem(`ahu_quick_${quickData.userId}`);
         }
@@ -325,7 +343,8 @@ async function quickLogin(equation) {
 
     AuthState.currentUser = offlineProfile;
     AuthState.isInitialized = true;
-    _loginAttempts.delete('quick_login');
+    _resetAttempts('quick_login');
+    _resetAttempts(`quick_login_${offlineProfile.id}`);
 
     saveSession({
       userId: offlineProfile.id,
@@ -598,32 +617,27 @@ function _migrateQuickLoginStorage() {
 }
 
 // ============================================================
-// 14. Brute Force
+// 14. Brute Force — sessionStorage-backed (persistent across F5)
 // ============================================================
 function _checkBruteForce(key) {
-  const r = _loginAttempts.get(key);
+  const r = _bfRead(key);
   if (!r) return ok(true);
   if (r.lockedUntil && Date.now() < r.lockedUntil) {
     const mins = Math.ceil((r.lockedUntil - Date.now()) / 60000);
     return err(`تم قفل الحساب. حاول بعد ${mins} دقيقة`);
   }
+  // انتهت مدة القفل → نظّف تلقائياً
+  if (r.lockedUntil && Date.now() >= r.lockedUntil) _resetAttempts(key);
   return ok(true);
 }
 function _recordFailedAttempt(key) {
   const now = Date.now();
-  const r   = _loginAttempts.get(key) || { count: 0, lastAttempt: now };
+  const r   = _bfRead(key) || { count: 0, lastAttempt: now };
   r.count++;
   r.lastAttempt = now;
   if (r.count >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS)
     r.lockedUntil = now + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
-  _loginAttempts.set(key, r);
-
-  if (_loginAttempts.size > 50) {
-    const cutoff = now - 60 * 60 * 1000;
-    for (const [k, v] of _loginAttempts.entries()) {
-      if ((v.lastAttempt || 0) < cutoff) _loginAttempts.delete(k);
-    }
-  }
+  _bfWrite(key, r);
 }
 function _translateAuthError(msg) {
   if (msg.includes('Invalid login credentials')) return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
