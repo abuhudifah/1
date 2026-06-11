@@ -339,6 +339,16 @@ function _buildHeader() {
   logoutBtn.addEventListener('click', _handleLogout);
   actions.appendChild(logoutBtn);
 
+  // مؤشر حالة الاتصال (Online / Offline)
+  const connPill = document.createElement('div');
+  connPill.id        = 'conn-status-pill';
+  connPill.className = 'header-conn-pill' + (AuthState.isOffline ? ' conn-offline' : ' conn-online');
+  connPill.title     = AuthState.isOffline ? 'وضع Offline نشط' : 'متصل بالخادم';
+  connPill.innerHTML = AuthState.isOffline
+    ? `<span class="conn-dot"></span><span class="conn-label">Offline</span>`
+    : `<span class="conn-dot"></span><span class="conn-label">Online</span>`;
+  actions.appendChild(connPill);
+
   // حبة المزامنة
   const syncBtn = document.createElement('button');
   syncBtn.id        = 'sync-indicator';
@@ -653,6 +663,35 @@ function _bindStoreEvents() {
   AppStore.addEventListener('store:userCleared', () => {
     _showLoginScreen();
   });
+
+  // مؤشر الاتصال: يتحدث عند تغيير حالة الشبكة
+  window.addEventListener('app:onlineStatusChange', (e) => {
+    _updateConnStatus(e.detail?.online);
+  });
+}
+
+/** تحديث مؤشر حالة الاتصال في الهيدر */
+function _updateConnStatus(isNowOnline) {
+  const pill = document.getElementById('conn-status-pill');
+  if (!pill) return;
+
+  const wasOffline = AuthState.isOffline;
+
+  if (isNowOnline && !wasOffline) {
+    pill.className = 'header-conn-pill conn-online';
+    pill.title     = 'متصل بالخادم';
+    pill.innerHTML = `<span class="conn-dot"></span><span class="conn-label">Online</span>`;
+  } else if (!isNowOnline && !wasOffline) {
+    pill.className = 'header-conn-pill conn-degraded';
+    pill.title     = 'انقطع الاتصال بالإنترنت';
+    pill.innerHTML = `<span class="conn-dot"></span><span class="conn-label">لا اتصال</span>`;
+    showToast('انقطع الاتصال. العمليات ستُحفظ محلياً.', 'warning', 4000);
+  }
+
+  // إعادة الاتصال بعد offline → تشغيل المزامنة
+  if (isNowOnline && typeof SyncEngine !== 'undefined') {
+    SyncEngine.startAutoSync().catch(e => console.warn('[App] SyncEngine:', e.message));
+  }
 }
 
 // ============================================================

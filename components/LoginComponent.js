@@ -483,6 +483,35 @@ const _CSS = `
   body.dark-mode .lp-back-ql { color: #60a5fa; border-color: rgba(96,165,250,0.25); }
   body.dark-mode .lp-back-ql:hover { background: rgba(96,165,250,0.07); }
 
+  /* ── زر الدخول بدون إنترنت ── */
+  .lp-offline-btn {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    background: transparent;
+    border: 1px dashed rgba(148,163,184,0.35);
+    border-radius: 10px;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 150ms;
+    text-align: center;
+  }
+  .lp-offline-btn:hover {
+    background: rgba(100,116,139,0.08);
+    border-color: rgba(148,163,184,0.6);
+    color: #94a3b8;
+  }
+  body.dark-mode .lp-offline-btn {
+    color: #475569;
+    border-color: rgba(71,85,105,0.4);
+  }
+  body.dark-mode .lp-offline-btn:hover {
+    color: #64748b;
+    background: rgba(71,85,105,0.1);
+  }
+
   /* ── أزرار القائمة ── */
   .lp-menu-btn {
     position: absolute;
@@ -1017,6 +1046,13 @@ const LoginComponent = {
       card.appendChild(backBtn);
     }
 
+    // زر الدخول بدون إنترنت
+    const offlineBtn = document.createElement('button');
+    offlineBtn.className = 'lp-offline-btn';
+    offlineBtn.innerHTML = '🔌 الدخول بدون إنترنت';
+    offlineBtn.addEventListener('click', () => this._offlineLogin());
+    card.appendChild(offlineBtn);
+
     // تذييل بسيط
     const footer = document.createElement('div');
     footer.style.cssText = 'margin-top:18px;text-align:center;font-size:0.68rem;color:#94a3b8;';
@@ -1025,6 +1061,103 @@ const LoginComponent = {
 
     setTimeout(() => emailInput.focus(), 100);
     return card;
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // الدخول بدون إنترنت
+  // ─────────────────────────────────────────────────────────
+  async _offlineLogin() {
+    if (typeof OfflineAuthService === 'undefined') {
+      showToast('خدمة Offline غير محمَّلة', 'error');
+      return;
+    }
+    if (typeof db === 'undefined' || !db.isOpen()) {
+      showToast('قاعدة البيانات المحلية غير متاحة', 'error');
+      return;
+    }
+
+    // 1. اسم المستخدم أو رقم الحساب
+    const username = window.prompt('أدخل اسم المستخدم أو رقم الحساب:');
+    if (!username?.trim()) return;
+
+    // 2. البحث في Dexie
+    let user = null;
+    try {
+      user = await db.users.where('username').equalsIgnoreCase(username.trim()).first()
+          || await db.users.where('account_number').equals(username.trim()).first();
+    } catch (e) {
+      showToast('خطأ في البحث عن المستخدم: ' + e.message, 'error');
+      return;
+    }
+
+    if (!user) {
+      showToast('المستخدم غير موجود محلياً. سجّل الدخول بالإنترنت أولاً.', 'warning', 5000);
+      return;
+    }
+
+    if (!user.is_active) {
+      showToast('تم تعطيل هذا الحساب. راجع المدير.', 'error');
+      return;
+    }
+
+    // 3. التحقق من وجود جلسة Offline
+    const session = OfflineAuthService.getOfflineSession(user.id);
+
+    if (!session?.hasPin) {
+      // أول مرة: إنشاء PIN
+      if (!isOnline()) {
+        showToast('تفعيل الدخول بدون إنترنت يتطلب اتصالاً أولاً', 'warning');
+        return;
+      }
+
+      const pin = await PinDialog.showCreate({ userId: user.id });
+      if (!pin) return;
+
+      const createResult = await OfflineAuthService.createOfflineSession(user.id, pin);
+      if (!isOk(createResult)) {
+        showToast(createResult.error, 'error');
+        return;
+      }
+      showToast('تم تفعيل الدخول بدون إنترنت بنجاح', 'success');
+
+    } else {
+      // جلسة موجودة: التحقق من PIN
+      const pin = await PinDialog.show({
+        title   : 'الدخول بدون إنترنت',
+        subtitle: `مرحباً، ${user.display_name}`,
+        userId  : user.id,
+      });
+      if (!pin) return;
+
+      const verifyResult = await OfflineAuthService.verifyOfflineSession(user.id, pin);
+      if (!isOk(verifyResult)) {
+        PinDialog.showError(
+          verifyResult.error,
+          verifyResult.details?.remaining
+        );
+        return;
+      }
+    }
+
+    // 4. إعداد AuthState وتشغيل التطبيق
+    AuthState.isOffline     = true;
+    AuthState.currentUser   = user;
+    AuthState.authUser      = null;
+    AuthState.isInitialized = true;
+
+    saveSession({
+      userId       : user.id,
+      displayName  : user.display_name,
+      username     : user.username,
+      isOffline    : true,
+      accountNumber: user.account_number,
+    });
+
+    console.log(`🔌 LoginComponent: دخول Offline — ${user.display_name}`);
+
+    if (this._onSuccess) {
+      this._onSuccess(user);
+    }
   },
 
   // ─────────────────────────────────────────────────────────

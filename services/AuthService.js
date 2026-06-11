@@ -20,6 +20,7 @@ const AuthState = {
   currentUser   : null,
   authUser      : null,
   isInitialized : false,
+  isOffline     : false,   // true أثناء وضع Offline (بدون JWT)
 };
 
 // ── Brute Force helpers ─────────────────────────────────────────────────────
