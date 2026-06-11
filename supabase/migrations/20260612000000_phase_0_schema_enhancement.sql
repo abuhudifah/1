@@ -25,12 +25,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_idempotency_key
 -- إضافة عمود version للجداول الحرجة
 -- ===========================================================
 
-ALTER TABLE public.users          ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE public.accounts       ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE public.bank_accounts  ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE public.companies      ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE public.transactions   ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE public.debtors        ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE public.users           ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE public.accounts        ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE public.bank_accounts   ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE public.companies       ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE public.transactions    ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE public.debtors         ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE public.failed_deposits ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
 
 -- دالة عامة: تزيد version بمقدار 1 قبل كل UPDATE
@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS public.offline_sessions (
   pin_hash               TEXT,
   -- معرف بيانات اعتماد WebAuthn (Passkey) إن وُجدت
   webauthn_credential_id TEXT,
-  expires_at             TIMESTAMPTZ NOT NULL,
+  -- [#3] DEFAULT 90 يوماً: يسمح بإنشاء الجلسة دون تحديد تاريخ انتهاء صريح
+  expires_at             TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '90 days'),
   is_active              BOOLEAN     NOT NULL DEFAULT true,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -118,11 +119,35 @@ CREATE INDEX IF NOT EXISTS idx_offline_sessions_user_active
 -- SECTION 4: تحسين سجل التدقيق (Lightweight Smart Audit Log)
 -- ===========================================================
 
--- 4a: إضافة عمود changed_fields إلى جدول audit_logs
+-- 4a: ضمان وجود أعمدة old_value و new_value (للتوافق مع الوراء)
+-- [#2] نتحقق قبل الإضافة لأن بعض نسخ قاعدة البيانات قد تملكها بالفعل
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name   = 'audit_logs'
+      AND column_name  = 'old_value'
+  ) THEN
+    ALTER TABLE public.audit_logs ADD COLUMN old_value JSONB;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name   = 'audit_logs'
+      AND column_name  = 'new_value'
+  ) THEN
+    ALTER TABLE public.audit_logs ADD COLUMN new_value JSONB;
+  END IF;
+END;
+$$;
+
+-- 4b: إضافة عمود changed_fields (بنية البيانات الجديدة المحسّنة)
 ALTER TABLE public.audit_logs
   ADD COLUMN IF NOT EXISTS changed_fields JSONB;
 
--- 4b: استبدال دالة الـ Trigger بنسخة ذكية تسجّل الفروقات فقط
+-- 4c: استبدال دالة الـ Trigger بنسخة ذكية تسجّل الفروقات فقط
 --
 -- آلية التوفير:
 --   بدلاً من حفظ الصف كاملاً مرتين (old + new)، تقارن الدالة
@@ -130,6 +155,9 @@ ALTER TABLE public.audit_logs
 --     { "اسم_الحقل": { "old": القيمة_القديمة, "new": القيمة_الجديدة } }
 --   مثال: تعديل رصيد فقط → { "balance": { "old": 1000, "new": 800 } }
 --   توفير ~97% في حجم كل سجل مقارنة بحفظ الصف كاملاً.
+--
+-- [#1] الـ INSERT ملفوف في BEGIN...EXCEPTION حتى لا يوقف فشلُه
+--      العمليةَ الأصلية (UPDATE/DELETE) في الجدول الرئيسي.
 CREATE OR REPLACE FUNCTION public.trg_write_audit_log()
   RETURNS TRIGGER
   LANGUAGE plpgsql
@@ -137,12 +165,12 @@ CREATE OR REPLACE FUNCTION public.trg_write_audit_log()
   SET search_path TO 'public'
 AS $$
 DECLARE
-  v_changed JSONB   := '{}';
+  v_changed JSONB  := '{}';
   v_old     JSONB;
   v_new     JSONB;
   v_key     TEXT;
   -- أعمدة تشغيلية/نظامية: لا قيمة في تتبعها بسجل التدقيق
-  v_skip    TEXT[]  := ARRAY[
+  v_skip    TEXT[] := ARRAY[
     'version', 'updated_at', 'last_updated',
     'sync_status', 'last_login', 'created_at'
   ];
@@ -173,23 +201,34 @@ BEGIN
       RETURN NEW;
     END IF;
 
-    INSERT INTO public.audit_logs
-      (id, user_id, action, record_type, record_id, changed_fields, timestamp)
-    VALUES
-      (gen_random_uuid(), auth.uid(), 'update',
-       TG_TABLE_NAME, NEW.id::TEXT, v_changed, NOW());
+    BEGIN
+      INSERT INTO public.audit_logs
+        (id, user_id, action, record_type, record_id, changed_fields, timestamp)
+      VALUES
+        (gen_random_uuid(), auth.uid(), 'update',
+         TG_TABLE_NAME, NEW.id::TEXT, v_changed, NOW());
+    EXCEPTION WHEN OTHERS THEN
+      -- فشل كتابة سجل التدقيق لا يوقف العملية الأصلية
+      RAISE WARNING 'audit_log INSERT failed for table=% id=% : %',
+        TG_TABLE_NAME, NEW.id::TEXT, SQLERRM;
+    END;
 
     RETURN NEW;
 
   -- ── DELETE: احفظ لقطة كاملة للصف المحذوف للاسترجاع الجنائي ──
   ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_logs
-      (id, user_id, action, record_type, record_id, changed_fields, timestamp)
-    VALUES
-      (gen_random_uuid(), auth.uid(), 'delete',
-       TG_TABLE_NAME, OLD.id::TEXT,
-       jsonb_build_object('_snapshot', to_jsonb(OLD)),
-       NOW());
+    BEGIN
+      INSERT INTO public.audit_logs
+        (id, user_id, action, record_type, record_id, changed_fields, timestamp)
+      VALUES
+        (gen_random_uuid(), auth.uid(), 'delete',
+         TG_TABLE_NAME, OLD.id::TEXT,
+         jsonb_build_object('_snapshot', to_jsonb(OLD)),
+         NOW());
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'audit_log INSERT failed for table=% id=% : %',
+        TG_TABLE_NAME, OLD.id::TEXT, SQLERRM;
+    END;
 
     RETURN OLD;
   END IF;
@@ -198,7 +237,7 @@ BEGIN
 END;
 $$;
 
--- 4c: إضافة Audit Triggers للجداول التي كانت ناقصة (companies, accounts)
+-- 4d: إضافة Audit Triggers للجداول التي كانت ناقصة (companies, accounts)
 DROP TRIGGER IF EXISTS trg_companies_audit_update ON public.companies;
 CREATE TRIGGER trg_companies_audit_update
   AFTER UPDATE ON public.companies
@@ -219,6 +258,6 @@ CREATE TRIGGER trg_accounts_audit_delete
   AFTER DELETE ON public.accounts
   FOR EACH ROW EXECUTE FUNCTION public.trg_write_audit_log();
 
--- 4d: GIN Index على changed_fields لتسريع الاستعلامات
+-- 4e: GIN Index على changed_fields لتسريع الاستعلامات
 CREATE INDEX IF NOT EXISTS idx_audit_logs_changed_fields
   ON public.audit_logs USING GIN (changed_fields);
