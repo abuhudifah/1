@@ -94,7 +94,6 @@ async function login(email, password) {
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
-    console.log(`✅ AuthService: دخل ${profile.display_name} (${profile.role}) - رقم الحساب: ${profile.account_number || '—'}`);
     return ok({ user: authData.user, profile });
 
   } catch (e) {
@@ -117,7 +116,6 @@ async function logout(clearLocalData = false) {
     AuthState.authUser      = null;
     AuthState.isInitialized = false;
 
-    console.log('👋 AuthService: تم تسجيل الخروج');
     window.dispatchEvent(new CustomEvent('auth:logout'));
     return ok(true);
 
@@ -136,6 +134,13 @@ async function checkSession() {
   try {
     const { session, error } = await getCurrentSession();
     if (error || !session) return err('لا توجد جلسة نشطة');
+
+    // ✅ S8: فحص انتهاء صلاحية الجلسة المحلية (8 ساعات مطلقة)
+    const localSession = getSession();
+    if (localSession?.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
+      await logout();
+      return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
+    }
 
     const profileResult = await _fetchUserProfile(session.user.id);
     if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
@@ -259,7 +264,6 @@ async function enableQuickLogin(equation) {
     }
 
     saveSession({ ...getSession(), quickLoginEnabled: true });
-    console.log(`✅ AuthService: تم تفعيل الدخول السريع لـ ${AuthState.currentUser.display_name}`);
     return ok(true);
   } catch (e) {
     return err(`خطأ في تفعيل الدخول السريع: ${e.message}`);
@@ -364,7 +368,6 @@ async function quickLogin(equation) {
         _saveToDexieBackground(profile);
         _preloadEssentialData(profile);
 
-        console.log(`⚡ AuthService: دخول سريع (online) — ${profile.display_name}`);
         return ok({ profile });
       } catch (e) {
         console.error('[QuickLogin] فشل تسجيل الدخول:', e);
@@ -421,7 +424,6 @@ async function quickLogin(equation) {
       accountNumber : offlineProfile.account_number,
     });
 
-    console.log(`⚡ AuthService: دخول سريع (offline) — ${offlineProfile.display_name}`);
     return ok({ profile: offlineProfile });
   } catch (e) {
     console.error('❌ AuthService.quickLogin():', e);
@@ -559,7 +561,6 @@ async function _ensureUserAccountNumber(userId, profile = null) {
       }
     }
     
-    console.log(`✅ تم تعيين رقم الحساب ${newNumber} للمستخدم ${userId}`);
     return newNumber;
     
   } catch (e) {

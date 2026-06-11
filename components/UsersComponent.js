@@ -477,7 +477,6 @@ const UsersComponent = {
   // _doCreate — الخطوات الخمس النهائية
   // ────────────────────────────────────────────────────────────
   async _doCreate(username, name, role, tabs, password) {
-    console.log('[UsersComponent] _doCreate:', username);
 
     // 1. حفظ جلسة المدير
     const { data: { session: adminSession } } = await supabaseClient.auth.getSession();

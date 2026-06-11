@@ -1153,8 +1153,6 @@ const LoginComponent = {
       accountNumber: user.account_number,
     });
 
-    console.log(`🔌 LoginComponent: دخول Offline — ${user.display_name}`);
-
     if (this._onSuccess) {
       this._onSuccess(user);
     }

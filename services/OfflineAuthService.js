@@ -177,7 +177,6 @@ const OfflineAuthService = {
       })
     );
 
-    console.log(`✅ OfflineAuthService: جلسة Offline أُنشئت (userId=${userId})`);
     return ok(true);
   },
 
@@ -316,7 +315,6 @@ const OfflineAuthService = {
       } catch { /* الشبكة غير متاحة — الجلسة انتهت محلياً */ }
     }
 
-    console.log(`✅ OfflineAuthService: جلسة Offline انتهت (userId=${userId})`);
     return ok(true);
   },
 

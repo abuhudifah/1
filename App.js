@@ -130,7 +130,6 @@ async function _bootApp(profile) {
     setTimeout(() => QuickLoginBanner.maybeShow(profile), 900);
   }
 
-  console.log(`✅ App.js v3.0: جاهز — ${profile.display_name} (${profile.role})`);
 }
 
 // ============================================================

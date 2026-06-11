@@ -705,10 +705,15 @@ function isValidEmail(email) {
  */
 function saveSession(sessionData) {
   try {
-    sessionStorage.setItem(
-      SECURITY_CONFIG.SESSION_KEY,
-      JSON.stringify(sessionData)
-    );
+    // ✅ S8: الحفاظ على sessionExpiresAt الأصلية عند تجديد الجلسة لمنع إعادة ضبط الـ 8 ساعات
+    const existing = getSession();
+    const data = {
+      ...sessionData,
+      sessionExpiresAt: sessionData.sessionExpiresAt
+        ?? existing?.sessionExpiresAt
+        ?? (Date.now() + 8 * 60 * 60 * 1000),
+    };
+    sessionStorage.setItem(SECURITY_CONFIG.SESSION_KEY, JSON.stringify(data));
   } catch (e) {
     console.error('خطأ في حفظ الجلسة:', e);
   }
