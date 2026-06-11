@@ -197,12 +197,13 @@ async function enableQuickLogin(equation) {
       return err('المعادلة غير صالحة رياضياً');
     }
     
-    const hash = await hashSHA256(trimmed);
-    
+    // الهاش مرتبط بـ userId لمنع استخدام نفس المعادلة بين حسابات مختلفة
+    const uid  = AuthState.currentUser.id;
+    const hash = await hashSHA256(trimmed, uid);
+
     const password = prompt('أدخل كلمة المرور الخاصة بك (سيتم تخزينها محلياً للدخول السريع)');
     if (!password) return err('كلمة المرور مطلوبة');
-    
-    const uid = AuthState.currentUser.id;
+
     const quickData = {
       hash,
       userId: uid,
@@ -242,8 +243,8 @@ async function quickLogin(equation) {
     const lockCheck = _checkBruteForce('quick_login');
     if (!isOk(lockCheck)) return lockCheck;
 
-    const hash = await hashSHA256(trimmed);
-
+    // البحث per-user: لكل مدخل نستخرج userId ونحسب الهاش بـ Salt الخاص به
+    // لا نحسب هاشاً واحداً مسبقاً لأنه مرتبط بـ userId المجهول حتى الآن
     if (isOnline()) {
       let quickData = null;
       for (let i = 0; i < localStorage.length; i++) {
@@ -251,7 +252,10 @@ async function quickLogin(equation) {
         if (!key?.startsWith('ahu_quick_')) continue;
         try {
           const data = JSON.parse(localStorage.getItem(key));
-          if (data.hash === hash) {
+          if (!data?.userId) continue;
+          // نحسب الهاش بنفس userId المستخرج من هذا المدخل
+          const candidateHash = await hashSHA256(trimmed, data.userId);
+          if (candidateHash === data.hash) {
             quickData = data;
             break;
           }
@@ -324,8 +328,11 @@ async function quickLogin(equation) {
         if (!key?.startsWith('ahu_quick_')) continue;
         let stored;
         try { stored = JSON.parse(localStorage.getItem(key) || '{}'); } catch { continue; }
-        if (stored.hash !== hash) continue;
-        if (stored.userId && typeof db !== 'undefined' && db.isOpen()) {
+        if (!stored?.userId) continue;
+        // نفس منطق Online: نحسب الهاش per-userId
+        const candidateHash = await hashSHA256(trimmed, stored.userId);
+        if (candidateHash !== stored.hash) continue;
+        if (typeof db !== 'undefined' && db.isOpen()) {
           offlineProfile = await db.users.get(stored.userId);
         }
         if (offlineProfile) break;

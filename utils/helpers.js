@@ -584,14 +584,21 @@ function throttle(fn, limit = 300) {
 // 9. تشفير SHA-256 (للمعادلة السريعة وكلمات المرور المحلية)
 // ============================================================
 
+// Salt ثابت على مستوى التطبيق — يمنع هجمات Rainbow Table على الهاشات المخزنة
+const APP_SALT = 'ahu_secure_salt_v1_2024';
+
 /**
- * يحسب هاش SHA-256 لنص ما
- * @param {string} text - النص المراد تشفيره
+ * يحسب هاش SHA-256 مع Salt لنص ما
+ * @param {string} text   - النص المراد تشفيره (المعادلة)
+ * @param {string|null} userId - إذا مُرِّر، يُدمج في النص لربط الهاش بمستخدم محدد
  * @returns {Promise<string>} - الهاش بصيغة hex
  */
-async function hashSHA256(text) {
+async function hashSHA256(text, userId = null) {
+  const salted  = userId
+    ? `${userId}:${String(text)}:${APP_SALT}`
+    : `${String(text)}:${APP_SALT}`;
   const encoder = new TextEncoder();
-  const data     = encoder.encode(String(text));
+  const data     = encoder.encode(salted);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray  = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
