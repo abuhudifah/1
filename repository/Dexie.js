@@ -197,6 +197,16 @@ db.version(DEXIE_CONFIG.DB_VERSION).stores({
 });
 
 // ============================================================
+// إصدار 2: إضافة جدول offline_sessions (Phase 2B)
+// ============================================================
+
+db.version(2).stores({
+  // جلسات Offline: PIN hash + WebAuthn credential ID
+  // فهرس مركب [user_id+device_id] لجلب الجلسة النشطة بكفاءة
+  offline_sessions: 'id, user_id, device_id, is_active, [user_id+device_id]',
+});
+
+// ============================================================
 // معالج الخطأ العام لـ Dexie
 // ============================================================
 
