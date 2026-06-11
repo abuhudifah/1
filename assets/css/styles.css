@@ -3116,3 +3116,120 @@ body.dark-mode .header-user-center {
   p, li, td, th { font-size: 0.88rem; }
 }
 
+
+/* ============================================================
+   Phase 5 Step 3 — Keyboard Shortcuts Help Modal
+   ============================================================ */
+
+#shortcuts-help-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shortcuts-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 10, 25, 0.75);
+  backdrop-filter: blur(4px);
+  animation: pwOverlayIn 0.18s ease;
+}
+
+.shortcuts-content {
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(160deg, #0d1f3c 0%, #0a1628 100%);
+  border: 1px solid rgba(59,130,246,0.25);
+  border-radius: 20px;
+  padding: 28px 24px 24px;
+  width: 420px;
+  max-width: 94vw;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(59,130,246,0.1);
+  animation: pwDialogIn 0.22s cubic-bezier(0.34,1.56,0.64,1);
+  direction: rtl;
+}
+
+.shortcuts-content h3 {
+  margin: 0 0 18px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  text-align: center;
+}
+
+.shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.12s;
+}
+.shortcut-item:hover { background: rgba(255,255,255,0.07); }
+
+.shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 120px;
+}
+
+.shortcut-item kbd {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.shortcut-item .shortcut-sep {
+  color: #475569;
+  font-size: 0.7rem;
+}
+
+.shortcut-item span.shortcut-desc {
+  flex: 1;
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
+
+.shortcuts-close-btn {
+  width: 100%;
+  padding: 11px;
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.shortcuts-close-btn:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  box-shadow: 0 4px 16px rgba(59,130,246,0.4);
+}
+
+@media (max-width: 480px) {
+  .shortcuts-content { padding: 20px 16px 18px; }
+  .shortcut-keys     { min-width: 100px; }
+  .shortcut-item kbd { font-size: 0.7rem; padding: 2px 6px; }
+}

@@ -1679,4 +1679,11 @@ const DataEntryComponent = {
 };
 
 window.DataEntryComponent = DataEntryComponent;
+
+// اختصار Ctrl+S: ينقر على زر الحفظ الظاهر حالياً في نموذج إدخال البيانات
+window.saveCurrentOperation = function () {
+  const btn = document.querySelector('#app-content button[id$="-save-btn"]:not([disabled])');
+  if (btn) btn.click();
+};
+
 console.log('✅ DataEntryComponent v5.0 — السلوك الثاني: بحث برقم الحساب + تثبيت حساب المصروف');

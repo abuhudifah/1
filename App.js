@@ -126,6 +126,9 @@ async function _bootApp(profile) {
 
   _startDateClock();
 
+  // ── اختصارات لوحة المفاتيح ──
+  initKeyboardShortcuts();
+
   // ── إشعار الدخول السريع (بعد بناء الواجهة) ──
   if (window.QuickLoginBanner) {
     setTimeout(() => QuickLoginBanner.maybeShow(profile), 900);
@@ -1001,6 +1004,153 @@ function _startCommandsWatcher() {
 function _stopCommandsWatcher() {
   if (_cmdWatcherTimer) { clearInterval(_cmdWatcherTimer); _cmdWatcherTimer = null; }
   window.removeEventListener('online', _checkSystemCommands);
+}
+
+// ============================================================
+// Phase 5 Step 3 — اختصارات لوحة المفاتيح
+// ============================================================
+
+let _shortcutsListenerAttached = false;
+
+function initKeyboardShortcuts() {
+  if (_shortcutsListenerAttached) return;
+  _shortcutsListenerAttached = true;
+
+  document.addEventListener('keydown', (e) => {
+    // تجاهل الاختصارات عند الكتابة في حقول النص (ما عدا Escape)
+    const tag = document.activeElement?.tagName;
+    const isTyping = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')
+                     && e.key !== 'Escape';
+
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+
+    // Ctrl/Cmd + S — حفظ العملية الحالية
+    if (ctrlOrCmd && e.key === 's') {
+      e.preventDefault();
+      const saveBtn = document.querySelector(
+        '#app-content button[id$="-save-btn"]:not([disabled])'
+      );
+      if (saveBtn) {
+        saveBtn.click();
+      } else {
+        showToast('لا توجد عملية لحفظها في هذه الصفحة', 'info', 2000);
+      }
+      return;
+    }
+
+    // Ctrl/Cmd + F — التركيز على حقل البحث
+    if (ctrlOrCmd && e.key === 'f') {
+      const searchInput = document.querySelector(
+        '#app-content input[type="search"], #app-content input[placeholder*="بحث"]'
+      );
+      if (searchInput) {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }
+      return;
+    }
+
+    // Ctrl/Cmd + O — مزامنة يدوية فورية
+    if (ctrlOrCmd && e.key === 'o') {
+      e.preventDefault();
+      _handleManualSync();
+      return;
+    }
+
+    // Ctrl/Cmd + L — تسجيل الخروج
+    if (ctrlOrCmd && e.key === 'l') {
+      e.preventDefault();
+      _handleLogout();
+      return;
+    }
+
+    // تجاهل باقي الاختصارات عند الكتابة
+    if (isTyping) return;
+
+    // Escape — إغلاق النوافذ المنبثقة
+    if (e.key === 'Escape') {
+      // الاختصارات Help Modal
+      const helpModal = document.getElementById('shortcuts-help-modal');
+      if (helpModal) { helpModal.remove(); return; }
+
+      // أي dialog مفتوح — انقر على زر الإلغاء أو الإغلاق
+      const cancelBtn = document.querySelector(
+        '[role="dialog"] button[aria-label="إلغاء"], ' +
+        '[role="dialog"] .pw-btn-cancel, ' +
+        '[role="dialog"] .pin-cancel-btn'
+      );
+      if (cancelBtn) cancelBtn.click();
+      return;
+    }
+
+    // F5 — تحديث البيانات دون إعادة تحميل الصفحة
+    if (e.key === 'F5') {
+      e.preventDefault();
+      AppStore.refreshData()
+        .then(() => {
+          if (_activeComponentId) _navigateTo(_activeComponentId);
+          showToast('تم تحديث البيانات', 'success', 2000);
+        })
+        .catch(err => showToast('تعذّر تحديث البيانات', 'warning', 2000));
+      return;
+    }
+
+    // ? — عرض/إخفاء نافذة الاختصارات
+    if (e.key === '?') {
+      e.preventDefault();
+      _toggleShortcutsHelp();
+      return;
+    }
+  });
+}
+
+function _toggleShortcutsHelp() {
+  const existing = document.getElementById('shortcuts-help-modal');
+  if (existing) { existing.remove(); return; }
+
+  const isMac = navigator.platform.toUpperCase().includes('MAC');
+  const mod   = isMac ? '⌘' : 'Ctrl';
+
+  const shortcuts = [
+    { keys: [`${mod}`, `S`], desc: 'حفظ العملية الحالية'          },
+    { keys: [`${mod}`, `F`], desc: 'التركيز على حقل البحث'        },
+    { keys: [`${mod}`, `O`], desc: 'مزامنة يدوية فورية'           },
+    { keys: [`${mod}`, `L`], desc: 'تسجيل الخروج'                  },
+    { keys: [`Esc`],         desc: 'إغلاق النوافذ المنبثقة'        },
+    { keys: [`F5`],          desc: 'تحديث البيانات (بدون إعادة تحميل)' },
+    { keys: [`?`],           desc: 'عرض/إخفاء هذه المساعدة'       },
+  ];
+
+  const itemsHTML = shortcuts.map(s => `
+    <div class="shortcut-item">
+      <div class="shortcut-keys">
+        ${s.keys.map((k, i) =>
+          `<kbd>${escapeHtml(k)}</kbd>${i < s.keys.length - 1 ? '<span class="shortcut-sep">+</span>' : ''}`
+        ).join('')}
+      </div>
+      <span class="shortcut-desc">${escapeHtml(s.desc)}</span>
+    </div>`).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'shortcuts-help-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'اختصارات لوحة المفاتيح');
+  modal.innerHTML = `
+    <div class="shortcuts-overlay" id="shortcuts-overlay"></div>
+    <div class="shortcuts-content">
+      <h3>⌨️ اختصارات لوحة المفاتيح</h3>
+      <div class="shortcuts-list">${itemsHTML}</div>
+      <button class="shortcuts-close-btn" id="shortcuts-close-btn" aria-label="إغلاق نافذة الاختصارات">إغلاق</button>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  modal.querySelector('#shortcuts-overlay').addEventListener('click', () => modal.remove());
+  modal.querySelector('#shortcuts-close-btn').addEventListener('click', () => modal.remove());
+  setTimeout(() => modal.querySelector('#shortcuts-close-btn')?.focus(), 80);
 }
 
 // ============================================================
