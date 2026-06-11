@@ -113,7 +113,7 @@ const LocalOperationsService = {
         );
       }
 
-      console.log(`✅ LocalOperationsService: عملية محفوظة (id=${localOp.id}, type=${localOp.type})`);
+      window.dispatchEvent(new CustomEvent('app:localOpSaved'));
       return ok(localOp);
 
     } catch (e) {

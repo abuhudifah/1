@@ -916,6 +916,59 @@ textarea.form-control {
   50%      { opacity: 0.5; }
 }
 
+/* ── Sync Queue Widget (لوحة العمليات المعلقة) ── */
+.sqw-pill {
+  display      : flex;
+  align-items  : center;
+  gap          : 6px;
+  background   : rgba(245,158,11,0.12);
+  border       : 1px solid rgba(245,158,11,0.30);
+  border-radius: 20px;
+  color        : #fbbf24;
+  padding      : 5px 10px;
+  font-size    : 0.72rem;
+  font-family  : var(--font-arabic);
+  transition   : all var(--transition-fast);
+  white-space  : nowrap;
+}
+.sqw-pill--syncing {
+  background  : rgba(99,102,241,0.12);
+  border-color: rgba(99,102,241,0.30);
+  color       : #a5b4fc;
+}
+.sqw-dot {
+  width        : 7px;
+  height       : 7px;
+  border-radius: 50%;
+  background   : #fbbf24;
+  flex-shrink  : 0;
+  animation    : sqwPulse 1.4s ease-in-out infinite;
+}
+.sqw-pill--syncing .sqw-dot {
+  background: #818cf8;
+}
+@keyframes sqwPulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.sqw-btn {
+  background   : rgba(245,158,11,0.20);
+  border       : 1px solid rgba(245,158,11,0.40);
+  border-radius: 10px;
+  color        : #fbbf24;
+  font-size    : 0.65rem;
+  font-family  : var(--font-arabic);
+  padding      : 2px 8px;
+  cursor       : pointer;
+  transition   : all 0.12s;
+  line-height  : 1.6;
+}
+.sqw-btn:hover:not(:disabled) {
+  background  : rgba(245,158,11,0.35);
+  border-color: rgba(245,158,11,0.60);
+}
+.sqw-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* شارة الإشعارات */
 .notif-badge {
   position    : absolute;

@@ -119,6 +119,7 @@ async function _bootApp(profile) {
   await AppStore.refreshData();
   _bindStoreEvents();
   _startCommandsWatcher(); // مراقبة أوامر النظام (RESET_ALL_DATA وغيرها)
+  _updateSyncWidget(); // العرض الأولي لـ widget العمليات المعلقة
 
   const firstTab = AuthService.getAllowedTabs()[0];
   if (firstTab) await _navigateTo(firstTab);
@@ -347,6 +348,13 @@ function _buildHeader() {
     ? `<span class="conn-dot"></span><span class="conn-label">Offline</span>`
     : `<span class="conn-dot"></span><span class="conn-label">Online</span>`;
   actions.appendChild(connPill);
+
+  // widget العمليات المحلية المعلقة (يتحدث عبر _updateSyncWidget)
+  const sqwPill = document.createElement('div');
+  sqwPill.id            = 'sqw-pill';
+  sqwPill.className     = 'sqw-pill';
+  sqwPill.style.display = 'none';
+  actions.appendChild(sqwPill);
 
   // حبة المزامنة
   const syncBtn = document.createElement('button');
@@ -667,6 +675,9 @@ function _bindStoreEvents() {
   window.addEventListener('app:onlineStatusChange', (e) => {
     _updateConnStatus(e.detail?.online);
   });
+
+  // Sync Queue Widget: يتحدث عند حفظ عملية محلية جديدة
+  window.addEventListener('app:localOpSaved', () => _updateSyncWidget());
 }
 
 /** تحديث مؤشر حالة الاتصال في الهيدر */
@@ -687,10 +698,85 @@ function _updateConnStatus(isNowOnline) {
     showToast('انقطع الاتصال. العمليات ستُحفظ محلياً.', 'warning', 4000);
   }
 
-  // إعادة الاتصال بعد offline → تشغيل المزامنة
+  // إعادة الاتصال بعد offline → تشغيل المزامنة + تحديث widget
   if (isNowOnline && typeof SyncEngine !== 'undefined') {
     SyncEngine.startAutoSync().catch(e => console.warn('[App] SyncEngine:', e.message));
   }
+  _updateSyncWidget();
+}
+
+// ============================================================
+// Sync Queue Widget — لوحة العمليات المحلية المعلقة
+// ============================================================
+
+/**
+ * يُرجع محتوى HTML للـ widget حسب الحالة
+ * @param {number} count - عدد العمليات المعلقة
+ * @param {boolean} isSyncing - هل المزامنة جارية الآن
+ * @returns {string}
+ */
+function _renderSyncWidgetHTML(count, isSyncing) {
+  if (isSyncing) {
+    return `<span class="sqw-dot"></span><span>جاري المزامنة...</span>
+            <button class="sqw-btn" disabled>🔄</button>`;
+  }
+  return `<span class="sqw-dot"></span><span>⏳ ${count} عملية معلقة</span>
+          <button id="sqw-sync-btn" class="sqw-btn">مزامنة الآن</button>`;
+}
+
+/** يقرأ عدد العمليات المعلقة ويُعيد رسم الـ widget */
+async function _updateSyncWidget() {
+  const pill = document.getElementById('sqw-pill');
+  if (!pill) return;
+
+  const count = window.LocalOperationsService
+    ? await LocalOperationsService.getPendingCount().catch(() => 0)
+    : 0;
+
+  if (count === 0) {
+    pill.style.display = 'none';
+    return;
+  }
+
+  pill.className     = 'sqw-pill';
+  pill.style.display = 'flex';
+  pill.innerHTML     = _renderSyncWidgetHTML(count, false);
+
+  document.getElementById('sqw-sync-btn')
+    ?.addEventListener('click', _handleManualSync, { once: true });
+}
+
+/** يُشغّل المزامنة اليدوية ويُظهر النتيجة */
+async function _handleManualSync() {
+  const pill = document.getElementById('sqw-pill');
+  if (!pill) return;
+
+  pill.className     = 'sqw-pill sqw-pill--syncing';
+  pill.style.display = 'flex';
+  pill.innerHTML     = _renderSyncWidgetHTML(0, true);
+
+  try {
+    if (typeof SyncEngine === 'undefined') {
+      showToast('محرك المزامنة غير متاح', 'error');
+      return;
+    }
+    const result = await SyncEngine.startAutoSync();
+    if (isOk(result)) {
+      const { synced, failed } = result.data;
+      if (failed === 0) {
+        showToast(`✅ تمت المزامنة: ${synced} عملية`, 'success');
+      } else {
+        showToast(`⚠️ مزامنة جزئية: ${synced} نجحت، ${failed} فشلت`, 'warning');
+      }
+    } else {
+      showToast('فشلت المزامنة: ' + (result.error || ''), 'error');
+    }
+  } catch (e) {
+    console.error('[App] _handleManualSync:', e);
+    showToast('حدث خطأ أثناء المزامنة', 'error');
+  }
+
+  await _updateSyncWidget();
 }
 
 // ============================================================
