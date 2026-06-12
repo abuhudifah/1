@@ -1561,6 +1561,7 @@ const AccountManagementComponent = {
         title:        '🏦 مشاركة حساب بنكي',
         message:      `يمكنك الإيداع إلى حساب (${companyName || bankName}) عبر هذا الرقم (${accountNumber}) وإضافته كمستفيد مستقبلي`,
         data:         JSON.stringify({ action: 'deposit', account_number: accountNumber, bank_name: bankName, company_name: companyName }),
+        target:       JSON.stringify([targetUserId]),
         is_read:      false,
         created_at:   new Date().toISOString(),
       });
