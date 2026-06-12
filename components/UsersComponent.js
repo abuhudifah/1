@@ -410,7 +410,7 @@ const UsersComponent = {
   // ────────────────────────────────────────────────────────────
   // _openForm / _closeForm
   // ────────────────────────────────────────────────────────────
-  _openForm(user = null) {
+  async _openForm(user = null) {
     this._editId = user?.id || null;
     const overlay = document.getElementById('uc-modal-overlay');
     const box     = document.getElementById('uc-modal-box');

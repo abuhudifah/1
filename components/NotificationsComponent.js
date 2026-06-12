@@ -175,7 +175,7 @@ const NotificationsComponent = {
     if (notification.type !== 'account_share') return;
     try {
       const data = JSON.parse(notification.data || '{}');
-      if (!data.action || !data.account_number) {
+      if (!data.action || !data.entity_name) {
         console.warn('⚠️ _handleNotificationClick: بيانات الإشعار غير مكتملة', notification.id);
         return;
       }
@@ -198,7 +198,7 @@ const NotificationsComponent = {
 
       // نوع غير مدعوم حالياً (transfer…): انتقل فقط واعرض الرقم للبحث اليدوي
       if (!config) {
-        showToast(`📋 رقم الحساب: ${data.account_number} — ابحث يدوياً`, 'info');
+        showToast(`📋 انتقل إلى إدخال البيانات وابحث عن: ${data.entity_name || ''}`, 'info');
         return;
       }
 
@@ -209,14 +209,14 @@ const NotificationsComponent = {
         await new Promise(r => setTimeout(r, 200));
       }
 
-      // 3. تعبئة حقل البحث برقم الحساب
+      // 3. تعبئة حقل البحث باسم الكيان
       const input = document.getElementById(config.searchId);
       if (!input) {
         showToast('⚠️ افتح النموذج يدوياً', 'warning');
         return;
       }
 
-      input.value = data.account_number;
+      input.value = data.entity_name || '';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       await new Promise(r => setTimeout(r, 150));
 
