@@ -133,7 +133,10 @@ const AccountManagementComponent = {
               <i data-lucide="copy" style="width:13px;height:13px;"></i> نسخ
             </button>
             <button id="stmt-print-btn" class="btn btn-secondary btn-sm">
-              <i data-lucide="printer" style="width:13px;height:13px;"></i> طباعة
+              <i data-lucide="printer" style="width:13px;height:13px;"></i> طباعة/PDF
+            </button>
+            <button id="stmt-excel-btn" class="btn btn-secondary btn-sm">
+              <i data-lucide="table-2" style="width:13px;height:13px;"></i> Excel
             </button>
             <button id="stmt-close-btn" class="btn btn-secondary btn-sm" style="color:var(--danger);">✕ إغلاق</button>
           </div>
@@ -179,6 +182,7 @@ const AccountManagementComponent = {
       if (typeof PrintService !== 'undefined') this._printStatement();
       else showToast('خدمة الطباعة غير متوفرة', 'error');
     });
+    document.getElementById('stmt-excel-btn')?.addEventListener('click', () => this._exportStatementExcel());
     document.getElementById('stmt-share-btn')?.addEventListener('click', () => {
       if (typeof PrintService !== 'undefined') this._shareStatement();
       else showToast('خدمة المشاركة غير متوفرة', 'error');
@@ -1195,6 +1199,7 @@ const AccountManagementComponent = {
       const fmt = (n) => Math.round(n).toLocaleString('en-US');
       let totalDep = 0, totalWd = 0;
       const printRows = [];
+      this._stmtPrintRows = printRows;
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
         <thead><tr><th>#</th><th>الوقت</th><th>نوع العملية</th><th>المندوب</th><th>المبلغ</th></tr></thead><tbody>`;
       txns.forEach((t, i) => {
@@ -1432,6 +1437,26 @@ const AccountManagementComponent = {
   },
 
   // زر الطباعة يفتح نافذة الطباعة الاحترافية
+  async _exportStatementExcel() {
+    const rows = this._stmtPrintRows;
+    if (!rows || !rows.length) { showToast('لا توجد بيانات للتصدير', 'info'); return; }
+    const btn = document.getElementById('stmt-excel-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
+    try {
+      const headers = ['#', 'الوقت', 'نوع العملية', 'المندوب', 'المبلغ (ر.س)'];
+      const name = this._selectedAccountName || 'كشف_حساب';
+      await PrintService.exportToExcel(headers, rows, 'كشف الحساب', name.replace(/\s+/g, '_'));
+    } catch (e) {
+      showToast(`❌ فشل التصدير: ${e.message}`, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="table-2" style="width:13px;height:13px;"></i> Excel';
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+  },
+
   _printStatement() { this._printProfessional(); },
 
   // نافذة طباعة احترافية (A4 + أزرار رجوع/طباعة/مشاركة/PDF)

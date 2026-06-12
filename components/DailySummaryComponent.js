@@ -115,7 +115,8 @@ const DailySummaryComponent = {
     };
     btnGroup.appendChild(mkBtn('zap','سريع',()=>this._shareQuickSummary()));
     btnGroup.appendChild(mkBtn('file-text','مفصل',()=>this._showDetailedReport()));
-    btnGroup.appendChild(mkBtn('printer','طباعة',()=>this._printSummary()));
+    btnGroup.appendChild(mkBtn('printer','طباعة/PDF',()=>this._printSummary()));
+    btnGroup.appendChild(mkBtn('table-2','Excel',()=>this._exportDailyExcel()));
     topBar.appendChild(btnGroup);
 
     wrap.appendChild(topBar);
@@ -412,6 +413,32 @@ const DailySummaryComponent = {
       `— نظام أبو حذيفة 🔐`,
     ].filter(Boolean).join('\n');
     shareText(text,'تفاصيل العملية');
+  },
+
+  async _exportDailyExcel() {
+    const txs  = AppStore.getState('transactions');
+    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+
+    const headers = ['#', 'التاريخ', 'الوقت', 'النوع', 'المبلغ (ر.س)', 'العميل / التفاصيل', 'الحالة'];
+    const rows = txs.map((tx, i) => [
+      i + 1,
+      tx.date || '—',
+      tx.time ? tx.time.substring(0, 5) : '—',
+      TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
+      Math.round(parseFloat(tx.amount || 0)),
+      tx.customer_name || tx.details || '—',
+      tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن'),
+    ]);
+
+    const btn = document.querySelector('[data-lucide="table-2"]')?.closest('button');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
+    try {
+      await PrintService.exportToExcel(headers, rows, `ملخص ${date}`, `daily_summary_${date}`);
+    } catch (e) {
+      showToast(`❌ فشل التصدير: ${e.message}`, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="table-2" style="width:13px;height:13px;"></i> Excel'; if (window.lucide) lucide.createIcons(); }
+    }
   },
 
   async _shareQuickSummary() {

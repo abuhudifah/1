@@ -82,6 +82,9 @@ const AllOperationsComponent = {
           <i data-lucide="filter" style="width:14px;height:14px"></i> تطبيق
         </button>
         <button id="ao-reset-btn" class="btn btn-secondary btn-sm">إعادة تعيين</button>
+        <button id="ao-export-btn" class="btn btn-secondary btn-sm">
+          <i data-lucide="table-2" style="width:14px;height:14px"></i> Excel
+        </button>
         <span id="ao-count-label" style="font-size:0.82rem;color:var(--text-muted);margin-right:auto;"></span>
       </div>`;
     wrap.appendChild(filterCard);
@@ -101,6 +104,7 @@ const AllOperationsComponent = {
     // ربط الأحداث
     filterCard.querySelector('#ao-date-mode').addEventListener('change',e=>this._switchDateMode(e.target.value));
     filterCard.querySelector('#ao-apply-btn').addEventListener('click',()=>{ this._page=1; this._load(); });
+    filterCard.querySelector('#ao-export-btn').addEventListener('click',()=>this._exportOperationsExcel());
     filterCard.querySelector('#ao-reset-btn').addEventListener('click',()=>{
       filterCard.querySelector('#ao-type').value     = '';
       filterCard.querySelector('#ao-agent').value    = '';
@@ -351,6 +355,41 @@ const AllOperationsComponent = {
     }
 
     if (window.lucide) lucide.createIcons();
+  },
+
+  async _exportOperationsExcel() {
+    const exportBtn = document.getElementById('ao-export-btn');
+    if (exportBtn) { exportBtn.disabled = true; exportBtn.textContent = '⏳ ...'; }
+    try {
+      const filters = this._buildFilters();
+      const result  = await repo.query(TABLES.TRANSACTIONS, filters, {
+        orderBy: 'date', ascending: false, pageSize: 5000, forceRefresh: true,
+      });
+      const data  = isOk(result) ? (result.data.data || []) : [];
+      const users = AppStore.getState('users');
+
+      const headers = ['التاريخ', 'الوقت', 'النوع', 'المبلغ (ر.س)', 'المندوب', 'التفاصيل', 'الحالة'];
+      const rows = data.map(tx => [
+        tx.date || '—',
+        tx.time ? tx.time.substring(0, 5) : '—',
+        TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
+        Math.round(parseFloat(tx.amount || 0)),
+        users.find(u => u.id === tx.agent_id)?.display_name || '—',
+        tx.customer_name || tx.details || '—',
+        tx.is_reversed ? 'مُعكوس' : 'نشط',
+      ]);
+
+      const dateLabel = (typeof filters.date === 'string' ? filters.date : null) || getCurrentSaudiDate();
+      await PrintService.exportToExcel(headers, rows, 'العمليات', `operations_${dateLabel}`);
+    } catch (e) {
+      showToast(`❌ فشل التصدير: ${e.message}`, 'error');
+    } finally {
+      if (exportBtn) {
+        exportBtn.disabled = false;
+        exportBtn.innerHTML = '<i data-lucide="table-2" style="width:14px;height:14px"></i> Excel';
+        if (window.lucide) lucide.createIcons();
+      }
+    }
   },
 
   _injectStyles() {
