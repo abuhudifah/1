@@ -650,6 +650,37 @@ async function generateBankAccountNumber(companyId) {
   return `BNK-${companyDigits}-${bankSequence}`;
 }
 
+/**
+ * ينشئ حساباً بنكياً جديداً مع توليد internal_account_number تلقائياً
+ * @param {{ company_id: string, name: string, account_number: string,
+ *           financial_ceiling?: number, card_number?: string, card_holder?: string }} bankData
+ * @returns {Promise<object>} بيانات الحساب البنكي المُنشأ
+ */
+async function createBankAccount(bankData) {
+  if (!bankData?.company_id)     throw new Error('company_id مطلوب لإنشاء الحساب البنكي');
+  if (!bankData?.name)           throw new Error('اسم البنك (name) مطلوب');
+  if (!bankData?.account_number) throw new Error('رقم الحساب الحقيقي (account_number) مطلوب');
+
+  const internalNumber = await generateBankAccountNumber(bankData.company_id);
+
+  const { data, error } = await supabaseClient
+    .from('bank_accounts')
+    .insert({
+      company_id              : bankData.company_id,
+      name                    : bankData.name,
+      account_number          : bankData.account_number,       // الرقم الحقيقي من المستخدم
+      internal_account_number : internalNumber,                 // BNK-XXXXXX-YY مُولَّد تلقائياً
+      financial_ceiling       : bankData.financial_ceiling ?? 1,
+      card_number             : bankData.card_number  ?? null,
+      card_holder             : bankData.card_holder  ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`فشل إنشاء الحساب البنكي: ${error.message}`);
+  return data;
+}
+
 // ============================================================
 // 9. Device Token
 // ============================================================
@@ -864,9 +895,9 @@ const AuthService = {
   isAdmin, isAgent, isAdminAssistant,
   verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
-  getUserAccountNumber, createAccountNumber, generateBankAccountNumber,
+  getUserAccountNumber, createAccountNumber, generateBankAccountNumber, createBankAccount,
   _state: AuthState,
 };
 
 window.AuthService = AuthService;
-console.log('✅ AuthService.js v5.2 — createAccountNumber (USR/ADM/CMP) + generateBankAccountNumber (BNK)');
+console.log('✅ AuthService.js v5.3 — createBankAccount: توليد internal_account_number تلقائياً عند الإنشاء');
