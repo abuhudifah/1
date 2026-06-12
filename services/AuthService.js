@@ -132,14 +132,21 @@ async function logout(clearLocalData = false) {
 // ============================================================
 async function checkSession() {
   try {
-    const { session, error } = await getCurrentSession();
-    if (error || !session) return err('لا توجد جلسة نشطة');
-
-    // ✅ S8: فحص انتهاء صلاحية الجلسة المحلية (8 ساعات مطلقة)
+    // 1. تحقق سريع من الجلسة المحلية — فشل فوري دون استدعاء Supabase
     const localSession = getSession();
-    if (localSession?.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
+    if (!localSession) return err('لا توجد جلسة نشطة');
+
+    // 2. فحص انتهاء الصلاحية المحلية (8 ساعات مطلقة) ✅ S8
+    if (localSession.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
       await logout();
       return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
+    }
+
+    // 3. التحقق من صلاحية JWT مع Supabase
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    if (error || !session) {
+      await logout();
+      return err('الجلسة غير صالحة. يُرجى تسجيل الدخول مجدداً');
     }
 
     const profileResult = await _fetchUserProfile(session.user.id);

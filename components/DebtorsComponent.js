@@ -218,7 +218,8 @@ const DebtorsComponent = {
               ? d.assigned_agents
               : (typeof d.assigned_agents === 'string' ? JSON.parse(d.assigned_agents || '[]') : []);
             const agentNames = agents.map(id => {
-              const u = AppStore.getState('users').find(u => u.id === id);
+              const users = AppStore.getState('users') || [];
+              const u = users.find(u => u.id === id);
               return u?.display_name || id.slice(0, 8);
             }).join('، ');
 

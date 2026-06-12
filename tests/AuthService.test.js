@@ -249,26 +249,21 @@ describe('AuthService.logout', () => {
 // 7. checkSession
 // ============================================================
 describe('AuthService.checkSession', () => {
-  it('لا جلسة في sessionStorage → err', async () => {
-    globalThis.supabaseClient.auth.getSession.mockResolvedValueOnce({
-      data: { session: null }, error: null,
-    });
+  it('لا جلسة في sessionStorage → err فوري بدون استدعاء Supabase', async () => {
+    // sessionStorage فارغ — لا داعي لاستدعاء Supabase
     const result = await AS.checkSession();
     expect(result.ok).toBe(false);
+    expect(globalThis.supabaseClient.auth.getSession).not.toHaveBeenCalled();
   });
 
-  it('جلسة منتهية الصلاحية (sessionExpiresAt ماضٍ) → err', async () => {
-    // getCurrentSession يُرجع جلسة صالحة من Supabase
-    globalThis.getCurrentSession.mockResolvedValueOnce({
-      session: { user: { id: 'u-1' }, access_token: 'tok' },
-      error: null,
-    });
-    // لكن الجلسة المحلية منتهية الصلاحية
+  it('جلسة منتهية الصلاحية (sessionExpiresAt ماضٍ) → err بدون استدعاء Supabase', async () => {
+    // الجلسة المحلية منتهية الصلاحية — فشل سريع
     globalThis.saveSession({ userId: 'u-1', sessionExpiresAt: Date.now() - 1000 });
     globalThis.supabaseClient.auth.signOut.mockResolvedValueOnce({ error: null });
 
     const result = await AS.checkSession();
     expect(result.ok).toBe(false);
     expect(result.error).toContain('انتهت');
+    expect(globalThis.supabaseClient.auth.getSession).not.toHaveBeenCalled();
   });
 });
