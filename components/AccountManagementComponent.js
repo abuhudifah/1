@@ -1445,9 +1445,11 @@ const AccountManagementComponent = {
               return `<tr>
               <td style="font-weight:600;">${escapeHtml(b.name || b.id)}</td>
               <td style="color:var(--text-secondary);">${escapeHtml(compName || '—')}</td>
-              <td class="bank-acct-num-cell">
-                <span class="bank-acct-num" dir="ltr">${escapeHtml(acct)}</span>
-                ${hasAcct ? `<button class="copy-bank-acct-btn btn-icon-sm" data-acct="${escapeHtml(b.account_number)}" title="نسخ رقم الحساب" aria-label="نسخ">📋</button>` : ''}
+              <td>
+                <div class="bank-acct-num-cell">
+                  <span class="bank-acct-num" dir="ltr">${escapeHtml(acct)}</span>
+                  ${hasAcct ? `<button class="copy-bank-acct-btn btn-icon-sm" data-acct="${escapeHtml(b.account_number)}" title="نسخ رقم الحساب" aria-label="نسخ">📋</button>` : ''}
+                </div>
               </td>
               <td>
                 <div class="bank-actions-cell">
