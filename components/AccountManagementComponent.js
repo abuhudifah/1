@@ -1060,7 +1060,8 @@ const AccountManagementComponent = {
           const { data, error } = await supabaseClient
             .from('account_ledger').select('*')
             .eq('account_id', acc).gte('date', from).lte('date', to)
-            .order('date', { ascending: true }).order('created_at', { ascending: true });
+            .order('date', { ascending: true }).order('created_at', { ascending: true })
+            .limit(QUERY_LIMITS.LEDGER_ENTRIES);
           if (error) throw error;
           entries = data || [];
         } catch (e) {

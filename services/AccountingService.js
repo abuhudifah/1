@@ -552,7 +552,8 @@ async function reverseEntries(transactionId) {
         const { data: reversalEntries } = await supabaseClient
           .from(TABLES.ACCOUNT_LEDGER)
           .select('*')
-          .like('voucher_number', `REV_${transactionId}%`);
+          .like('voucher_number', `REV_${transactionId}%`)
+          .limit(QUERY_LIMITS.REVERSAL_ENTRIES);
 
         if (reversalEntries && reversalEntries.length > 0) {
           await db.account_ledger.bulkPut(

@@ -749,11 +749,11 @@ function _preloadEssentialData(profile) {
     try {
       if (!isOnline()) return;
       const tasks = [
-        supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').then(({ data }) => {
+        supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').limit(QUERY_LIMITS.SYSTEM_SETTINGS).then(({ data }) => {
           if (data && typeof db !== 'undefined' && db.isOpen())
             db.system_settings?.bulkPut(data).catch(() => {});
         }),
-        supabaseClient.from(TABLES.COMPANIES).select('*').order('name').then(({ data }) => {
+        supabaseClient.from(TABLES.COMPANIES).select('*').order('name').limit(QUERY_LIMITS.COMPANIES).then(({ data }) => {
           if (data && typeof db !== 'undefined' && db.isOpen())
             db.companies?.bulkPut(data).catch(() => {});
         }),
@@ -763,6 +763,7 @@ function _preloadEssentialData(profile) {
           supabaseClient.from(TABLES.USERS)
             .select('id,username,display_name,role,is_active,allowed_tabs,account_number')
             .order('display_name')
+            .limit(QUERY_LIMITS.USERS)
             .then(({ data }) => {
               if (data && typeof db !== 'undefined' && db.isOpen())
                 db.users?.bulkPut(data.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {});

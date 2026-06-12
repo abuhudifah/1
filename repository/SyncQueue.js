@@ -772,7 +772,7 @@ const SyncQueue = {
 
       const resolvedSet = new Set(resolvedKeys);
 
-      const all = await db.sync_conflicts.toArray();
+      const all = await db.sync_conflicts.limit(QUERY_LIMITS.CONFLICTS).toArray();
       return all.filter(c => !resolvedSet.has(c.id));
     } catch {
       return [];

@@ -142,7 +142,9 @@ async function _pullNotifications(user) {
 
 async function _pullBankAccounts() {
   try {
-    const { data } = await supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name');
+    const { data } = await supabaseClient
+      .from(TABLES.BANK_ACCOUNTS).select('*').order('name')
+      .limit(QUERY_LIMITS.BANK_ACCOUNTS);
     if (data && db.isOpen()) {
       await db.bank_accounts.bulkPut(data.map(b => ({ ...b, sync_status: SYNC_STATUS.SYNCED })));
     }
@@ -151,7 +153,9 @@ async function _pullBankAccounts() {
 
 async function _pullDebtors() {
   try {
-    const { data } = await supabaseClient.from(TABLES.DEBTORS).select('*').order('name');
+    const { data } = await supabaseClient
+      .from(TABLES.DEBTORS).select('*').order('name')
+      .limit(QUERY_LIMITS.DEBTORS);
     if (data && db.isOpen()) {
       await db.debtors.bulkPut(data.map(d => ({ ...d, sync_status: SYNC_STATUS.SYNCED })));
     }
@@ -164,7 +168,8 @@ async function _pullAgentTransactions(agentId) {
     const { data } = await supabaseClient
       .from(TABLES.TRANSACTIONS).select('*')
       .eq('agent_id', agentId).gte('date', today)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(QUERY_LIMITS.TRANSACTIONS_SYNC);
     if (data && db.isOpen()) {
       await db.transactions.bulkPut(data.map(tx => ({ ...tx, sync_status: SYNC_STATUS.SYNCED })));
     }
