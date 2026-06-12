@@ -545,14 +545,17 @@ async function _ensureUserAccountNumber(userId, profile = null) {
       return null;
     }
     
+    let newNumber;
     const entityType = profile?.role === ROLES.AGENT ? 'user' : 'user'; // RPC تدعم 'user'
-    const { data: newNumber, error: genError } = await supabaseClient.rpc('generate_account_number', { 
-      entity_type: entityType 
+    const { data: rpcNumber, error: genError } = await supabaseClient.rpc('generate_account_number', {
+      entity_type: entityType
     });
-    
+
     if (genError) {
-      console.error('❌ فشل توليد رقم الحساب:', genError);
-      return null;
+      console.warn('⚠️ RPC generate_account_number فشلت، fallback محلي:', genError.message);
+      newNumber = createAccountNumber(profile?.role || 'agent');
+    } else {
+      newNumber = rpcNumber;
     }
     
     // ✅ A1: UPDATE مشروط (فقط إذا كان الحقل لا يزال NULL) لمنع Race Condition
@@ -593,6 +596,58 @@ async function _ensureUserAccountNumber(userId, profile = null) {
     console.error('❌ _ensureUserAccountNumber:', e);
     return null;
   }
+}
+
+// ============================================================
+// 8b. توليد أرقام الحسابات بالصيغة الموحدة الجديدة
+// ============================================================
+
+/**
+ * يولّد رقم حساب جديد بالصيغة الموحدة (USR/ADM/CMP + 6 أرقام عشوائية)
+ * @param {'admin'|'admin_assistant'|'agent'|'company'} role
+ * @returns {string}  مثال: USR-372819
+ */
+function createAccountNumber(role) {
+  const prefixMap = {
+    admin          : 'ADM',
+    admin_assistant: 'ADM',
+    agent          : 'USR',
+    company        : 'CMP',
+  };
+  const prefix      = prefixMap[role] || 'USR';
+  const randomDigits = Math.floor(100000 + Math.random() * 900000);
+  return `${prefix}-${randomDigits}`;
+}
+
+/**
+ * يولّد رقم حساب بنكي مرتبط برقم الشركة المالكة
+ * الصيغة: BNK-XXXXXX-YY  (XXXXXX = أرقام الشركة, YY = تسلسل البنوك للشركة)
+ * @param {string} companyId - معرف الشركة في جدول companies
+ * @returns {Promise<string>}  مثال: BNK-789012-02
+ */
+async function generateBankAccountNumber(companyId) {
+  if (!companyId) throw new Error('معرف الشركة مطلوب لتوليد رقم الحساب البنكي');
+
+  const { data: company, error: compErr } = await supabaseClient
+    .from('companies')
+    .select('account_number')
+    .eq('id', companyId)
+    .single();
+
+  if (compErr || !company) throw new Error('الشركة غير موجودة أو فشل جلب بياناتها');
+
+  const companyDigits = (company.account_number || '').split('-')[1];
+  if (!companyDigits) throw new Error(`رقم حساب الشركة غير صالح: ${company.account_number}`);
+
+  const { count, error: countErr } = await supabaseClient
+    .from('bank_accounts')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', companyId);
+
+  if (countErr) throw new Error(`فشل إحصاء الحسابات البنكية: ${countErr.message}`);
+
+  const bankSequence = String((count || 0) + 1).padStart(2, '0');
+  return `BNK-${companyDigits}-${bankSequence}`;
 }
 
 // ============================================================
@@ -809,9 +864,9 @@ const AuthService = {
   isAdmin, isAgent, isAdminAssistant,
   verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
-  getUserAccountNumber,
+  getUserAccountNumber, createAccountNumber, generateBankAccountNumber,
   _state: AuthState,
 };
 
 window.AuthService = AuthService;
-console.log('✅ AuthService.js v5.1 — السلوك الرابع: generateAccountNumber يُعيد account_number المخزن');
+console.log('✅ AuthService.js v5.2 — createAccountNumber (USR/ADM/CMP) + generateBankAccountNumber (BNK)');
