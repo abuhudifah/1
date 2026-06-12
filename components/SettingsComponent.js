@@ -222,17 +222,38 @@ const SettingsComponent = {
       let logoType  = 'url';
 
       if (fileInput?.files?.length) {
-        const file     = fileInput.files[0];
-        const fileName = `logo_${Date.now()}.${file.name.split('.').pop()}`;
-        const { data, error } = await supabaseClient.storage
-          .from(APP_CONFIG.LOGO_BUCKET)
-          .upload(fileName, file, { upsert: true });
-        if (error) { showToast(`فشل الرفع: ${error.message}`, 'error'); return; }
-        const { data: { publicUrl } } = supabaseClient.storage
-          .from(APP_CONFIG.LOGO_BUCKET)
-          .getPublicUrl(fileName);
-        logoValue = publicUrl;
-        logoType  = 'upload';
+        const file = fileInput.files[0];
+
+        if (!file.type.startsWith('image/')) {
+          showToast('يُرجى اختيار ملف صورة', 'warning'); return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+          showToast('حجم الصورة كبير جداً (الحد الأقصى 2MB)', 'warning'); return;
+        }
+
+        // محاولة الرفع إلى Supabase Storage أولاً
+        try {
+          const fileName = `logo_${Date.now()}.${file.name.split('.').pop()}`;
+          const { error: upErr } = await supabaseClient.storage
+            .from(APP_CONFIG.LOGO_BUCKET)
+            .upload(fileName, file, { upsert: true });
+          if (upErr) throw upErr;
+          const { data: { publicUrl } } = supabaseClient.storage
+            .from(APP_CONFIG.LOGO_BUCKET)
+            .getPublicUrl(fileName);
+          logoValue = publicUrl;
+          logoType  = 'upload';
+        } catch (storageErr) {
+          // Storage غير متاح أو لا يوجد bucket → نحوّل إلى Base64
+          console.warn('⚠️ Storage upload failed, using Base64 fallback:', storageErr.message);
+          logoValue = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload  = (e) => resolve(e.target.result);
+            reader.onerror = ()  => reject(new Error('فشل قراءة الملف'));
+            reader.readAsDataURL(file);
+          });
+          logoType = 'base64';
+        }
       } else {
         logoValue = urlInput?.value.trim() || '';
         if (!logoValue) { showToast('أدخل رابط الشعار أو اختر ملفاً', 'error'); return; }
@@ -243,10 +264,11 @@ const SettingsComponent = {
         showToast(`فشل حفظ الشعار: ${upsertResult.error?.message || 'خطأ غير معروف'}`, 'error');
         return;
       }
-      showToast('تم حفظ الشعار بنجاح', 'success');
+      showToast('✅ تم حفظ الشعار بنجاح', 'success');
       await AppStore.refreshData();
     } catch (e) {
       showToast(`خطأ: ${e.message}`, 'error');
+      console.error('❌ _saveLogo:', e);
     } finally {
       restore();
     }
@@ -396,7 +418,7 @@ const SettingsComponent = {
   async _resetAllData() {
     // الخطوة 1: تأكيد أول
     const first = await confirmDialog(
-      '⚠️ تحذير: سيتم حذف جميع البيانات التشغيلية (معاملات، حسابات بنكية، شركات، مديونيات، إقفالات يومية) من Supabase وجميع الأجهزة. المستخدمون وإعدادات النظام لن تُمس. لا يمكن التراجع عن هذه العملية.',
+      '⚠️ تحذير: سيتم حذف جميع البيانات التشغيلية (معاملات، دفتر الأستاذ، أرصدة الحسابات، إقفالات يومية، ودائع فاشلة، طلبات تحويل، إشعارات، سجل التدقيق، طابور المزامنة) من Supabase وجميع الأجهزة. المستخدمون وإعدادات النظام والشركات والحسابات البنكية والمديونيات لن تُمس. لا يمكن التراجع عن هذه العملية.',
       'تأكيد أول — متابعة', 'إلغاء', 'warning'
     );
     if (!first) return;

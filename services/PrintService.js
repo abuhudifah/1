@@ -261,5 +261,35 @@ const PrintService = (() => {
     w.document.close();
   }
 
-  return { print, share, copyText, buildTable, printStatementAdvanced };
+  /* ══════════════════════════════════════════════════════
+     تصدير Excel — يحمّل مكتبة SheetJS من CDN عند الحاجة
+  ══════════════════════════════════════════════════════ */
+
+  function _loadScript(url) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${url}"]`)) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = url;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('فشل تحميل مكتبة التصدير — تحقق من الاتصال بالإنترنت'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function exportToExcel(headers, rows, sheetName, filename) {
+    await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    const XLSX = window.XLSX;
+    if (!XLSX) throw new Error('مكتبة XLSX غير متاحة');
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+    // عرض تلقائي للأعمدة
+    ws['!cols'] = headers.map(() => ({ wch: 20 }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'تقرير').slice(0, 31));
+    XLSX.writeFile(wb, `${filename}.xlsx`);
+  }
+
+  return { print, share, copyText, buildTable, printStatementAdvanced, exportToExcel };
 })();

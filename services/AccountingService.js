@@ -44,7 +44,7 @@ async function _generateVoucherNumber() {
     try {
       const { data, error } = await supabaseClient.rpc(RPC.GET_NEXT_VOUCHER_NUMBER);
       if (!error && data) return data;
-    } catch {}
+    } catch (e) { console.warn('⚠️ _generateVoucherNumber RPC فشل، يُستخدم الرقم المحلي:', e.message); }
   }
   const today = getCurrentSaudiDate().replace(/-/g, '');
   return `V${today}-LOCAL-${Date.now()}`;
@@ -552,7 +552,8 @@ async function reverseEntries(transactionId) {
         const { data: reversalEntries } = await supabaseClient
           .from(TABLES.ACCOUNT_LEDGER)
           .select('*')
-          .like('voucher_number', `REV_${transactionId}%`);
+          .like('voucher_number', `REV_${transactionId}%`)
+          .limit(QUERY_LIMITS.REVERSAL_ENTRIES);
 
         if (reversalEntries && reversalEntries.length > 0) {
           await db.account_ledger.bulkPut(

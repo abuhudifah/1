@@ -965,7 +965,69 @@ function renderSkeleton(type, count = 3) {
   }
   return html;
 }
-window.renderSkeleton = renderSkeleton;;
+window.renderSkeleton = renderSkeleton;
+
+// ============================================================
+// دالة تنسيق رسائل الأخطاء للمستخدم
+// ============================================================
+
+/**
+ * تحوّل خطأ JavaScript أو رسالة نصية إلى رسالة عربية مفهومة للمستخدم.
+ * تُخفي التفاصيل التقنية وتُبقي على النص الصريح من err().
+ * @param {Error|string|object} error
+ * @returns {string}
+ */
+function formatErrorMessage(error) {
+  if (!error) return 'حدث خطأ غير متوقع';
+
+  // رسالة نصية مباشرة
+  if (typeof error === 'string') return error;
+
+  // كائن خطأ من err()
+  if (typeof error === 'object' && error.ok === false && error.error) {
+    return error.error;
+  }
+
+  const msg = error.message || String(error);
+
+  // أخطاء الشبكة
+  if (
+    msg.includes('Failed to fetch') ||
+    msg.includes('NetworkError') ||
+    msg.includes('Network request failed') ||
+    error instanceof TypeError
+  ) {
+    return 'تعذّر الاتصال بالخادم. تحقق من اتصالك بالإنترنت';
+  }
+
+  // أخطاء المصادقة
+  if (msg.includes('Invalid login') || msg.includes('invalid_credentials')) {
+    return 'اسم المستخدم أو كلمة المرور غير صحيحة';
+  }
+  if (msg.includes('Email not confirmed')) {
+    return 'البريد الإلكتروني غير مفعّل. يُرجى التحقق من بريدك';
+  }
+  if (msg.includes('JWT') || msg.includes('token')) {
+    return 'انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً';
+  }
+
+  // أخطاء قاعدة البيانات
+  if (msg.includes('duplicate key') || msg.includes('23505')) {
+    return 'هذا السجل موجود مسبقاً';
+  }
+  if (msg.includes('violates foreign key') || msg.includes('23503')) {
+    return 'لا يمكن تنفيذ العملية: يوجد ارتباط ببيانات أخرى';
+  }
+  if (msg.includes('permission denied') || msg.includes('42501')) {
+    return 'ليس لديك صلاحية لتنفيذ هذه العملية';
+  }
+
+  // خطأ مفهوم بالعربية أو إنجليزية قصيرة — إعادته مباشرة
+  if (msg && msg.length < 150) return msg;
+
+  return 'حدث خطأ غير متوقع. حاول مجدداً';
+}
+window.formatErrorMessage = formatErrorMessage;
 
 // ============================================================
 // TASK-6.2: مُلقِّط الأخطاء غير المعالجة

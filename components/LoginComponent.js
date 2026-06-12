@@ -30,7 +30,7 @@ function _hasAnyQuickLogin() {
         if (d.hash) return true;
       }
     }
-  } catch {}
+  } catch { /* localStorage may be unavailable */ }
   return false;
 }
 

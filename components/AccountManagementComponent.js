@@ -23,6 +23,7 @@ const AccountManagementComponent = {
   _selectedAccountName: null,
   _addModal           : null,
   _journalModal       : null,
+  _shareModal         : null,
   _allAccounts        : [], // قائمة كل الحسابات لاستخدامها في القيود
   _currentAddType     : null,
   _currentJournalType : 'simple',
@@ -121,7 +122,7 @@ const AccountManagementComponent = {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
           <div>
             <h3 style="font-size:1rem;font-weight:700;color:var(--text-primary);" id="stmt-account-title">📄 كشف الحساب</h3>
-            <p style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;font-family:monospace;" id="stmt-account-id"></p>
+            <p style="display:none;" id="stmt-account-id"></p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button id="stmt-share-btn" class="btn btn-secondary btn-sm"
@@ -132,20 +133,38 @@ const AccountManagementComponent = {
               <i data-lucide="copy" style="width:13px;height:13px;"></i> نسخ
             </button>
             <button id="stmt-print-btn" class="btn btn-secondary btn-sm">
-              <i data-lucide="printer" style="width:13px;height:13px;"></i> طباعة
+              <i data-lucide="printer" style="width:13px;height:13px;"></i> طباعة/PDF
+            </button>
+            <button id="stmt-excel-btn" class="btn btn-secondary btn-sm">
+              <i data-lucide="table-2" style="width:13px;height:13px;"></i> Excel
             </button>
             <button id="stmt-close-btn" class="btn btn-secondary btn-sm" style="color:var(--danger);">✕ إغلاق</button>
           </div>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:flex-end;">
-          <div class="form-group" style="margin:0;flex:1;min-width:120px;">
+        <div id="stmt-filter-bar" class="no-print" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:flex-end;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-size:0.78rem;">نوع الفترة</label>
+            <div style="display:flex;gap:4px;">
+              <button id="stmt-mode-day"   class="btn btn-sm btn-secondary" data-stmt-mode="day">يوم</button>
+              <button id="stmt-mode-month" class="btn btn-sm btn-primary"   data-stmt-mode="month">شهر</button>
+              <button id="stmt-mode-range" class="btn btn-sm btn-secondary" data-stmt-mode="range">فترة</button>
+            </div>
+          </div>
+          <div id="stmt-day-wrap" class="form-group" style="margin:0;flex:1;min-width:130px;display:none;">
+            <label class="form-label" style="font-size:0.78rem;">التاريخ</label>
+            <input id="stmt-day" type="date" class="form-control" style="padding:7px;font-size:0.85rem;">
+          </div>
+          <div id="stmt-month-wrap" class="form-group" style="margin:0;flex:1;min-width:130px;">
+            <label class="form-label" style="font-size:0.78rem;">الشهر</label>
+            <input id="stmt-month-input" type="month" class="form-control" style="padding:7px;font-size:0.85rem;">
+          </div>
+          <div id="stmt-from-wrap" class="form-group" style="margin:0;flex:1;min-width:120px;display:none;">
             <label class="form-label" style="font-size:0.78rem;">من تاريخ</label>
             <input id="stmt-from" type="date" class="form-control" style="padding:7px;font-size:0.85rem;">
           </div>
-          <div class="form-group" style="margin:0;flex:1;min-width:120px;">
+          <div id="stmt-to-wrap" class="form-group" style="margin:0;flex:1;min-width:120px;display:none;">
             <label class="form-label" style="font-size:0.78rem;">إلى تاريخ</label>
-            <input id="stmt-to" type="date" class="form-control" style="padding:7px;font-size:0.85rem;"
-              value="${getCurrentSaudiDate()}">
+            <input id="stmt-to" type="date" class="form-control" style="padding:7px;font-size:0.85rem;">
           </div>
           <button id="stmt-load-btn" class="btn btn-primary btn-sm">عرض الكشف</button>
         </div>
@@ -162,6 +181,10 @@ const AccountManagementComponent = {
     this._journalModal = this._buildJournalModal();
     wrap.appendChild(this._journalModal);
 
+    /* ── مودال مشاركة رقم الحساب ── */
+    this._shareModal = this._buildShareModal();
+    wrap.appendChild(this._shareModal);
+
     container.appendChild(wrap);
 
     /* ── ربط الأحداث ── */
@@ -174,6 +197,7 @@ const AccountManagementComponent = {
       if (typeof PrintService !== 'undefined') this._printStatement();
       else showToast('خدمة الطباعة غير متوفرة', 'error');
     });
+    document.getElementById('stmt-excel-btn')?.addEventListener('click', () => this._exportStatementExcel());
     document.getElementById('stmt-share-btn')?.addEventListener('click', () => {
       if (typeof PrintService !== 'undefined') this._shareStatement();
       else showToast('خدمة المشاركة غير متوفرة', 'error');
@@ -195,6 +219,17 @@ const AccountManagementComponent = {
         navigator.clipboard.writeText(text).then(() => showToast('تم النسخ', 'success'));
       }
     });
+
+    // ─── فلتر التاريخ المتقدم ───
+    document.querySelectorAll('[data-stmt-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.stmtMode;
+        this._applyFilterMode(mode);
+        try { localStorage.setItem('ahu_stmt_filter_pref', mode); } catch (e) { console.warn('localStorage N/A', e.message); }
+      });
+    });
+    document.getElementById('stmt-day')?.addEventListener('change', () => this._syncFilterDates());
+    document.getElementById('stmt-month-input')?.addEventListener('change', () => this._syncFilterDates());
 
     let _searchTimer = null;
     document.getElementById('acct-search')?.addEventListener('input', (e) => {
@@ -292,41 +327,8 @@ const AccountManagementComponent = {
     if (window.lucide) lucide.createIcons();
   },
 
-  // ✅ دالة جديدة لإثراء بيانات الحسابات بأرقام حقيقية (لبيانات Supabase)
-  async _enrichChartWithAccountNumbers(chartData) {
-    if (!chartData?.categories) return;
-    
-    try {
-      // جلب أرقام حسابات الشركات
-      const { data: companies } = await supabaseClient.from('companies').select('id, account_number');
-      const companyNumberMap = new Map();
-      if (companies) companies.forEach(c => companyNumberMap.set(c.id, c.account_number));
-
-      // جلب أكواد المصروفات
-      const { data: expenses } = await supabaseClient.from('expense_accounts').select('id, code');
-      const expenseCodeMap = new Map();
-      if (expenses) expenses.forEach(e => expenseCodeMap.set(e.id, e.code));
-
-      for (const cat of chartData.categories) {
-        for (const acc of cat.accounts || []) {
-          if (acc.account_id?.startsWith('COMP_')) {
-            const companyId = acc.account_id.slice(5);
-            acc.account_number = companyNumberMap.get(companyId) || acc.account_id;
-          } else if (acc.account_id?.startsWith('EXP_')) {
-            const code = acc.account_id.slice(4);
-            acc.account_number = code;
-          } else if (acc.account_id?.startsWith('AGT_')) {
-            // حسابات المستخدمين: لا يوجد رقم حساب في هذا السياق، نترك المعرف
-            acc.account_number = acc.account_id;
-          } else {
-            acc.account_number = acc.account_id;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('⚠️ فشل إثراء أرقام الحسابات:', e);
-    }
-  },
+  // محذوف: أرقام الحسابات لا تُعرض في الواجهة
+  async _enrichChartWithAccountNumbers() { /* no-op */ },
 
   // ─────────────────────────────────────────────────────────
   // إضافة قسم أرصدة الشركات المحسوبة (باستخدام RPC)
@@ -688,24 +690,18 @@ const AccountManagementComponent = {
         tableWrap.className = 'table-wrapper';
         tableWrap.style.overflowX = 'auto';
         let tableHtml = `
-            <table class="data-table" style="min-width:550px;">
-              <thead><tr><th>الحساب</th><th>رقم الحساب</th><th>الرصيد</th><th>إجراءات</th></tr></thead>
+            <table class="data-table" style="min-width:420px;">
+              <thead><tr><th>الحساب</th><th>الرصيد</th><th>إجراءات</th></tr></thead>
               <tbody>`;
         for (const acc of accounts) {
           const bal = Math.round(parseFloat(acc.balance || 0));
-          // ✅ عرض رقم الحساب الحقيقي
-          const accountNumber = acc.account_number || this._getShortId(acc.account_id);
           const parentBadge = acc.parent_name ? `<span class="acct-parent-badge">🏢 ${escapeHtml(acc.parent_name)}</span>` : '';
           tableHtml += `
               <tr class="acct-row" data-name="${escapeHtml((acc.name || acc.account_id).toLowerCase())}">
                 <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
-                <td style="direction:ltr;font-family:monospace;font-size:0.82rem;color:var(--accent);font-weight:600;">
-                  ${escapeHtml(accountNumber)}
-                  <button class="copy-account-number-btn btn btn-secondary btn-sm" style="margin-left:6px;padding:2px 6px;font-size:0.7rem;" data-number="${escapeHtml(accountNumber)}" title="نسخ رقم الحساب">📋</button>
-                </td>
                 <td style="font-weight:700;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ر.س</td>
                 <td>
-                  <div style="display:flex;gap:4px;">
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;">
                     <button class="view-stmt-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">📄 كشف</button>
                     <button class="quick-entry-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">✏️ قيد</button>
                     <button class="delete-account-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">🗑️ حذف</button>
@@ -727,7 +723,7 @@ const AccountManagementComponent = {
       el.appendChild(section);
     }
     
-    // ربط الأحداث (نسخ، كشف، قيد، حذف)
+    // ربط الأحداث (كشف، قيد، حذف)
     el.querySelectorAll('.copy-account-number-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -924,21 +920,26 @@ const AccountManagementComponent = {
       }
     } catch { /* تجاهل — نعرض المتاح */ }
 
+    // ── تصفية حسب صلاحيات المندوب ──
+    const allowedBanks     = (typeof AuthService !== 'undefined') ? AuthService.getAllowedBanks()     : null;
+    const allowedCompanies = (typeof AuthService !== 'undefined') ? AuthService.getAllowedCompanies() : null;
+    const allowedUsers     = (typeof AuthService !== 'undefined') ? AuthService.getAllowedUsers()     : null;
+
     // ── حسابات المستخدمين (AGT_) لكل مستخدم نشط، مع رصيده (0 إن لم يتحرك) ──
     const agents = [];
     for (const u of users) {
       if (u.is_active === false) continue;
+      if (allowedUsers && !allowedUsers.includes(u.id)) continue;
       const id = 'AGT_' + u.id;
-      agents.push({ account_id: id, name: u.display_name || u.id, balance: balById.get(id) || 0,
-        parent_name: null, account_number: u.account_number || id });
+      agents.push({ account_id: id, name: u.display_name || u.id, balance: balById.get(id) || 0, parent_name: null });
     }
 
     // ── حسابات الشركات (COMP_) ──
     const comps = [];
     for (const c of companies) {
+      if (allowedCompanies && !allowedCompanies.includes(c.id)) continue;
       const id = 'COMP_' + c.id;
-      comps.push({ account_id: id, name: c.name || c.id, balance: balById.get(id) || 0,
-        parent_name: null, account_number: c.account_number || id });
+      comps.push({ account_id: id, name: c.name || c.id, balance: balById.get(id) || 0, parent_name: null });
     }
 
     // ── الحسابات المستقلة الموحّدة (تظهر دائماً) ──
@@ -977,14 +978,7 @@ const AccountManagementComponent = {
     if (titleEl) titleEl.textContent = `📄 كشف حساب: ${accountName}`;
     if (idEl)    idEl.textContent    = accountId;
 
-    const firstOfMonth = new Date();
-    firstOfMonth.setDate(1);
-    const fromEl = document.getElementById('stmt-from');
-    if (fromEl && !fromEl.value) {
-      const tz = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.TIMEZONE) ? APP_CONFIG.TIMEZONE : 'Asia/Riyadh';
-      fromEl.value = firstOfMonth.toLocaleDateString('en-CA', { timeZone: tz });
-    }
-
+    this._initFilterMode();
     stmtSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     this._loadStatement();
   },
@@ -1023,7 +1017,8 @@ const AccountManagementComponent = {
           const { data, error } = await supabaseClient
             .from('account_ledger').select('*')
             .eq('account_id', acc).gte('date', from).lte('date', to)
-            .order('date', { ascending: true }).order('created_at', { ascending: true });
+            .order('date', { ascending: true }).order('created_at', { ascending: true })
+            .limit(QUERY_LIMITS.LEDGER_ENTRIES);
           if (error) throw error;
           entries = data || [];
         } catch (e) {
@@ -1115,7 +1110,7 @@ const AccountManagementComponent = {
         kind: 'ledger',
         title: `كشف حساب: ${this._selectedAccountName || acc}`,
         accountId: acc,
-        periodText: `الفترة: ${from} ← ${to}`,
+        periodText: this._buildPeriodText(from, to),
         columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
         rows: rows.map(r => [formatDateArabic(r.date), r.time, r.label,
           r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']),
@@ -1181,6 +1176,7 @@ const AccountManagementComponent = {
       const fmt = (n) => Math.round(n).toLocaleString('en-US');
       let totalDep = 0, totalWd = 0;
       const printRows = [];
+      this._stmtPrintRows = printRows;
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
         <thead><tr><th>#</th><th>الوقت</th><th>نوع العملية</th><th>المندوب</th><th>المبلغ</th></tr></thead><tbody>`;
       txns.forEach((t, i) => {
@@ -1212,7 +1208,7 @@ const AccountManagementComponent = {
         kind: 'bank',
         title: `كشف حركة بنك: ${this._selectedAccountName || ('BNK_' + bankId)}`,
         accountId: 'BNK_' + bankId,
-        periodText: `الفترة: ${from} ← ${to}`,
+        periodText: this._buildPeriodText(from, to),
         columns: ['#', 'الوقت', 'نوع العملية', 'المندوب', 'المبلغ'],
         rows: printRows,
         totalsLine: bankTotalsText.split(' | ').map(t => `<span>${t}</span>`).join(''),
@@ -1370,14 +1366,25 @@ const AccountManagementComponent = {
     let banks = (typeof AppStore !== 'undefined' ? (AppStore.getState('bankAccounts') || []) : []);
     if (!banks.length) {
       try {
-        if (this._isOnline()) { const { data } = await supabaseClient.from('bank_accounts').select('id, name, company_id'); banks = data || []; }
-        else if (typeof db !== 'undefined' && db.isOpen()) banks = await db.bank_accounts.toArray();
-      } catch { /* تجاهل */ }
+        if (this._isOnline()) {
+          const { data } = await supabaseClient.from('bank_accounts')
+            .select('id, name, company_id')
+            .limit(QUERY_LIMITS.BANK_ACCOUNTS);
+          banks = data || [];
+        } else if (typeof db !== 'undefined' && db.isOpen()) {
+          banks = await db.bank_accounts.toArray();
+        }
+      } catch (e) {
+        console.warn('⚠️ AccountManagement: فشل جلب الحسابات البنكية:', e.message);
+      }
     }
+    // تصفية حسب صلاحيات المندوب
+    const allowedBanks = (typeof AuthService !== 'undefined') ? AuthService.getAllowedBanks() : null;
+    if (allowedBanks) banks = banks.filter(b => allowedBanks.includes(b.id));
     if (!banks.length) return;
 
     const companies = (typeof AppStore !== 'undefined' ? (AppStore.getState('companies') || []) : []);
-    const compById = new Map(companies.map(c => [c.id, c.name]));
+    const compById  = new Map(companies.map(c => [c.id, c.name]));
 
     const section = document.createElement('div');
     section.className = 'glass-card acct-category';
@@ -1390,21 +1397,110 @@ const AccountManagementComponent = {
         </div>
       </div>
       <div class="acct-cat-body"><div class="table-wrapper" style="overflow-x:auto;">
-        <table class="data-table" style="min-width:480px;">
-          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>كشف الحركة</th></tr></thead>
+        <table class="data-table bank-accounts-table" style="min-width:420px;">
+          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>الإجراءات</th></tr></thead>
           <tbody>
-            ${banks.map(b => `<tr>
+            ${banks.map(b => {
+              const compName = compById.get(b.company_id) || '';
+              return `<tr>
               <td style="font-weight:600;">${escapeHtml(b.name || b.id)}</td>
-              <td style="color:var(--text-secondary);">${escapeHtml(compById.get(b.company_id) || '—')}</td>
-              <td><button class="view-bank-stmt-btn btn btn-secondary btn-sm" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف الحركة</button></td>
-            </tr>`).join('')}
+              <td style="color:var(--text-secondary);">${escapeHtml(compName || '—')}</td>
+              <td>
+                <button class="view-bank-stmt-btn btn-statement" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف</button>
+              </td>
+            </tr>`;
+            }).join('')}
           </tbody>
         </table>
       </div></div>`;
     containerEl.appendChild(section);
+
     section.querySelectorAll('.view-bank-stmt-btn').forEach(btn => {
       btn.addEventListener('click', () => this._showStatement('BNK_' + btn.dataset.bankId, btn.dataset.bankName));
     });
+
+  },
+
+  _openShareBankModal(bankId, bankName, accountNumber, companyName) {
+    const existing = document.getElementById('share-bank-modal');
+    if (existing) existing.remove();
+
+    const users       = (typeof AppStore !== 'undefined' ? (AppStore.getState('users') || []) : []);
+    const currentUser = (typeof AuthState !== 'undefined' ? AuthState.currentUser : null);
+    const targetUsers = users.filter(u => u.id !== currentUser?.id && u.is_active !== false);
+
+    const modal = document.createElement('div');
+    modal.id        = 'share-bank-modal';
+    modal.className = 'share-bank-modal';
+    modal.innerHTML = `
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>📤 مشاركة رقم الحساب</h3>
+          <button class="modal-close-btn" aria-label="إغلاق">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="account-info-box">
+            <div class="info-row"><span class="label">البنك:</span><span class="value">${escapeHtml(bankName)}</span></div>
+            <div class="info-row"><span class="label">الشركة:</span><span class="value">${escapeHtml(companyName || '—')}</span></div>
+            <div class="info-row"><span class="label">رقم الحساب (IBAN):</span><span class="value iban" dir="ltr">${escapeHtml(accountNumber)}</span></div>
+          </div>
+          <div class="share-section">
+            <label class="share-label" for="share-user-select">اختر المستخدم للمشاركة:</label>
+            <select id="share-user-select" class="share-user-select">
+              <option value="">-- اختر مستخدم --</option>
+              ${targetUsers.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.username || u.id)} (${escapeHtml(u.account_number || '')})</option>`).join('')}
+            </select>
+          </div>
+          <div class="notification-preview">
+            <div class="preview-label">📝 نص الإشعار الذي سيُرسَل:</div>
+            <div class="preview-text">يمكنك الإيداع إلى حساب (${escapeHtml(companyName || bankName)}) عبر هذا الرقم (${escapeHtml(accountNumber)}) وإضافته كمستفيد مستقبلي</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary btn-cancel-share">إلغاء</button>
+          <button class="btn btn-primary btn-send-share">📤 إرسال الإشعار</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    const closeModal = () => modal.remove();
+    modal.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+    modal.querySelector('.btn-cancel-share').addEventListener('click', closeModal);
+    modal.querySelector('.modal-overlay').addEventListener('click', closeModal);
+    modal.querySelector('.btn-send-share').addEventListener('click', () => {
+      const select       = modal.querySelector('#share-user-select');
+      const targetUserId = select.value;
+      if (!targetUserId) { showToast('الرجاء اختيار مستخدم', 'warning'); return; }
+      this._sendBankShareNotification(targetUserId, bankName, companyName, accountNumber, modal);
+    });
+  },
+
+  async _sendBankShareNotification(targetUserId, bankName, companyName, accountNumber, modalEl) {
+    const sendBtn = modalEl?.querySelector('.btn-send-share');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '⏳ جاري الإرسال...'; }
+    try {
+      const currentUser = (typeof AuthState !== 'undefined' ? AuthState.currentUser : null);
+      if (!currentUser?.id) throw new Error('لم يتم تحديد المستخدم الحالي');
+      const { error } = await supabaseClient.from('notifications').insert({
+        from_user_id: currentUser.id,
+        to_user_id:   targetUserId,
+        type:         'account_share',
+        title:        '🏦 مشاركة حساب بنكي',
+        message:      `يمكنك الإيداع إلى حساب (${companyName || bankName}) عبر هذا الرقم (${accountNumber}) وإضافته كمستفيد مستقبلي`,
+        data:         JSON.stringify({ action: 'deposit', account_number: accountNumber, bank_name: bankName, company_name: companyName }),
+        target:       JSON.stringify([targetUserId]),
+        is_read:      false,
+        created_at:   new Date().toISOString(),
+      });
+      if (error) throw new Error(error.message);
+      showToast('✅ تم إرسال الإشعار بنجاح', 'success');
+      if (modalEl) modalEl.remove();
+    } catch (e) {
+      console.error('❌ فشل إرسال إشعار المشاركة:', e.message);
+      showToast('فشل إرسال الإشعار: ' + e.message, 'error');
+      if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '📤 إرسال الإشعار'; }
+    }
   },
 
   _stmtCard(label, value, color) {
@@ -1418,6 +1514,111 @@ const AccountManagementComponent = {
   },
 
   // زر الطباعة يفتح نافذة الطباعة الاحترافية
+  async _exportStatementExcel() {
+    const st = this._lastStatement;
+    if (!st || !st.rows || !st.rows.length) { showToast('لا توجد بيانات للتصدير', 'info'); return; }
+    const btn = document.getElementById('stmt-excel-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
+    try {
+      const name = this._selectedAccountName || 'كشف_حساب';
+      await PrintService.exportToExcel(st.columns, st.rows, 'كشف الحساب', name.replace(/\s+/g, '_'));
+    } catch (e) {
+      showToast(`❌ فشل التصدير: ${e.message}`, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="table-2" style="width:13px;height:13px;"></i> Excel';
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+  },
+
+  // ─── فلتر التاريخ: تهيئة من localStorage عند فتح كشف حساب ───
+  _initFilterMode() {
+    const tz = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.TIMEZONE) ? APP_CONFIG.TIMEZONE : 'Asia/Riyadh';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const ym    = today.slice(0, 7); // YYYY-MM
+
+    let mode = 'month';
+    try { mode = localStorage.getItem('ahu_stmt_filter_pref') || 'month'; } catch (e) { console.warn('localStorage N/A', e.message); }
+    if (!['day', 'month', 'range'].includes(mode)) mode = 'month';
+
+    const dayEl   = document.getElementById('stmt-day');
+    const monthEl = document.getElementById('stmt-month-input');
+    const fromEl  = document.getElementById('stmt-from');
+    const toEl    = document.getElementById('stmt-to');
+
+    if (dayEl   && !dayEl.value)   dayEl.value   = today;
+    if (monthEl && !monthEl.value) monthEl.value = ym;
+    if (fromEl  && !fromEl.value)  fromEl.value  = `${ym}-01`;
+    if (toEl    && !toEl.value)    toEl.value    = today;
+
+    this._applyFilterMode(mode);
+  },
+
+  // ─── فلتر التاريخ: إظهار/إخفاء المدخلات حسب الوضع ───
+  _applyFilterMode(mode) {
+    const show = (id, vis) => { const el = document.getElementById(id); if (el) el.style.display = vis ? '' : 'none'; };
+    show('stmt-day-wrap',   mode === 'day');
+    show('stmt-month-wrap', mode === 'month');
+    show('stmt-from-wrap',  mode === 'range');
+    show('stmt-to-wrap',    mode === 'range');
+
+    document.querySelectorAll('[data-stmt-mode]').forEach(btn => {
+      const active = btn.dataset.stmtMode === mode;
+      btn.classList.toggle('btn-primary',   active);
+      btn.classList.toggle('btn-secondary', !active);
+    });
+
+    this._syncFilterDates();
+  },
+
+  // ─── فلتر التاريخ: مزامنة stmt-from/stmt-to من الوضع النشط ───
+  _syncFilterDates() {
+    const tz    = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.TIMEZONE) ? APP_CONFIG.TIMEZONE : 'Asia/Riyadh';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+
+    const activeBtn = document.querySelector('[data-stmt-mode].btn-primary');
+    const mode = activeBtn?.dataset.stmtMode || 'range';
+
+    const fromEl = document.getElementById('stmt-from');
+    const toEl   = document.getElementById('stmt-to');
+
+    if (mode === 'day') {
+      const day = document.getElementById('stmt-day')?.value || today;
+      if (fromEl) fromEl.value = day;
+      if (toEl)   toEl.value   = day;
+    } else if (mode === 'month') {
+      const ym = document.getElementById('stmt-month-input')?.value;
+      if (ym) {
+        const [y, m]     = ym.split('-').map(Number);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        if (fromEl) fromEl.value = `${ym}-01`;
+        if (toEl)   toEl.value   = `${ym}-${String(daysInMonth).padStart(2, '0')}`;
+      }
+    }
+    // mode === 'range': المستخدم يتحكم في stmt-from/stmt-to مباشرةً
+  },
+
+  // ─── نص الفترة الزمنية بتنسيق يناسب الوضع المختار ───
+  _buildPeriodText(from, to) {
+    let mode = 'range';
+    try { mode = localStorage.getItem('ahu_stmt_filter_pref') || 'range'; } catch (e) { console.warn('localStorage N/A', e.message); }
+
+    if (mode === 'day' && from === to) {
+      return `يوم: ${from}`;
+    }
+    if (mode === 'month') {
+      const ym = document.getElementById('stmt-month-input')?.value;
+      if (ym) {
+        const [y, m] = ym.split('-').map(Number);
+        const label  = new Date(y, m - 1, 1).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long' });
+        return `شهر: ${label}`;
+      }
+    }
+    return `الفترة: ${from} ← ${to}`;
+  },
+
   _printStatement() { this._printProfessional(); },
 
   // نافذة طباعة احترافية (A4 + أزرار رجوع/طباعة/مشاركة/PDF)
@@ -1464,9 +1665,10 @@ const AccountManagementComponent = {
     const rows = tbl ? [...tbl.querySelectorAll('tbody tr')].map(tr =>
       [...tr.querySelectorAll('td')].map(td => td.textContent.trim()).join(' | ')) : [];
 
+    const periodDisplay = this._lastStatement?.periodText || `الفترة: ${from} → ${to}`;
     const lines = [
       `📄 كشف حساب: ${name}`,
-      `🗓️ الفترة: ${from} → ${to}`,
+      `🗓️ ${periodDisplay}`,
       '─'.repeat(30),
       ...rows,
       '─'.repeat(30),
@@ -2013,6 +2215,134 @@ const AccountManagementComponent = {
     } catch (e) {
       restore();
       errEl.textContent = `خطأ: ${e.message}`;
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // مشاركة رقم الحساب مع مستخدم آخر
+  // ─────────────────────────────────────────────────────────
+
+  _buildShareModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'acct-share-modal';
+    overlay.style.display = 'none';
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:420px;">
+        <div class="modal-header">
+          <h3 class="modal-title">📤 مشاركة رقم الحساب</h3>
+          <button class="modal-close" id="acct-share-close">✕</button>
+        </div>
+        <div style="margin-bottom:16px;">
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:4px;">الحساب</p>
+          <p id="acct-share-info" style="font-weight:700;color:var(--text-primary);font-family:monospace;font-size:0.95rem;"></p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">اختر المستخدم المستلم</label>
+          <select id="acct-share-user-select" class="form-control">
+            <option value="">— اختر مستخدماً —</option>
+          </select>
+        </div>
+        <div id="acct-share-error" style="color:var(--danger);font-size:0.82rem;min-height:18px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="acct-share-cancel" class="btn btn-secondary">إلغاء</button>
+          <button id="acct-share-send" class="btn btn-primary">
+            <i data-lucide="send" style="width:14px;height:14px;"></i> إرسال
+          </button>
+        </div>
+      </div>`;
+
+    overlay.querySelector('#acct-share-close').addEventListener('click', () => { overlay.style.display = 'none'; });
+    overlay.querySelector('#acct-share-cancel').addEventListener('click', () => { overlay.style.display = 'none'; });
+    overlay.querySelector('#acct-share-send').addEventListener('click', () => this._sendAccountShare());
+
+    return overlay;
+  },
+
+  _openShareModal(accountId, accountName, accountNumber) {
+    if (!this._shareModal) return;
+    const errEl = this._shareModal.querySelector('#acct-share-error');
+    errEl.textContent = '';
+
+    // تحديد نوع الكيان من معرف الحساب
+    const entityType = accountId?.startsWith('AGT_')  ? 'user'
+                     : accountId?.startsWith('COMP_') ? 'company'
+                     : accountId?.startsWith('BNK_')  ? 'bank'
+                     : 'user';
+
+    // عرض معلومات الحساب
+    this._shareModal.querySelector('#acct-share-info').textContent =
+      `${accountName}  ·  ${accountNumber}`;
+    // تخزين البيانات على الـ modal مؤقتاً
+    this._shareModal.dataset.accountName   = accountName;
+    this._shareModal.dataset.accountNumber = accountNumber;
+    this._shareModal.dataset.entityType    = entityType;
+
+    // ملء قائمة المستخدمين النشطين (باستثناء المستخدم الحالي)
+    const users   = (AppStore.getState('users') || []).filter(u => u.is_active);
+    const myId    = AuthService.getCurrentUserId();
+    const select  = this._shareModal.querySelector('#acct-share-user-select');
+    select.innerHTML = '<option value="">— اختر مستخدماً —</option>';
+    users
+      .filter(u => u.id !== myId)
+      .forEach(u => {
+        const opt = document.createElement('option');
+        opt.value       = u.id;
+        opt.textContent = `${u.display_name || u.username} (${u.role === 'admin' ? 'مدير' : u.role === 'admin_assistant' ? 'مساعد' : 'مندوب'})`;
+        select.appendChild(opt);
+      });
+
+    this._shareModal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+    select.focus();
+  },
+
+  async _sendAccountShare() {
+    const errEl      = this._shareModal.querySelector('#acct-share-error');
+    const select     = this._shareModal.querySelector('#acct-share-user-select');
+    const sendBtn    = this._shareModal.querySelector('#acct-share-send');
+    const toUserId   = select.value;
+    const accountName   = this._shareModal.dataset.accountName   || '';
+    const accountNumber = this._shareModal.dataset.accountNumber || '';
+
+    errEl.textContent = '';
+
+    if (!toUserId) { errEl.textContent = 'يُرجى اختيار مستخدم'; return; }
+
+    // التحقق من أن المستخدم المختار نشط
+    const users  = AppStore.getState('users') || [];
+    const target = users.find(u => u.id === toUserId && u.is_active);
+    if (!target) { errEl.textContent = 'المستخدم المختار غير موجود أو غير نشط'; return; }
+
+    const entityType   = this._shareModal.dataset.entityType || 'user';
+    const actionMap    = { user: 'transfer', company: 'collection', bank: 'deposit' };
+    const action       = actionMap[entityType] || 'transfer';
+    const msgText      = `يمكنك التحويل إلى حساب ${accountName} عبر هذا الرقم (${accountNumber}) وإضافته كمستفيد مستقبلي`;
+
+    const restore = setButtonLoading(sendBtn, 'جاري الإرسال...');
+    try {
+      const result = await repo.create(TABLES.NOTIFICATIONS, {
+        title     : '📤 مشاركة رقم حساب',
+        body      : msgText,
+        message   : msgText,
+        type      : 'account_share',
+        data      : JSON.stringify({ action, account_number: accountNumber, entity_name: accountName, entity_type: entityType }),
+        target    : JSON.stringify([toUserId]),
+        sender_id : AuthService.getCurrentUserId(),
+        read_by   : '[]',
+        hidden_by : '[]',
+      });
+      if (!isOk(result)) throw new Error(result.error || 'فشل الإرسال');
+
+      this._shareModal.style.display = 'none';
+      showToast(`✅ تم إرسال رقم الحساب إلى ${escapeHtml(target.display_name || target.username)}`, 'success');
+    } catch (e) {
+      errEl.textContent = formatErrorMessage(e);
+      console.warn('⚠️ _sendAccountShare:', e.message);
+    } finally {
+      restore();
     }
   },
 

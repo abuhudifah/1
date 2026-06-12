@@ -98,7 +98,7 @@ async function login(email, password) {
 
   } catch (e) {
     console.error('❌ AuthService.login():', e);
-    return err(`خطأ غير متوقع: ${e.message}`);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -132,8 +132,22 @@ async function logout(clearLocalData = false) {
 // ============================================================
 async function checkSession() {
   try {
-    const { session, error } = await getCurrentSession();
-    if (error || !session) return err('لا توجد جلسة نشطة');
+    // 1. تحقق سريع من الجلسة المحلية — فشل فوري دون استدعاء Supabase
+    const localSession = getSession();
+    if (!localSession) return err('لا توجد جلسة نشطة');
+
+    // 2. فحص انتهاء الصلاحية المحلية (8 ساعات مطلقة) ✅ S8
+    if (localSession.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
+      await logout();
+      return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
+    }
+
+    // 3. التحقق من صلاحية JWT مع Supabase
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    if (error || !session) {
+      await logout();
+      return err('الجلسة غير صالحة. يُرجى تسجيل الدخول مجدداً');
+    }
 
     // ✅ S8: فحص انتهاء صلاحية الجلسة المحلية (8 ساعات مطلقة)
     const localSession = getSession();
@@ -169,7 +183,7 @@ async function checkSession() {
     return ok({ user: session.user, profile });
 
   } catch (e) {
-    return err(`فشل التحقق من الجلسة: ${e.message}`);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -179,9 +193,9 @@ async function checkSession() {
 async function refreshSession() {
   try {
     const { data, error } = await supabaseClient.auth.refreshSession();
-    if (error) return err(error.message);
+    if (error) return err(formatErrorMessage(error));
     return ok(data.session);
-  } catch (e) { return err(e.message); }
+  } catch (e) { return err(formatErrorMessage(e)); }
 }
 
 // ============================================================
@@ -266,7 +280,7 @@ async function enableQuickLogin(equation) {
     saveSession({ ...getSession(), quickLoginEnabled: true });
     return ok(true);
   } catch (e) {
-    return err(`خطأ في تفعيل الدخول السريع: ${e.message}`);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -379,7 +393,7 @@ async function quickLogin(equation) {
           return err('انقطع الاتصال. يُرجى المحاولة مجدداً عند عودة الشبكة');
         }
         _recordFailedAttempt(`quick_login_${quickData.userId}`);
-        return err('فشل الدخول السريع: ' + e.message);
+        return err(formatErrorMessage(e));
       }
     }
 
@@ -434,7 +448,7 @@ async function quickLogin(equation) {
     return ok({ profile: offlineProfile });
   } catch (e) {
     console.error('❌ AuthService.quickLogin():', e);
-    return err(`خطأ في الدخول السريع: ${e.message}`);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -456,7 +470,7 @@ async function disableQuickLogin() {
     } catch (e) { console.warn('⚠️ [disableQuickLogin] Dexie تحديث فشل:', e.message); }
 
     return ok(true);
-  } catch (e) { return err(e.message); }
+  } catch (e) { return err(formatErrorMessage(e)); }
 }
 
 // ============================================================
@@ -538,14 +552,17 @@ async function _ensureUserAccountNumber(userId, profile = null) {
       return null;
     }
     
+    let newNumber;
     const entityType = profile?.role === ROLES.AGENT ? 'user' : 'user'; // RPC تدعم 'user'
-    const { data: newNumber, error: genError } = await supabaseClient.rpc('generate_account_number', { 
-      entity_type: entityType 
+    const { data: rpcNumber, error: genError } = await supabaseClient.rpc('generate_account_number', {
+      entity_type: entityType
     });
-    
+
     if (genError) {
-      console.error('❌ فشل توليد رقم الحساب:', genError);
-      return null;
+      console.warn('⚠️ RPC generate_account_number فشلت، fallback محلي:', genError.message);
+      newNumber = createAccountNumber(profile?.role || 'agent');
+    } else {
+      newNumber = rpcNumber;
     }
     
     // ✅ A1: UPDATE مشروط (فقط إذا كان الحقل لا يزال NULL) لمنع Race Condition
@@ -586,6 +603,89 @@ async function _ensureUserAccountNumber(userId, profile = null) {
     console.error('❌ _ensureUserAccountNumber:', e);
     return null;
   }
+}
+
+// ============================================================
+// 8b. توليد أرقام الحسابات بالصيغة الموحدة الجديدة
+// ============================================================
+
+/**
+ * يولّد رقم حساب جديد بالصيغة الموحدة (USR/ADM/CMP + 6 أرقام عشوائية)
+ * @param {'admin'|'admin_assistant'|'agent'|'company'} role
+ * @returns {string}  مثال: USR-372819
+ */
+function createAccountNumber(role) {
+  const prefixMap = {
+    admin          : 'ADM',
+    admin_assistant: 'ADM',
+    agent          : 'USR',
+    company        : 'CMP',
+  };
+  const prefix      = prefixMap[role] || 'USR';
+  const randomDigits = Math.floor(100000 + Math.random() * 900000);
+  return `${prefix}-${randomDigits}`;
+}
+
+/**
+ * يولّد رقم حساب بنكي مرتبط برقم الشركة المالكة
+ * الصيغة: BNK-XXXXXX-YY  (XXXXXX = أرقام الشركة, YY = تسلسل البنوك للشركة)
+ * @param {string} companyId - معرف الشركة في جدول companies
+ * @returns {Promise<string>}  مثال: BNK-789012-02
+ */
+async function generateBankAccountNumber(companyId) {
+  if (!companyId) throw new Error('معرف الشركة مطلوب لتوليد رقم الحساب البنكي');
+
+  const { data: company, error: compErr } = await supabaseClient
+    .from('companies')
+    .select('account_number')
+    .eq('id', companyId)
+    .single();
+
+  if (compErr || !company) throw new Error('الشركة غير موجودة أو فشل جلب بياناتها');
+
+  const companyDigits = (company.account_number || '').split('-')[1];
+  if (!companyDigits) throw new Error(`رقم حساب الشركة غير صالح: ${company.account_number}`);
+
+  const { count, error: countErr } = await supabaseClient
+    .from('bank_accounts')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', companyId);
+
+  if (countErr) throw new Error(`فشل إحصاء الحسابات البنكية: ${countErr.message}`);
+
+  const bankSequence = String((count || 0) + 1).padStart(2, '0');
+  return `BNK-${companyDigits}-${bankSequence}`;
+}
+
+/**
+ * ينشئ حساباً بنكياً جديداً مع توليد internal_account_number تلقائياً
+ * @param {{ company_id: string, name: string, account_number: string,
+ *           financial_ceiling?: number, card_number?: string, card_holder?: string }} bankData
+ * @returns {Promise<object>} بيانات الحساب البنكي المُنشأ
+ */
+async function createBankAccount(bankData) {
+  if (!bankData?.company_id)     throw new Error('company_id مطلوب لإنشاء الحساب البنكي');
+  if (!bankData?.name)           throw new Error('اسم البنك (name) مطلوب');
+  if (!bankData?.account_number) throw new Error('رقم الحساب الحقيقي (account_number) مطلوب');
+
+  const internalNumber = await generateBankAccountNumber(bankData.company_id);
+
+  const { data, error } = await supabaseClient
+    .from('bank_accounts')
+    .insert({
+      company_id              : bankData.company_id,
+      name                    : bankData.name,
+      account_number          : bankData.account_number,       // الرقم الحقيقي من المستخدم
+      internal_account_number : internalNumber,                 // BNK-XXXXXX-YY مُولَّد تلقائياً
+      financial_ceiling       : bankData.financial_ceiling ?? 1,
+      card_number             : bankData.card_number  ?? null,
+      card_holder             : bankData.card_holder  ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`فشل إنشاء الحساب البنكي: ${error.message}`);
+  return data;
 }
 
 // ============================================================
@@ -656,11 +756,11 @@ function _preloadEssentialData(profile) {
     try {
       if (!isOnline()) return;
       const tasks = [
-        supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').then(({ data }) => {
+        supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').limit(QUERY_LIMITS.SYSTEM_SETTINGS).then(({ data }) => {
           if (data && typeof db !== 'undefined' && db.isOpen())
             db.system_settings?.bulkPut(data).catch(() => {});
         }),
-        supabaseClient.from(TABLES.COMPANIES).select('*').order('name').then(({ data }) => {
+        supabaseClient.from(TABLES.COMPANIES).select('*').order('name').limit(QUERY_LIMITS.COMPANIES).then(({ data }) => {
           if (data && typeof db !== 'undefined' && db.isOpen())
             db.companies?.bulkPut(data).catch(() => {});
         }),
@@ -670,6 +770,7 @@ function _preloadEssentialData(profile) {
           supabaseClient.from(TABLES.USERS)
             .select('id,username,display_name,role,is_active,allowed_tabs,account_number')
             .order('display_name')
+            .limit(QUERY_LIMITS.USERS)
             .then(({ data }) => {
               if (data && typeof db !== 'undefined' && db.isOpen())
                 db.users?.bulkPut(data.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {});
@@ -769,7 +870,43 @@ function isAdmin() {
   return AuthState.currentUser?.role === ROLES.ADMIN;}
 function isAgent()           { return AuthState.currentUser?.role === ROLES.AGENT; }
 function isAdminAssistant()  { return AuthState.currentUser?.role === ROLES.ADMIN_ASSISTANT; }
+function isAdminOrAssistant() {
+  const role = window.AppStore?.getState?.('role') || AuthState.currentUser?.role;
+  return role === ROLES.ADMIN || role === ROLES.ADMIN_ASSISTANT;
+}
 function canAccessTab(tabId) { return getAllowedTabs().includes(tabId); }
+
+/**
+ * يعيد قائمة معرفات الشركات المسموحة للمندوب.
+ * المدير/المساعد: null (كل الشركات مسموحة).
+ * المندوب: المصفوفة المخزنة في allowed_companies (فارغة = كل الشركات).
+ */
+function getAllowedCompanies() {
+  if (isAdminOrAssistant()) return null;
+  const raw = AuthState.currentUser?.allowed_companies;
+  if (!raw) return null;
+  const arr = Array.isArray(raw) ? raw :
+    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
+  return arr.length ? arr : null;
+}
+
+function getAllowedBanks() {
+  if (isAdminOrAssistant()) return null;
+  const raw = AuthState.currentUser?.allowed_banks;
+  if (!raw) return null;
+  const arr = Array.isArray(raw) ? raw :
+    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
+  return arr.length ? arr : null;
+}
+
+function getAllowedUsers() {
+  if (isAdminOrAssistant()) return null;
+  const raw = AuthState.currentUser?.allowed_users;
+  if (!raw) return null;
+  const arr = Array.isArray(raw) ? raw :
+    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
+  return arr.length ? arr : null;
+}
 
 function getAllowedTabs() {
   const appRole = window.AppStore?.getState?.('role');
@@ -799,12 +936,13 @@ const AuthService = {
   login, logout, checkSession, refreshSession,
   enableQuickLogin, quickLogin, disableQuickLogin,
   getDeviceToken, getCurrentUser, getCurrentRole, getCurrentUserId,
-  isAdmin, isAgent, isAdminAssistant,
+  isAdmin, isAgent, isAdminAssistant, isAdminOrAssistant,
+  getAllowedCompanies, getAllowedBanks, getAllowedUsers,
   verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
-  getUserAccountNumber,
+  getUserAccountNumber, createAccountNumber, generateBankAccountNumber, createBankAccount,
   _state: AuthState,
 };
 
 window.AuthService = AuthService;
-console.log('✅ AuthService.js v5.1 — السلوك الرابع: generateAccountNumber يُعيد account_number المخزن');
+console.log('✅ AuthService.js v5.3 — createBankAccount: توليد internal_account_number تلقائياً عند الإنشاء');

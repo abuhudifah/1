@@ -62,6 +62,7 @@ const _REPO_TABLES_WITHOUT_UPDATED_AT = new Set([
   'audit_logs',
   'daily_closings',
   'quick_login_rate_limit',
+  'user_beneficiaries',
 ]);
 
 // ============================================================
@@ -145,7 +146,7 @@ function _applyFiltersToDexie(dexieTable, parsedFilters) {
         case 'like'    :
         case 'ilike'   : return String(v||'').toLowerCase().includes(String(value).toLowerCase());
         case 'in'      : return Array.isArray(value) && value.includes(v);
-        case 'is'      : return value === null ? v == null : v === value;
+        case 'is'      : return value === null ? (v === null || v === undefined) : v === value;
         case 'between' : { const [f,t]=value; return v>=f && v<=t; }
         case 'contains': return Array.isArray(v) && (Array.isArray(value) ? value.every(i=>v.includes(i)) : v.includes(value));
         default        : return v === value;
@@ -217,7 +218,7 @@ const repo = {
         const pending = { ...record, sync_status: SYNC_STATUS.PENDING };
         try {
           if (typeof db !== 'undefined' && db.isOpen()) await db[tableName]?.put(pending);
-        } catch { }
+        } catch (e) { console.warn(`⚠️ Dexie put fallback (${tableName}):`, e.message); }
         await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, pkValue, record);
         return ok(pending);
       }
@@ -263,7 +264,7 @@ const repo = {
           if (typeof db !== 'undefined' && db.isOpen()) {
             await db[tableName]?.update(id, updatedChanges);
           }
-        } catch { }
+        } catch (e) { console.warn(`⚠️ Dexie update offline (${tableName}):`, e.message); }
         await SyncQueue.add(SYNC_ACTIONS.UPDATE, tableName, id, updatedChanges);
         return ok({ [pkColumn]: id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
       }
@@ -282,7 +283,7 @@ const repo = {
           if (typeof db !== 'undefined' && db.isOpen()) {
             await db[tableName]?.update(id, updatedChanges);
           }
-        } catch { }
+        } catch (e) { console.warn(`⚠️ Dexie update fallback (${tableName}):`, e.message); }
         await SyncQueue.add(SYNC_ACTIONS.UPDATE, tableName, id, updatedChanges);
         return ok({ [pkColumn]: id, ...updatedChanges, sync_status: SYNC_STATUS.PENDING });
       }
@@ -309,7 +310,7 @@ const repo = {
         if (typeof db !== 'undefined' && db.isOpen()) {
           await db[tableName]?.delete(id);
         }
-      } catch { }
+      } catch (e) { console.warn(`⚠️ Dexie delete (${tableName}):`, e.message); }
       await invalidateCacheByPrefix(tableName);
 
       if (!isOnline()) {
@@ -490,7 +491,7 @@ const repo = {
       if (!isOnline()) {
         try {
           if (typeof db !== 'undefined' && db.isOpen()) await db[tableName]?.put(record);
-        } catch { }
+        } catch (e) { console.warn(`⚠️ Dexie upsert offline (${tableName}):`, e.message); }
         await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record[pkColumn], record);
         return ok({ ...record, sync_status: SYNC_STATUS.PENDING });
       }
@@ -504,7 +505,7 @@ const repo = {
       if (error) {
         try {
           if (typeof db !== 'undefined' && db.isOpen()) await db[tableName]?.put(record);
-        } catch { }
+        } catch (e) { console.warn(`⚠️ Dexie upsert fallback (${tableName}):`, e.message); }
         await SyncQueue.add(SYNC_ACTIONS.CREATE, tableName, record[pkColumn], record);
         return ok({ ...record, sync_status: SYNC_STATUS.PENDING });
       }
@@ -604,7 +605,7 @@ const repo = {
     try {
       const withStatus = records.map(r => ({ ...r, sync_status: r.sync_status || SYNC_STATUS.SYNCED }));
       await db[tableName]?.bulkPut(withStatus);
-    } catch { }
+    } catch (e) { console.warn(`⚠️ Dexie saveToCache (${tableName}):`, e.message); }
   },
 
   // ==========================================================

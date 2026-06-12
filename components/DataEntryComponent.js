@@ -39,62 +39,50 @@ const DataEntryComponent = {
     container.appendChild(await this._buildPage());
   },
 
-  // ✅ جلب المستفيدين المحفوظين (للإيداع/السحب)
+  // جلب المستفيدين المحفوظين (بنوك وشركات) من Supabase
   async _loadBeneficiaries() {
     try {
       const userId = AuthService.getCurrentUserId();
+      if (!userId) return;
       const result = await repo.query(TABLES.USER_BENEFICIARIES, { user_id: userId });
       if (isOk(result)) {
-        const beneficiaries = result.data.data || [];
-        // تصفية فقط المستفيدين الذين هم بنوك (نحتفظ بمعرف البنك)
-        this._beneficiariesCache = beneficiaries.filter(b => b.beneficiary_type === 'bank' || !b.beneficiary_type);
+        const all = result.data.data || [];
+        this._beneficiariesCache   = all.filter(b => b.beneficiary_type === 'bank');
+        this._companyBeneficiaries = all.filter(b => b.beneficiary_type === 'company');
       }
-      
-      // جلب المستفيدين من الشركات من localStorage
-      const saved = localStorage.getItem(`company_beneficiaries_${userId}`);
-      if (saved) {
-        try {
-          this._companyBeneficiaries = JSON.parse(saved);
-        } catch { this._companyBeneficiaries = []; }
-      } else {
-        this._companyBeneficiaries = [];
-      }
-    } catch {
-      this._beneficiariesCache = [];
+    } catch (e) {
+      console.warn('⚠️ DataEntry: فشل تحميل المستفيدين:', e.message);
+      this._beneficiariesCache   = [];
       this._companyBeneficiaries = [];
     }
   },
 
-  // ✅ حفظ شركة كمستفيد
-  async _saveCompanyBeneficiary(companyId, companyName, accountNumber) {
+  // حفظ مستفيد عام (بنك أو شركة) في Supabase
+  async _saveBeneficiary(referenceId, displayName, accountNumber, type) {
     const userId = AuthService.getCurrentUserId();
-    const exists = this._companyBeneficiaries.some(b => b.id === companyId);
-    if (!exists) {
-      this._companyBeneficiaries.push({
-        id: companyId,
-        name: companyName,
-        account_number: accountNumber,
-        type: 'company'
-      });
-      localStorage.setItem(`company_beneficiaries_${userId}`, JSON.stringify(this._companyBeneficiaries));
-    }
-  },
-
-  // ✅ حفظ بنك كمستفيد
-  async _saveBankBeneficiary(bankId, bankName, accountNumber) {
-    const userId = AuthService.getCurrentUserId();
-    // التحقق من عدم التكرار
-    const exists = this._beneficiariesCache.some(b => b.beneficiary_id === bankId);
-    if (!exists) {
+    if (!userId || !referenceId) return;
+    const cache = type === 'bank' ? this._beneficiariesCache : this._companyBeneficiaries;
+    const exists = cache.some(b => b.beneficiary_id === referenceId);
+    if (exists) return;
+    try {
       await repo.create(TABLES.USER_BENEFICIARIES, {
-        user_id: userId,
-        beneficiary_id: bankId,
-        beneficiary_type: 'bank',
-        beneficiary_name: bankName,
-        beneficiary_account: accountNumber
+        user_id          : userId,
+        beneficiary_id   : referenceId,
+        beneficiary_type : type,
+        beneficiary_name : displayName,
+        beneficiary_account: accountNumber,
       });
       await this._loadBeneficiaries();
-    }
+    } catch (e) { console.warn(`⚠️ _saveBeneficiary(${type}):`, e.message); }
+  },
+
+  // دوال مساعدة للتوافق مع الكود القديم
+  async _saveCompanyBeneficiary(companyId, companyName, accountNumber) {
+    await this._saveBeneficiary(companyId, companyName, accountNumber, 'company');
+  },
+
+  async _saveBankBeneficiary(bankId, bankName, accountNumber) {
+    await this._saveBeneficiary(bankId, bankName, accountNumber, 'bank');
   },
 
   /* ── جلب البنوك وترتيبها ── */
@@ -105,16 +93,21 @@ const DataEntryComponent = {
       if (isOnline()) {
         const { data } = await supabaseClient
           .from('bank_accounts')
-          .select('id,name,financial_ceiling,company_id,reset_time,account_number')
+          .select('id,name,financial_ceiling,company_id,reset_time,account_number,internal_account_number')
           .order('name');
         allBanks = data || [];
       } else {
         allBanks = await db.bank_accounts.toArray();
       }
-    } catch {
+    } catch (e) {
+      console.warn('⚠️ DataEntry: فشل جلب البنوك:', e.message);
       allBanks = AppStore.getState('bankAccounts') || [];
     }
     if (!allBanks.length) allBanks = AppStore.getState('bankAccounts') || [];
+
+    // تصفية حسب صلاحيات المندوب
+    const allowedBanks = (typeof AuthService !== 'undefined') ? AuthService.getAllowedBanks() : null;
+    if (allowedBanks) allBanks = allBanks.filter(b => allowedBanks.includes(b.id));
 
     let lastActivityMap = {};
     try {
@@ -132,7 +125,7 @@ const DataEntryComponent = {
             lastActivityMap[d.bank_account_id] = d.created_at;
         });
       }
-    } catch {}
+    } catch (e) { console.warn('⚠️ DataEntry: فشل تحميل آخر نشاط:', e.message); }
 
     this._sortedBanks = [...allBanks].sort((a, b) => {
       const favs = this._getFavoriteBanks();
@@ -371,10 +364,7 @@ const DataEntryComponent = {
       
       let matches = [];
       if (q) {
-        matches = allBanks.filter(b => 
-          b.name?.toLowerCase().includes(q) || 
-          b.account_number?.toLowerCase().includes(q)
-        );
+        matches = allBanks.filter(b => b.name?.toLowerCase().includes(q));
       } else {
         matches = allBanks.slice(0, 10);
       }
@@ -389,10 +379,7 @@ const DataEntryComponent = {
       matches.forEach(bank => {
         const item = document.createElement('div');
         item.style.cssText = 'padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border-color);transition:background 150ms;';
-        item.innerHTML = `
-          <div style="font-weight:600;font-size:0.85rem;">${escapeHtml(bank.name)}</div>
-          <div style="font-size:0.72rem;color:var(--text-muted);direction:ltr;">${escapeHtml(bank.account_number || 'لا يوجد رقم حساب')}</div>
-        `;
+        item.innerHTML = `<div style="font-weight:600;font-size:0.85rem;">${escapeHtml(bank.name)}</div>`;
         item.addEventListener('mouseenter', () => item.style.background = 'var(--bg-hover)');
         item.addEventListener('mouseleave', () => item.style.background = '');
         item.addEventListener('click', () => {
@@ -400,7 +387,7 @@ const DataEntryComponent = {
           hiddenId.value = bank.id;
           resultDisplay.style.display = '';
           resultDisplay.style.background = 'rgba(99,102,241,0.08)';
-          resultDisplay.innerHTML = `🏦 ${escapeHtml(bank.name)}<br><span style="font-size:0.7rem;color:var(--text-muted);">رقم الحساب: ${escapeHtml(bank.account_number || '—')}</span>`;
+          resultDisplay.innerHTML = `🏦 ${escapeHtml(bank.name)}`;
           dropdown.style.display = 'none';
           if (onSelect) onSelect(bank);
         });
@@ -433,7 +420,7 @@ const DataEntryComponent = {
     input.id = 'col-company-search';
     input.type = 'text';
     input.className = 'form-control';
-    input.placeholder = 'ابحث برقم حساب الشركة أو الاسم';
+    input.placeholder = 'ابحث باسم الشركة';
     input.autocomplete = 'off';
 
     const dropdown = document.createElement('div');
@@ -452,18 +439,18 @@ const DataEntryComponent = {
     resultDisplay.id = 'col-company-result';
     resultDisplay.style.cssText = 'display:none;margin-top:6px;padding:8px 12px;border-radius:8px;font-size:0.82rem;';
 
-    const companies = AppStore.getState('companies') || [];
+    let companies = AppStore.getState('companies') || [];
+    // تصفية حسب صلاحيات المندوب
+    const allowedCompanies = (typeof AuthService !== 'undefined') ? AuthService.getAllowedCompanies() : null;
+    if (allowedCompanies) companies = companies.filter(c => allowedCompanies.includes(c.id));
 
     const renderDropdown = (query) => {
       const q = query.trim().toLowerCase();
       dropdown.innerHTML = '';
-      
+
       let matches = [];
       if (q) {
-        matches = companies.filter(c => 
-          c.name?.toLowerCase().includes(q) || 
-          c.account_number?.toLowerCase().includes(q)
-        );
+        matches = companies.filter(c => c.name?.toLowerCase().includes(q));
       } else {
         matches = companies.slice(0, 10);
       }
@@ -478,10 +465,7 @@ const DataEntryComponent = {
       matches.forEach(company => {
         const item = document.createElement('div');
         item.style.cssText = 'padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border-color);transition:background 150ms;';
-        item.innerHTML = `
-          <div style="font-weight:600;font-size:0.85rem;">${escapeHtml(company.name)}</div>
-          <div style="font-size:0.72rem;color:var(--text-muted);direction:ltr;">رقم الحساب: ${escapeHtml(company.account_number || '—')}</div>
-        `;
+        item.innerHTML = `<div style="font-weight:600;font-size:0.85rem;">${escapeHtml(company.name)}</div>`;
         item.addEventListener('mouseenter', () => item.style.background = 'var(--bg-hover)');
         item.addEventListener('mouseleave', () => item.style.background = '');
         item.addEventListener('click', () => {
@@ -489,7 +473,7 @@ const DataEntryComponent = {
           hiddenId.value = company.id;
           resultDisplay.style.display = '';
           resultDisplay.style.background = 'rgba(99,102,241,0.08)';
-          resultDisplay.innerHTML = `🏢 ${escapeHtml(company.name)}<br><span style="font-size:0.7rem;color:var(--text-muted);">رقم الحساب: ${escapeHtml(company.account_number || '—')}</span>`;
+          resultDisplay.innerHTML = `🏢 ${escapeHtml(company.name)}`;
           dropdown.style.display = 'none';
           if (onSelect) onSelect(company);
         });
@@ -904,7 +888,7 @@ const DataEntryComponent = {
       const bankId = document.getElementById('wd-bank-search-id')?.value;
       const saveBeneficiary = document.getElementById('wd-save-beneficiary')?.checked;
       if (saveBeneficiary && bankId && selectedBank) {
-        await this._saveBankBeneficiary(bankId, selectedBank.name, selectedBank.account_number);
+        await this._saveBankBeneficiary(bankId, selectedBank.name, selectedBank.internal_account_number || selectedBank.account_number);
       }
       await this._saveBankWithdrawal({
         bankId: bankId,
@@ -1019,7 +1003,7 @@ const DataEntryComponent = {
       const bankId = document.getElementById('dep-bank-search-id')?.value;
       const saveBeneficiary = document.getElementById('dep-save-beneficiary')?.checked;
       if (saveBeneficiary && bankId && selectedBank) {
-        await this._saveBankBeneficiary(bankId, selectedBank.name, selectedBank.account_number);
+        await this._saveBankBeneficiary(bankId, selectedBank.name, selectedBank.internal_account_number || selectedBank.account_number);
       }
       await this._saveDeposit({
         bankId: bankId,
@@ -1139,31 +1123,57 @@ const DataEntryComponent = {
       reasonField.style.display = modeSelect.value === 'request' ? 'block' : 'none';
     });
 
-    const acctField = this._field('tr-account-num', 'رقم حساب المستلم (مثل AGT-XXXX)', true);
-    const acctRow = document.createElement('div');
-    acctRow.style.cssText = 'display:flex;gap:8px;';
-    const acctInput = this._input('tr-account-num', 'text', 'AGT-XXXX', { dir: 'ltr', autocomplete: 'off' });
-    acctInput.style.flex = '1';
-    const acctLookupBtn = document.createElement('button');
-    acctLookupBtn.type = 'button';
-    acctLookupBtn.className = 'btn btn-secondary';
-    acctLookupBtn.style.cssText = 'white-space:nowrap;padding:0 14px;';
-    acctLookupBtn.textContent = '🔍 بحث';
-    acctRow.appendChild(acctInput);
-    acctRow.appendChild(acctLookupBtn);
-    acctField.appendChild(acctRow);
-    acctField.appendChild(this._errMsg('tr-account-num-err'));
+    const acctField = this._field('tr-recipient-select', 'المستلم', true);
+    const acctErrDiv = this._errMsg('tr-account-num-err');
+
+    // فلترة المستخدمين حسب الصلاحيات
+    const allUsers = AppStore.getState('users') || [];
+    const allowedUsers = (typeof AuthService !== 'undefined') ? AuthService.getAllowedUsers() : null;
+    const currentUserId = (typeof AuthService !== 'undefined') ? AuthService.getCurrentUserId() : null;
+    const recipientUsers = allUsers.filter(u =>
+      u.id !== currentUserId &&
+      u.is_active !== false &&
+      (!allowedUsers || allowedUsers.includes(u.id))
+    );
+
+    const acctSelect = document.createElement('select');
+    acctSelect.id = 'tr-recipient-select';
+    acctSelect.className = 'form-control';
+    acctSelect.innerHTML = `<option value="">-- اختر المستلم --</option>` +
+      recipientUsers.map(u =>
+        `<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name || u.username)} (${escapeHtml(ROLE_LABELS[u.role] || u.role)})</option>`
+      ).join('');
+    acctField.appendChild(acctSelect);
+    acctField.appendChild(acctErrDiv);
     frag.appendChild(acctField);
 
     const acctResult = document.createElement('div');
     acctResult.id = 'tr-account-result';
-    acctResult.style.cssText = 'display:none;margin:-6px 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg-input);font-size:0.85rem;border:1px solid var(--border-color);';
+    acctResult.style.display = 'none';
     frag.appendChild(acctResult);
 
     const hiddenRecipientId = document.createElement('input');
     hiddenRecipientId.type = 'hidden';
     hiddenRecipientId.id = 'tr-recipient-id';
     frag.appendChild(hiddenRecipientId);
+
+    acctSelect.addEventListener('change', () => {
+      const selectedId = acctSelect.value;
+      hiddenRecipientId.value = selectedId;
+      acctErrDiv.textContent = '';
+      if (selectedId) {
+        const found = recipientUsers.find(u => u.id === selectedId);
+        acctResult.style.display = '';
+        acctResult.innerHTML = found
+          ? `<span style="font-weight:700;">${escapeHtml(found.display_name || found.username)}</span> <span style="font-size:0.75rem;color:var(--success);">✓</span>`
+          : '';
+        saveBeneficiaryWrap.style.display = 'block';
+      } else {
+        hiddenRecipientId.value = '';
+        acctResult.style.display = 'none';
+        saveBeneficiaryWrap.style.display = 'none';
+      }
+    });
 
     const saveBeneficiaryWrap = document.createElement('div');
     saveBeneficiaryWrap.style.cssText = 'display:none;margin:8px 0 12px;';
@@ -1225,46 +1235,6 @@ const DataEntryComponent = {
     refreshBeneficiariesList();
     AppStore.addEventListener('store:beneficiariesLoaded', refreshBeneficiariesList);
 
-    const lookupRecipient = async () => {
-      const num = acctInput.value.trim();
-      if (!num) {
-        document.getElementById('tr-account-num-err').textContent = 'أدخل رقم الحساب';
-        return;
-      }
-      const match = num.match(/AGT-([a-f0-9]+)/i) || num.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-      let searchId = match ? (match[1] || match[0]) : num;
-      const users = AppStore.getState('users') || [];
-      const foundUser = users.find(u => u.id === searchId || u.id.startsWith(searchId) || (u.account_number && u.account_number === num));
-      if (!foundUser) {
-        document.getElementById('tr-account-num-err').textContent = 'لم يتم العثور على مستخدم بهذا الرقم';
-        acctResult.style.display = 'none';
-        hiddenRecipientId.value = '';
-        saveBeneficiaryWrap.style.display = 'none';
-        return;
-      }
-      if (foundUser.id === AuthService.getCurrentUserId()) {
-        document.getElementById('tr-account-num-err').textContent = 'لا يمكن التحويل إلى نفس المستخدم';
-        acctResult.style.display = 'none';
-        hiddenRecipientId.value = '';
-        return;
-      }
-      hiddenRecipientId.value = foundUser.id;
-      acctResult.style.display = '';
-      acctResult.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div>
-            <span style="font-weight:700;">${escapeHtml(foundUser.display_name)}</span>
-            <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">(${ROLE_LABELS[foundUser.role] || foundUser.role})</span>
-          </div>
-          <span style="color:var(--success);font-size:0.75rem;">✓ تم العثور عليه</span>
-        </div>`;
-      document.getElementById('tr-account-num-err').textContent = '';
-      saveBeneficiaryWrap.style.display = 'block';
-    };
-
-    acctLookupBtn.addEventListener('click', lookupRecipient);
-    acctInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookupRecipient(); } });
-
     const amtField = this._field('tr-amount', 'المبلغ', true);
     const amtInput = this._input('tr-amount', 'number', 'أدخل المبلغ', { min: '1', step: '1' });
     amtField.appendChild(amtInput);
@@ -1318,7 +1288,7 @@ const DataEntryComponent = {
   async _saveCollection({ mode, amount, customer, customerId, companyId, notes }) {
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
-    if (mode === 'company' && !companyId) { showToast('اختر شركة (ابحث برقم الحساب)', 'error'); return; }
+    if (mode === 'company' && !companyId) { showToast('اختر شركة من القائمة', 'error'); return; }
     if (mode === 'customer' && !customer)  { showToast('أدخل اسم العميل', 'error'); return; }
 
     const rounded = roundAmount(amount);
@@ -1357,18 +1327,20 @@ const DataEntryComponent = {
     if (isOk(result)) {
       if (customerId && debtorRecord) {
         const newDebt = Math.max(0, parseFloat(debtorRecord.debt_amount || 0) - rounded);
-        try { await repo.update(TABLES.DEBTORS, customerId, { debt_amount: newDebt }); } catch {}
+        try { await repo.update(TABLES.DEBTORS, customerId, { debt_amount: newDebt }); } catch (e) { console.warn('⚠️ DataEntry: فشل تحديث رصيد المدين:', e.message); }
       }
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
+      const colBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
       await this._showResultModal({
-        title    : '✅ تم تسجيل تحصيل جديد',
-        type     : 'تحصيل',
-        amount   : rounded,
-        customer : customer || null,
-        newDebt  : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
+        title        : '✅ تم تسجيل تحصيل جديد',
+        type         : 'تحصيل',
+        amount       : rounded,
+        customer     : customer || null,
+        newDebt      : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
         agentId,
-        date     : txData.date,
+        date         : txData.date,
+        agentBalance : isOk(colBalRes) ? colBalRes.data : null,
       });
     } else {
       showToast(`❌ ${result.error}`, 'error');
@@ -1400,7 +1372,8 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ السحب البنكي', 'success');
       this._resetForm('wd');
-      await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate() });
+      const wdBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate(), agentBalance: isOk(wdBalRes) ? wdBalRes.data : null });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1445,7 +1418,8 @@ const DataEntryComponent = {
       this._resetForm('dep');
       const ceil = Math.round(bank?.financial_ceiling || 0);
       const used = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
-      await this._showResultModal({ title:'✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: Math.max(0, ceil - used) });
+      const depBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({ title:'✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: Math.max(0, ceil - used), agentBalance: isOk(depBalRes) ? depBalRes.data : null });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1649,17 +1623,20 @@ const DataEntryComponent = {
     box.innerHTML = `
       <div class="modal-header">
         <h3 class="modal-title" style="color:var(--success);">${escapeHtml(data.title || '✅ تمت العملية')}</h3>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        <button class="modal-close" id="result-close-x">✕</button>
       </div>
       <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.88rem;line-height:1.8;padding:12px;background:var(--bg-input);border-radius:10px;margin-bottom:16px;direction:rtl;text-align:right;">${escapeHtml(lines.slice(1).join('\n'))}</pre>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary" style="flex:1;" id="result-copy-btn">📋 نسخ</button>
         <button class="btn btn-secondary" style="flex:1;" id="result-share-btn">📤 مشاركة</button>
-        <button class="btn btn-secondary" style="flex:1;" onclick="this.closest('.modal-overlay').remove()">✖️ إغلاق</button>
+        <button class="btn btn-secondary" style="flex:1;" id="result-close-btn">✖️ إغلاق</button>
       </div>`;
 
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+
+    box.querySelector('#result-close-x').addEventListener('click', () => overlay.remove());
+    box.querySelector('#result-close-btn').addEventListener('click', () => overlay.remove());
 
     box.querySelector('#result-copy-btn').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(text); showToast('تم النسخ', 'success'); }
@@ -1679,4 +1656,11 @@ const DataEntryComponent = {
 };
 
 window.DataEntryComponent = DataEntryComponent;
+
+// اختصار Ctrl+S: ينقر على زر الحفظ الظاهر حالياً في نموذج إدخال البيانات
+window.saveCurrentOperation = function () {
+  const btn = document.querySelector('#app-content button[id$="-save-btn"]:not([disabled])');
+  if (btn) btn.click();
+};
+
 console.log('✅ DataEntryComponent v5.0 — السلوك الثاني: بحث برقم الحساب + تثبيت حساب المصروف');

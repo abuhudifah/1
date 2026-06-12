@@ -85,7 +85,7 @@ const SyncEngine = {
       return ok({ synced, failed, total: sorted.length });
 
     } catch (e) {
-      return err('خطأ غير متوقع في syncAll: ' + e.message);
+      return err(formatErrorMessage(e));
     }
   },
 
@@ -139,13 +139,13 @@ const SyncEngine = {
               .insert({ ...retryPayload, sync_status: SYNC_STATUS.SYNCED })
               .select()
               .single();
-            if (retry.error) return err('فشل إعادة المزامنة بعد حل التعارض: ' + retry.error.message);
+            if (retry.error) return err(formatErrorMessage(retry.error));
             await this._markSynced(localOp.id);
             return ok(retry.data);
           }
         }
 
-        return err(`خطأ الخادم (${error.code}): ${error.message}`);
+        return err(formatErrorMessage(error));
       }
 
       // ✅ نجاح: تحديث حالة المزامنة في Dexie
@@ -163,7 +163,7 @@ const SyncEngine = {
       } catch (dErr) {
         console.warn('[SyncEngine] فشل تسجيل خطأ المزامنة في Dexie:', dErr.message);
       }
-      return err('استثناء في syncOperation: ' + e.message);
+      return err(formatErrorMessage(e));
     }
   },
 

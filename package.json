@@ -1,0 +1,17 @@
+{
+  "name": "abu-hudhaifa-exchange",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@vitest/coverage-v8": "^1.6.0",
+    "eslint": "^10.4.1",
+    "jsdom": "^24.0.0",
+    "vitest": "^1.6.0"
+  }
+}

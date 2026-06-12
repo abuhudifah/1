@@ -59,8 +59,8 @@ const NotificationsComponent = {
       return;
     }
 
-    const typeColors = { info:'info', warning:'warning', success:'success', error:'danger' };
-    const typeIcons  = { info:'ℹ️', warning:'⚠️', success:'✅', error:'❌' };
+    const typeColors = { info:'info', warning:'warning', success:'success', error:'danger', account_share:'success' };
+    const typeIcons  = { info:'ℹ️', warning:'⚠️', success:'✅', error:'❌', account_share:'🏦' };
 
     const wrap = document.createElement('div');
     wrap.style.display = 'flex';
@@ -72,6 +72,8 @@ const NotificationsComponent = {
       const hiddenBy = Array.isArray(n.hidden_by) ? n.hidden_by : JSON.parse(n.hidden_by || '[]');
       const isRead   = readBy.includes(uid);
       const color    = typeColors[n.type] || 'neutral';
+      const text     = n.message || n.body || '';
+      const isShare  = n.type === 'account_share';
 
       const card = document.createElement('div');
       card.className = 'glass-card';
@@ -82,7 +84,8 @@ const NotificationsComponent = {
           <span style="font-size:1.2rem;flex-shrink:0;">${typeIcons[n.type] || 'ℹ️'}</span>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:${isRead ? '500' : '700'};margin-bottom:4px;">${escapeHtml(n.title)}</div>
-            <div style="font-size:0.88rem;color:var(--text-secondary);white-space:pre-line;">${escapeHtml(n.body)}</div>
+            <div style="font-size:0.88rem;color:var(--text-secondary);white-space:pre-line;">${escapeHtml(text)}</div>
+            ${isShare ? `<button class="notif-open-deposit-btn btn btn-primary btn-sm" data-notif-id="${escapeHtml(n.id)}" style="margin-top:8px;">📋 فتح نموذج الإيداع</button>` : ''}
             <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;">${timeAgo(n.created_at)}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0;">
@@ -107,6 +110,12 @@ const NotificationsComponent = {
     });
     listEl.querySelectorAll('.hide-notif-btn').forEach(btn => {
       btn.addEventListener('click', () => this._hide(btn.dataset.id));
+    });
+    listEl.querySelectorAll('.notif-open-deposit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const notif = notifs.find(n => n.id === btn.dataset.notifId);
+        if (notif) this._handleNotificationClick(notif);
+      });
     });
 
     if (window.lucide) lucide.createIcons();
@@ -158,6 +167,72 @@ const NotificationsComponent = {
     if (isOk(result)) {
       await AppStore.refreshData();
       await this._load();
+    }
+  },
+
+  /* ── معالجة النقر على إشعار account_share ── */
+  async _handleNotificationClick(notification) {
+    if (notification.type !== 'account_share') return;
+    try {
+      const data = JSON.parse(notification.data || '{}');
+      if (!data.action || !data.account_number) {
+        console.warn('⚠️ _handleNotificationClick: بيانات الإشعار غير مكتملة', notification.id);
+        return;
+      }
+
+      // خريطة العمليات المدعومة → معرّفات DOM الفعلية في DataEntryComponent
+      const operationMap = {
+        deposit    : { formTabId: 'form-tab-deposit',    searchId: 'dep-bank-search' },
+        collection : { formTabId: 'form-tab-collection', searchId: 'col-company-search' },
+      };
+      const config = operationMap[data.action];
+
+      // 1. الانتقال إلى تبويب إدخال البيانات
+      if (typeof _navigateTo === 'function') {
+        await _navigateTo('data-entry');
+      } else {
+        const tabBtn = document.querySelector('[data-tab="data-entry"]');
+        if (tabBtn) tabBtn.click();
+        await new Promise(r => setTimeout(r, 400));
+      }
+
+      // نوع غير مدعوم حالياً (transfer…): انتقل فقط واعرض الرقم للبحث اليدوي
+      if (!config) {
+        showToast(`📋 رقم الحساب: ${data.account_number} — ابحث يدوياً`, 'info');
+        return;
+      }
+
+      // 2. تفعيل نموذج العملية المناسب
+      const formTabBtn = document.getElementById(config.formTabId);
+      if (formTabBtn) {
+        formTabBtn.click();
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // 3. تعبئة حقل البحث برقم الحساب
+      const input = document.getElementById(config.searchId);
+      if (!input) {
+        showToast('⚠️ افتح النموذج يدوياً', 'warning');
+        return;
+      }
+
+      input.value = data.account_number;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 150));
+
+      // 4. اختيار أول نتيجة تلقائياً
+      const dropdown  = input.nextElementSibling;
+      const firstItem = dropdown?.firstElementChild;
+      if (firstItem && dropdown?.style.display !== 'none') {
+        firstItem.click();
+        const typeNames = { deposit: 'الإيداع', collection: 'التحصيل' };
+        showToast(`✅ تم تعبئة نموذج ${typeNames[data.action] || 'العملية'}`, 'success');
+      } else {
+        showToast('⚠️ لم يُعثر على الحساب، ابحث يدوياً', 'warning');
+      }
+    } catch (e) {
+      console.warn('⚠️ _handleNotificationClick:', e.message);
+      showToast('تعذّر فتح النموذج', 'warning');
     }
   },
 

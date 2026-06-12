@@ -365,6 +365,24 @@ const UsersComponent = {
         </div>
       </div>
 
+      <div id="uc-agent-section" style="display:none;margin-bottom:14px;">
+        <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:10px;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;">
+          ⚙️ صلاحيات المندوب — اتركها فارغة للسماح بالكل
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label" style="font-size:.82rem;">الشركات المسموحة</label>
+          <div id="uc-companies-list" style="max-height:140px;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px;"></div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label" style="font-size:.82rem;">الحسابات البنكية المسموحة</label>
+          <div id="uc-banks-list" style="max-height:140px;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px;"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size:.82rem;">المستخدمون المسموح التحويل إليهم</label>
+          <div id="uc-users-list" style="max-height:140px;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px;"></div>
+        </div>
+      </div>
+
       <div id="uc-error" style="display:none;padding:10px 13px;background:#fee2e2;
         border:1px solid #fca5a5;border-radius:8px;color:#dc2626;
         font-size:.84rem;margin-bottom:12px;white-space:pre-wrap;line-height:1.5;"></div>
@@ -381,8 +399,10 @@ const UsersComponent = {
     box.querySelector('#uc-cancel-btn').addEventListener('click', () => this._closeForm());
     box.querySelector('#uc-save-btn').addEventListener('click',   () => this._save());
     box.querySelector('#uc-role').addEventListener('change', e => {
-      box.querySelector('#uc-tabs-section').style.display =
-        e.target.value === ROLES.ADMIN_ASSISTANT ? 'block' : 'none';
+      const role = e.target.value;
+      box.querySelector('#uc-tabs-section').style.display   = role === ROLES.ADMIN_ASSISTANT ? 'block' : 'none';
+      box.querySelector('#uc-agent-section').style.display  = role === ROLES.AGENT           ? 'block' : 'none';
+      if (role === ROLES.AGENT) this._loadAgentPermissionLists(box);
     });
     return overlay;
   },
@@ -409,11 +429,16 @@ const UsersComponent = {
 
     const sec = box.querySelector('#uc-tabs-section');
     sec.style.display = user?.role === ROLES.ADMIN_ASSISTANT ? 'block' : 'none';
+    box.querySelector('#uc-agent-section').style.display = user?.role === ROLES.AGENT ? 'block' : 'none';
 
     const savedTabs = Array.isArray(user?.allowed_tabs)
       ? user.allowed_tabs
       : this._safeJson(user?.allowed_tabs, []);
     box.querySelectorAll('.uc-tab-cb').forEach(cb => { cb.checked = savedTabs.includes(cb.value); });
+
+    if (user?.role === ROLES.AGENT) {
+      await this._loadAgentPermissionLists(box, user);
+    }
 
     const lbl = box.querySelector('#uc-save-label');
     if (lbl) lbl.textContent = isEdit ? '💾 تحديث' : '💾 إنشاء المستخدم';
@@ -444,6 +469,10 @@ const UsersComponent = {
       ? [...box.querySelectorAll('.uc-tab-cb:checked')].map(c => c.value)
       : [];
 
+    const allowedCompanies = role === ROLES.AGENT ? this._getSelectedPermissions(box, 'uc-companies-list') : [];
+    const allowedBanks     = role === ROLES.AGENT ? this._getSelectedPermissions(box, 'uc-banks-list')     : [];
+    const allowedUsers     = role === ROLES.AGENT ? this._getSelectedPermissions(box, 'uc-users-list')     : [];
+
     if (!name || name.length < 2)           { this._setErr('الاسم مطلوب (حرفان على الأقل)'); return; }
     if (!username)                           { this._setErr('البريد الإلكتروني مطلوب'); return; }
     if (!isValidEmail(username))             { this._setErr('البريد الإلكتروني غير صالح'); return; }
@@ -459,10 +488,10 @@ const UsersComponent = {
 
     try {
       if (this._editId) {
-        await this._doUpdate(username, name, role, tabs, password);
+        await this._doUpdate(username, name, role, tabs, password, allowedCompanies, allowedBanks, allowedUsers);
       } else {
         if (!isOnline()) { this._setErr('يجب الاتصال بالإنترنت لإنشاء مستخدم جديد'); return; }
-        await this._doCreate(username, name, role, tabs, password);
+        await this._doCreate(username, name, role, tabs, password, allowedCompanies, allowedBanks, allowedUsers);
       }
     } catch (e) {
       console.error('[UsersComponent] _save خطأ:', e);
@@ -476,7 +505,7 @@ const UsersComponent = {
   // ────────────────────────────────────────────────────────────
   // _doCreate — الخطوات الخمس النهائية
   // ────────────────────────────────────────────────────────────
-  async _doCreate(username, name, role, tabs, password) {
+  async _doCreate(username, name, role, tabs, password, allowedCompanies = [], allowedBanks = [], allowedUsers = []) {
 
     // 1. حفظ جلسة المدير
     const { data: { session: adminSession } } = await supabaseClient.auth.getSession();
@@ -519,7 +548,8 @@ const UsersComponent = {
     // 4. إنشاء السجل في public.users عبر RPC
     console.log('[UsersComponent] ⏳ callRPC create_user_profile...');
     const rpcResult = await callRPC('create_user_profile', {
-      p_profile: { id: newUserId, username, display_name: name, role, allowed_tabs: tabs },
+      p_profile: { id: newUserId, username, display_name: name, role, allowed_tabs: tabs,
+        allowed_companies: allowedCompanies, allowed_banks: allowedBanks, allowed_users: allowedUsers },
     });
 
     console.log('[UsersComponent] نتيجة RPC:', JSON.stringify(rpcResult));
@@ -548,12 +578,16 @@ const UsersComponent = {
   // ────────────────────────────────────────────────────────────
   // _doUpdate — تعديل مستخدم موجود
   // ────────────────────────────────────────────────────────────
-  async _doUpdate(username, name, role, tabs, password) {
+  async _doUpdate(username, name, role, tabs, password, allowedCompanies = [], allowedBanks = [], allowedUsers = []) {
     console.log('[UsersComponent] _doUpdate:', this._editId);
 
     const { error } = await supabaseClient
       .from(TABLES.USERS)
-      .update({ username, display_name: name, role, allowed_tabs: tabs, updated_at: new Date().toISOString() })
+      .update({
+        username, display_name: name, role, allowed_tabs: tabs,
+        allowed_companies: allowedCompanies, allowed_banks: allowedBanks, allowed_users: allowedUsers,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', this._editId);
 
     if (error) { this._setErr(`فشل التحديث: ${error.message}`); return; }
@@ -572,6 +606,59 @@ const UsersComponent = {
     this._closeForm();
     showToast(`✅ تم تعديل "${name}" بنجاح`, 'success');
     await this._load();
+  },
+
+  // ────────────────────────────────────────────────────────────
+  // _loadAgentPermissionLists — يملأ قوائم الشركات/البنوك/المستخدمين
+  // ────────────────────────────────────────────────────────────
+  async _loadAgentPermissionLists(box, editUser = null) {
+    const savedCompanies = editUser ? this._safeJson(editUser.allowed_companies, []) : [];
+    const savedBanks     = editUser ? this._safeJson(editUser.allowed_banks,     []) : [];
+    const savedUsers     = editUser ? this._safeJson(editUser.allowed_users,     []) : [];
+
+    const [companiesRes, banksRes] = await Promise.allSettled([
+      supabaseClient.from(TABLES.COMPANIES).select('id,name').order('name').limit(QUERY_LIMITS.COMPANIES),
+      supabaseClient.from(TABLES.BANK_ACCOUNTS).select('id,name').order('name').limit(QUERY_LIMITS.BANK_ACCOUNTS),
+    ]);
+
+    const companies = companiesRes.status === 'fulfilled' ? (companiesRes.value.data || []) : (AppStore.getState('companies') || []);
+    const banks     = banksRes.status     === 'fulfilled' ? (banksRes.value.data     || []) : (AppStore.getState('bankAccounts') || []);
+    const users     = (AppStore.getState('users') || []).filter(u => u.id !== (editUser?.id));
+
+    const makeCheckboxList = (containerId, items, savedIds, labelKey = 'name') => {
+      const container = box.querySelector(`#${containerId}`);
+      if (!container) return;
+      const allChecked = savedIds.length === 0;
+      container.innerHTML = `
+        <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;cursor:pointer;grid-column:1/-1;font-weight:600;color:var(--accent);">
+          <input type="checkbox" class="uc-select-all-cb" data-target="${containerId}" ${allChecked ? 'checked' : ''} />
+          تحديد الكل (افتراضي)
+        </label>` +
+        items.map(item => `
+          <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;cursor:pointer;">
+            <input type="checkbox" class="uc-perm-cb" data-list="${containerId}" value="${escapeHtml(item.id)}" ${savedIds.includes(item.id) ? 'checked' : ''} />
+            ${escapeHtml(item[labelKey] || item.id)}
+          </label>`
+        ).join('');
+
+      container.querySelector('.uc-select-all-cb')?.addEventListener('change', e => {
+        container.querySelectorAll('.uc-perm-cb').forEach(cb => { cb.checked = false; cb.disabled = e.target.checked; });
+      });
+      if (allChecked) {
+        container.querySelectorAll('.uc-perm-cb').forEach(cb => { cb.disabled = true; });
+      }
+    };
+
+    makeCheckboxList('uc-companies-list', companies, savedCompanies);
+    makeCheckboxList('uc-banks-list',     banks,     savedBanks);
+    makeCheckboxList('uc-users-list',     users,     savedUsers, 'display_name');
+  },
+
+  // قراءة الصلاحيات المحددة من قائمة معينة
+  _getSelectedPermissions(box, containerId) {
+    const selectAll = box.querySelector(`#${containerId} .uc-select-all-cb`);
+    if (selectAll?.checked) return [];
+    return [...box.querySelectorAll(`#${containerId} .uc-perm-cb:checked`)].map(cb => cb.value);
   },
 
   // ────────────────────────────────────────────────────────────
