@@ -223,7 +223,6 @@ const DebtorsComponent = {
               return u?.display_name || id.slice(0, 8);
             }).join('، ');
 
-            const dStr = JSON.stringify(d).replace(/"/g, '&quot;');
             return `<tr>
               <td>
                 <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(d.name)}</div>
@@ -239,15 +238,15 @@ const DebtorsComponent = {
               <td>
                 <div style="display:flex;gap:3px;flex-wrap:wrap;">
                   <button class="btn btn-secondary btn-sm" title="تعديل"
-                    onclick="DebtorsComponent._openFormById('${escapeHtml(d.id)}')">
+                    data-debtor-id="${escapeHtml(d.id)}" data-debtor-action="edit">
                     <i data-lucide="pencil" style="width:12px;height:12px"></i>
                   </button>
                   <button class="btn btn-secondary btn-sm" title="تحديث الرصيد" style="color:var(--accent);"
-                    onclick="DebtorsComponent._openBalanceModal('${escapeHtml(d.id)}','${escapeHtml(d.name)}',${parseFloat(d.debt_amount||0)})">
+                    data-debtor-id="${escapeHtml(d.id)}" data-debtor-action="balance">
                     <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
                   </button>
                   <button class="btn btn-secondary btn-sm" title="حذف" style="color:var(--danger);"
-                    onclick="DebtorsComponent._deleteDebtor('${escapeHtml(d.id)}','${escapeHtml(d.name)}')">
+                    data-debtor-id="${escapeHtml(d.id)}" data-debtor-action="delete">
                     <i data-lucide="trash-2" style="width:12px;height:12px"></i>
                   </button>
                 </div>
@@ -259,6 +258,17 @@ const DebtorsComponent = {
 
     listEl.innerHTML = '';
     listEl.appendChild(tableWrap);
+
+    tableWrap.querySelector('table').addEventListener('click', e => {
+      const btn = e.target.closest('[data-debtor-action]');
+      if (!btn) return;
+      const id     = btn.dataset.debtorId;
+      const action = btn.dataset.debtorAction;
+      const d      = (this._debtorsCache || []).find(x => x.id === id);
+      if (action === 'edit')              this._openFormById(id);
+      else if (action === 'balance' && d) this._openBalanceModal(id, d.name, parseFloat(d.debt_amount || 0));
+      else if (action === 'delete'  && d) this._deleteDebtor(id, d.name);
+    });
 
     /* تخزين بيانات العملاء للاستخدام في _openFormById */
     this._debtorsCache = allDebtors;
@@ -299,11 +309,15 @@ const DebtorsComponent = {
               class="btn btn-secondary btn-sm" style="flex:1;text-align:center;" title="موقع">
               🌐
             </a>` : ''}
-          <button class="btn btn-primary btn-sm" style="flex:2;" onclick="event.stopPropagation();DebtorsComponent._openCollectionForDebtor('${escapeHtml(d.id)}','${escapeHtml(d.name)}',${parseFloat(d.debt_amount||0)})">
+          <button class="btn btn-primary btn-sm deb-col-btn" style="flex:2;">
             💰 تحصيل
           </button>
         </div>`;
 
+      card.querySelector('.deb-col-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        this._openCollectionForDebtor(d.id, d.name, parseFloat(d.debt_amount || 0));
+      });
       card.addEventListener('mouseenter', () => { card.style.transform = 'translateY(-2px)'; card.style.boxShadow = 'var(--shadow-lg)'; });
       card.addEventListener('mouseleave', () => { card.style.transform = ''; card.style.boxShadow = ''; });
       grid.appendChild(card);
@@ -353,7 +367,7 @@ const DebtorsComponent = {
     box.innerHTML = `
       <div class="modal-header">
         <h3 class="modal-title" id="debtor-form-title">إضافة عميل مدين</h3>
-        <button class="modal-close" onclick="DebtorsComponent._closeForm()">✕</button>
+        <button class="modal-close" id="deb-close-x">✕</button>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -400,11 +414,13 @@ const DebtorsComponent = {
       <div id="deb-error" class="form-error"></div>
       <div style="display:flex;gap:10px;margin-top:16px;">
         <button id="deb-save-btn" class="btn btn-primary" style="flex:2;">حفظ</button>
-        <button class="btn btn-secondary" style="flex:1;" onclick="DebtorsComponent._closeForm()">إلغاء</button>
+        <button class="btn btn-secondary" style="flex:1;" id="deb-close-cancel">إلغاء</button>
       </div>`;
 
     overlay.appendChild(box);
     box.querySelector('#deb-save-btn').addEventListener('click', () => this._saveDebtor());
+    box.querySelector('#deb-close-x').addEventListener('click', () => this._closeForm());
+    box.querySelector('#deb-close-cancel').addEventListener('click', () => this._closeForm());
     return overlay;
   },
 
@@ -494,10 +510,6 @@ const DebtorsComponent = {
 
     /* إرسال إشعار للمناديب الجدد */
     if (newAgents.length) {
-      const agentNames = newAgents.map(id => {
-        const u = AppStore.getState('users').find(u => u.id === id);
-        return u?.display_name || 'مندوب';
-      });
       this._sendNotification(
         `تم تعيينك لعميل مدين: ${name}`,
         `لديك عميل مدين جديد مُعيَّن لك: ${name}${data.region ? ' — المنطقة: ' + data.region : ''}`,
@@ -534,7 +546,7 @@ const DebtorsComponent = {
     box.innerHTML = `
       <div class="modal-header">
         <h3 class="modal-title">تحديث رصيد العميل</h3>
-        <button class="modal-close" onclick="DebtorsComponent._closeBalanceModal()">✕</button>
+        <button class="modal-close" id="bal-close-x">✕</button>
       </div>
       <div style="padding:10px 0 4px;font-size:0.85rem;color:var(--text-secondary);">
         العميل: <strong id="bal-debtor-name" style="color:var(--text-primary);"></strong>
@@ -560,10 +572,13 @@ const DebtorsComponent = {
       <div id="bal-error" class="form-error"></div>
       <div style="display:flex;gap:10px;margin-top:16px;">
         <button id="bal-save-btn" class="btn btn-primary" style="flex:2;">حفظ التحديث</button>
-        <button class="btn btn-secondary" style="flex:1;" onclick="DebtorsComponent._closeBalanceModal()">إلغاء</button>
+        <button class="btn btn-secondary" style="flex:1;" id="bal-close-cancel">إلغاء</button>
       </div>`;
 
     overlay.appendChild(box);
+
+    box.querySelector('#bal-close-x').addEventListener('click', () => this._closeBalanceModal());
+    box.querySelector('#bal-close-cancel').addEventListener('click', () => this._closeBalanceModal());
 
     box.querySelector('#bal-new-amount').addEventListener('input', () => {
       const current = parseFloat(document.getElementById('bal-current-amount')?.value || '0') || 0;
@@ -666,7 +681,7 @@ const DebtorsComponent = {
         read_by   : '[]',
         hidden_by : '[]',
       });
-    } catch { /* الإشعار غير حرج */ }
+    } catch (e) { console.warn('⚠️ DebtorsComponent: فشل إرسال الإشعار:', e.message); }
   },
 };
 
