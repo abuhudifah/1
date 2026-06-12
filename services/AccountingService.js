@@ -44,7 +44,7 @@ async function _generateVoucherNumber() {
     try {
       const { data, error } = await supabaseClient.rpc(RPC.GET_NEXT_VOUCHER_NUMBER);
       if (!error && data) return data;
-    } catch {}
+    } catch (e) { console.warn('⚠️ _generateVoucherNumber RPC فشل، يُستخدم الرقم المحلي:', e.message); }
   }
   const today = getCurrentSaudiDate().replace(/-/g, '');
   return `V${today}-LOCAL-${Date.now()}`;

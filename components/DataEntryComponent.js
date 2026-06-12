@@ -132,7 +132,7 @@ const DataEntryComponent = {
             lastActivityMap[d.bank_account_id] = d.created_at;
         });
       }
-    } catch {}
+    } catch (e) { console.warn('⚠️ DataEntry: فشل تحميل آخر نشاط:', e.message); }
 
     this._sortedBanks = [...allBanks].sort((a, b) => {
       const favs = this._getFavoriteBanks();
@@ -1357,7 +1357,7 @@ const DataEntryComponent = {
     if (isOk(result)) {
       if (customerId && debtorRecord) {
         const newDebt = Math.max(0, parseFloat(debtorRecord.debt_amount || 0) - rounded);
-        try { await repo.update(TABLES.DEBTORS, customerId, { debt_amount: newDebt }); } catch {}
+        try { await repo.update(TABLES.DEBTORS, customerId, { debt_amount: newDebt }); } catch (e) { console.warn('⚠️ DataEntry: فشل تحديث رصيد المدين:', e.message); }
       }
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');

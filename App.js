@@ -834,7 +834,7 @@ function _showLoginScreen() {
   _destroyActiveComponent();
 
   // تنظيف LoginComponent السابق إذا وُجد
-  try { window.LoginComponent?.destroy?.(); } catch {}
+  try { window.LoginComponent?.destroy?.(); } catch { /* non-critical cleanup */ }
 
   const root = document.getElementById('app-root');
   root.innerHTML = '';
@@ -906,7 +906,7 @@ function _restoreDarkMode() {
   try {
     const saved = localStorage.getItem('abu_theme');
     if (saved === 'dark') document.body.classList.add('dark-mode');
-  } catch {}
+  } catch { /* localStorage may be unavailable in restricted contexts */ }
 }
 
 // ============================================================
@@ -981,7 +981,7 @@ async function _checkSystemCommands() {
           .is('executed_at', null); // atomic: فقط إذا لم يُنفَّذ بعد
 
         // تحديث الـ store (البيانات فارغة الآن)
-        try { await AppStore.refreshData(); } catch (_) {}
+        try { await AppStore.refreshData(); } catch (_e) { /* non-critical */ }
 
         showToast('📢 تم مسح البيانات المحلية بناءً على أمر المدير', 'info');
       }

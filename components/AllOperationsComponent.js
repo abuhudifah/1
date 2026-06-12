@@ -193,7 +193,7 @@ const AllOperationsComponent = {
           .select('id,agent_name,executed_by_name,bank_account_name,bank_company_name,company_name,debtor_name,expense_account_name,customer_name')
           .in('id', ids);
         (detailed||[]).forEach(d=>{ detailedMap[d.id]=d; });
-      } catch {}
+      } catch (e) { console.warn('⚠️ AllOperations: تفاصيل العمليات غير متاحة:', e.message); }
     }
 
     const typeIcons = {

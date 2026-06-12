@@ -412,7 +412,7 @@ const ProfileSettingsComponent = {
         const uid = AuthService.getCurrentUserId();
         sessionStorage.removeItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY);
         localStorage.removeItem(`ahu_quick_${uid}`);
-      } catch {}
+      } catch { /* storage cleanup — non-critical */ }
 
       showToast('✅ تم إزالة الدخول السريع', 'success');
 

@@ -88,7 +88,7 @@ const BankAccountsComponent = {
             .filter(t=>t.type==='deposit'&&t.bank_account_id).toArray();
           depositedIds = [...new Set(deps.map(d=>d.bank_account_id))];
         }
-      } catch { }
+      } catch (e) { console.warn('⚠️ BankAccounts: فشل تحميل الودائع:', e.message); }
 
       if (!depositedIds.length) {
         el.innerHTML=`<div class="empty-state" style="grid-column:1/-1;">
@@ -123,7 +123,7 @@ const BankAccountsComponent = {
           dayDeposits[d.bank_account_id].list.push(d);
         });
       }
-    } catch { }
+    } catch (e) { console.warn('⚠️ BankAccounts: فشل تحميل إجماليات اليوم:', e.message); }
 
     el.innerHTML = '';
     const users     = AppStore.getState('users');
