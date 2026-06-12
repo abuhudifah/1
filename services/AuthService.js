@@ -863,7 +863,43 @@ function isAdmin() {
   return AuthState.currentUser?.role === ROLES.ADMIN;}
 function isAgent()           { return AuthState.currentUser?.role === ROLES.AGENT; }
 function isAdminAssistant()  { return AuthState.currentUser?.role === ROLES.ADMIN_ASSISTANT; }
+function isAdminOrAssistant() {
+  const role = window.AppStore?.getState?.('role') || AuthState.currentUser?.role;
+  return role === ROLES.ADMIN || role === ROLES.ADMIN_ASSISTANT;
+}
 function canAccessTab(tabId) { return getAllowedTabs().includes(tabId); }
+
+/**
+ * يعيد قائمة معرفات الشركات المسموحة للمندوب.
+ * المدير/المساعد: null (كل الشركات مسموحة).
+ * المندوب: المصفوفة المخزنة في allowed_companies (فارغة = كل الشركات).
+ */
+function getAllowedCompanies() {
+  if (isAdminOrAssistant()) return null;
+  const raw = AuthState.currentUser?.allowed_companies;
+  if (!raw) return null;
+  const arr = Array.isArray(raw) ? raw :
+    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
+  return arr.length ? arr : null;
+}
+
+function getAllowedBanks() {
+  if (isAdminOrAssistant()) return null;
+  const raw = AuthState.currentUser?.allowed_banks;
+  if (!raw) return null;
+  const arr = Array.isArray(raw) ? raw :
+    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
+  return arr.length ? arr : null;
+}
+
+function getAllowedUsers() {
+  if (isAdminOrAssistant()) return null;
+  const raw = AuthState.currentUser?.allowed_users;
+  if (!raw) return null;
+  const arr = Array.isArray(raw) ? raw :
+    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
+  return arr.length ? arr : null;
+}
 
 function getAllowedTabs() {
   const appRole = window.AppStore?.getState?.('role');
@@ -893,7 +929,8 @@ const AuthService = {
   login, logout, checkSession, refreshSession,
   enableQuickLogin, quickLogin, disableQuickLogin,
   getDeviceToken, getCurrentUser, getCurrentRole, getCurrentUserId,
-  isAdmin, isAgent, isAdminAssistant,
+  isAdmin, isAgent, isAdminAssistant, isAdminOrAssistant,
+  getAllowedCompanies, getAllowedBanks, getAllowedUsers,
   verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
   getUserAccountNumber, createAccountNumber, generateBankAccountNumber, createBankAccount,

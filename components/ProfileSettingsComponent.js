@@ -73,28 +73,15 @@ const ProfileSettingsComponent = {
     const roleColor  = roleColors[user.role] || '#6366f1';
     const roleIcon   = roleIcons[user.role]  || '👤';
     
-    // ✅ عرض رقم الحساب الفعلي من جدول users
-    const accountNumber = user.account_number || '—';
-    const hasQuick      = !!user.quick_equation_hash;
+    const hasQuick = !!user.quick_equation_hash;
 
     const card = this._card('🪪 بيانات الحساب');
-    
-    // بناء HTML مع زر نسخ بجانب رقم الحساب
-    const accountNumberHtml = accountNumber !== '—' 
-      ? `<div style="display:flex;align-items:center;gap:6px;">
-           <span dir="ltr" style="font-family:monospace;font-weight:700;color:var(--text-primary);">${escapeHtml(accountNumber)}</span>
-           <button id="copy-account-number-btn" class="btn-icon" style="width:28px;height:28px;background:var(--bg-hover);border-radius:6px;" title="نسخ رقم الحساب">
-             <i data-lucide="copy" style="width:13px;height:13px;"></i>
-           </button>
-         </div>`
-      : `<span dir="ltr" style="font-family:monospace;font-weight:700;color:var(--text-primary);">${escapeHtml(accountNumber)}</span>`;
-    
+
     card.innerHTML += `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         ${this._infoItem('الاسم الكامل', escapeHtml(user.display_name || '—'))}
         ${this._infoItem('البريد الإلكتروني', `<span dir="ltr" style="font-family:monospace;font-size:.83rem;">${escapeHtml(user.username || '—')}</span>`)}
         ${this._infoItem('الدور', `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600;background:${roleColor}22;color:${roleColor};">${roleIcon} ${escapeHtml(ROLE_LABELS[user.role] || user.role)}</span>`)}
-        ${this._infoItem('رقم الحساب', accountNumberHtml)}
         ${this._infoItem('الدخول السريع', hasQuick
           ? '<span style="color:#16a34a;font-weight:600;">⚡ مفعّل</span>'
           : '<span style="color:var(--text-muted);">غير مفعّل</span>')}
@@ -231,16 +218,6 @@ const ProfileSettingsComponent = {
     // إزالة الدخول السريع
     document.getElementById('psc-eq-disable')?.addEventListener('click', () => this._disableQuickLogin());
 
-    // ✅ نسخ رقم الحساب
-    document.getElementById('copy-account-number-btn')?.addEventListener('click', () => {
-      const user = AuthService.getCurrentUser();
-      const accountNumber = user?.account_number;
-      if (accountNumber) {
-        copyToClipboard(accountNumber, `تم نسخ رقم الحساب: ${accountNumber}`);
-      } else {
-        showToast('لا يوجد رقم حساب مسجل', 'warning');
-      }
-    });
   },
 
   // ────────────────────────────────────────────────────────

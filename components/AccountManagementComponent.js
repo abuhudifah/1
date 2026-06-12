@@ -122,7 +122,7 @@ const AccountManagementComponent = {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
           <div>
             <h3 style="font-size:1rem;font-weight:700;color:var(--text-primary);" id="stmt-account-title">📄 كشف الحساب</h3>
-            <p style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;font-family:monospace;" id="stmt-account-id"></p>
+            <p style="display:none;" id="stmt-account-id"></p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button id="stmt-share-btn" class="btn btn-secondary btn-sm"
@@ -327,41 +327,8 @@ const AccountManagementComponent = {
     if (window.lucide) lucide.createIcons();
   },
 
-  // ✅ دالة جديدة لإثراء بيانات الحسابات بأرقام حقيقية (لبيانات Supabase)
-  async _enrichChartWithAccountNumbers(chartData) {
-    if (!chartData?.categories) return;
-    
-    try {
-      // جلب أرقام حسابات الشركات
-      const { data: companies } = await supabaseClient.from('companies').select('id, account_number');
-      const companyNumberMap = new Map();
-      if (companies) companies.forEach(c => companyNumberMap.set(c.id, c.account_number));
-
-      // جلب أكواد المصروفات
-      const { data: expenses } = await supabaseClient.from('expense_accounts').select('id, code');
-      const expenseCodeMap = new Map();
-      if (expenses) expenses.forEach(e => expenseCodeMap.set(e.id, e.code));
-
-      for (const cat of chartData.categories) {
-        for (const acc of cat.accounts || []) {
-          if (acc.account_id?.startsWith('COMP_')) {
-            const companyId = acc.account_id.slice(5);
-            acc.account_number = companyNumberMap.get(companyId) || acc.account_id;
-          } else if (acc.account_id?.startsWith('EXP_')) {
-            const code = acc.account_id.slice(4);
-            acc.account_number = code;
-          } else if (acc.account_id?.startsWith('AGT_')) {
-            // حسابات المستخدمين: لا يوجد رقم حساب في هذا السياق، نترك المعرف
-            acc.account_number = acc.account_id;
-          } else {
-            acc.account_number = acc.account_id;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('⚠️ فشل إثراء أرقام الحسابات:', e);
-    }
-  },
+  // محذوف: أرقام الحسابات لا تُعرض في الواجهة
+  async _enrichChartWithAccountNumbers() { /* no-op */ },
 
   // ─────────────────────────────────────────────────────────
   // إضافة قسم أرصدة الشركات المحسوبة (باستخدام RPC)
@@ -723,31 +690,20 @@ const AccountManagementComponent = {
         tableWrap.className = 'table-wrapper';
         tableWrap.style.overflowX = 'auto';
         let tableHtml = `
-            <table class="data-table" style="min-width:550px;">
-              <thead><tr><th>الحساب</th><th>رقم الحساب</th><th>الرصيد</th><th>إجراءات</th></tr></thead>
+            <table class="data-table" style="min-width:420px;">
+              <thead><tr><th>الحساب</th><th>الرصيد</th><th>إجراءات</th></tr></thead>
               <tbody>`;
         for (const acc of accounts) {
           const bal = Math.round(parseFloat(acc.balance || 0));
-          // ✅ عرض رقم الحساب الحقيقي
-          const accountNumber = acc.account_number || this._getShortId(acc.account_id);
           const parentBadge = acc.parent_name ? `<span class="acct-parent-badge">🏢 ${escapeHtml(acc.parent_name)}</span>` : '';
           tableHtml += `
               <tr class="acct-row" data-name="${escapeHtml((acc.name || acc.account_id).toLowerCase())}">
                 <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
-                <td style="direction:ltr;font-family:monospace;font-size:0.82rem;color:var(--accent);font-weight:600;">
-                  ${escapeHtml(accountNumber)}
-                  <button class="copy-account-number-btn btn btn-secondary btn-sm" style="margin-left:6px;padding:2px 6px;font-size:0.7rem;" data-number="${escapeHtml(accountNumber)}" title="نسخ رقم الحساب">📋</button>
-                </td>
                 <td style="font-weight:700;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ر.س</td>
                 <td>
                   <div style="display:flex;gap:4px;flex-wrap:wrap;">
                     <button class="view-stmt-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">📄 كشف</button>
                     <button class="quick-entry-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">✏️ قيد</button>
-                    <button class="share-account-btn btn btn-secondary btn-sm acct-share-btn"
-                      data-account="${escapeHtml(acc.account_id)}"
-                      data-name="${escapeHtml(acc.name || acc.account_id)}"
-                      data-number="${escapeHtml(accountNumber)}"
-                      title="مشاركة رقم الحساب">📤</button>
                     <button class="delete-account-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">🗑️ حذف</button>
                   </div>
                 </td>
@@ -767,7 +723,7 @@ const AccountManagementComponent = {
       el.appendChild(section);
     }
     
-    // ربط الأحداث (نسخ، كشف، قيد، حذف)
+    // ربط الأحداث (كشف، قيد، حذف)
     el.querySelectorAll('.copy-account-number-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -782,10 +738,6 @@ const AccountManagementComponent = {
     });
     el.querySelectorAll('.view-stmt-btn').forEach(btn => btn.addEventListener('click', () => this._showStatement(btn.dataset.account, btn.dataset.name)));
     el.querySelectorAll('.quick-entry-btn').forEach(btn => btn.addEventListener('click', () => this._openJournalModal(btn.dataset.account, btn.dataset.name)));
-    el.querySelectorAll('.share-account-btn').forEach(btn => btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._openShareModal(btn.dataset.account, btn.dataset.name, btn.dataset.number);
-    }));
     el.querySelectorAll('.delete-account-btn').forEach(btn => btn.addEventListener('click', () => this._deleteAccount(btn.dataset.account, btn.dataset.name)));
     
     if (window.lucide) lucide.createIcons();
@@ -968,21 +920,26 @@ const AccountManagementComponent = {
       }
     } catch { /* تجاهل — نعرض المتاح */ }
 
+    // ── تصفية حسب صلاحيات المندوب ──
+    const allowedBanks     = (typeof AuthService !== 'undefined') ? AuthService.getAllowedBanks()     : null;
+    const allowedCompanies = (typeof AuthService !== 'undefined') ? AuthService.getAllowedCompanies() : null;
+    const allowedUsers     = (typeof AuthService !== 'undefined') ? AuthService.getAllowedUsers()     : null;
+
     // ── حسابات المستخدمين (AGT_) لكل مستخدم نشط، مع رصيده (0 إن لم يتحرك) ──
     const agents = [];
     for (const u of users) {
       if (u.is_active === false) continue;
+      if (allowedUsers && !allowedUsers.includes(u.id)) continue;
       const id = 'AGT_' + u.id;
-      agents.push({ account_id: id, name: u.display_name || u.id, balance: balById.get(id) || 0,
-        parent_name: null, account_number: u.account_number || id });
+      agents.push({ account_id: id, name: u.display_name || u.id, balance: balById.get(id) || 0, parent_name: null });
     }
 
     // ── حسابات الشركات (COMP_) ──
     const comps = [];
     for (const c of companies) {
+      if (allowedCompanies && !allowedCompanies.includes(c.id)) continue;
       const id = 'COMP_' + c.id;
-      comps.push({ account_id: id, name: c.name || c.id, balance: balById.get(id) || 0,
-        parent_name: null, account_number: c.account_number || id });
+      comps.push({ account_id: id, name: c.name || c.id, balance: balById.get(id) || 0, parent_name: null });
     }
 
     // ── الحسابات المستقلة الموحّدة (تظهر دائماً) ──
@@ -1411,7 +1368,8 @@ const AccountManagementComponent = {
       try {
         if (this._isOnline()) {
           const { data } = await supabaseClient.from('bank_accounts')
-            .select('id, name, company_id, account_number, internal_account_number');
+            .select('id, name, company_id')
+            .limit(QUERY_LIMITS.BANK_ACCOUNTS);
           banks = data || [];
         } else if (typeof db !== 'undefined' && db.isOpen()) {
           banks = await db.bank_accounts.toArray();
@@ -1420,6 +1378,9 @@ const AccountManagementComponent = {
         console.warn('⚠️ AccountManagement: فشل جلب الحسابات البنكية:', e.message);
       }
     }
+    // تصفية حسب صلاحيات المندوب
+    const allowedBanks = (typeof AuthService !== 'undefined') ? AuthService.getAllowedBanks() : null;
+    if (allowedBanks) banks = banks.filter(b => allowedBanks.includes(b.id));
     if (!banks.length) return;
 
     const companies = (typeof AppStore !== 'undefined' ? (AppStore.getState('companies') || []) : []);
@@ -1436,27 +1397,16 @@ const AccountManagementComponent = {
         </div>
       </div>
       <div class="acct-cat-body"><div class="table-wrapper" style="overflow-x:auto;">
-        <table class="data-table bank-accounts-table" style="min-width:680px;">
-          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>رقم الحساب</th><th>الإجراءات</th></tr></thead>
+        <table class="data-table bank-accounts-table" style="min-width:420px;">
+          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>الإجراءات</th></tr></thead>
           <tbody>
             ${banks.map(b => {
               const compName = compById.get(b.company_id) || '';
-              const acct     = b.account_number || '—';
-              const hasAcct  = b.account_number && b.account_number !== '—';
               return `<tr>
               <td style="font-weight:600;">${escapeHtml(b.name || b.id)}</td>
               <td style="color:var(--text-secondary);">${escapeHtml(compName || '—')}</td>
               <td>
-                <div class="bank-acct-num-cell">
-                  <span class="bank-acct-num" dir="ltr">${escapeHtml(acct)}</span>
-                  ${hasAcct ? `<button class="copy-bank-acct-btn btn-icon-sm" data-acct="${escapeHtml(b.account_number)}" title="نسخ رقم الحساب" aria-label="نسخ">📋</button>` : ''}
-                </div>
-              </td>
-              <td>
-                <div class="bank-actions-cell">
-                  <button class="view-bank-stmt-btn btn-statement" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف</button>
-                  ${hasAcct ? `<button class="btn-share-bank" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}" data-account="${escapeHtml(b.account_number)}" data-company="${escapeHtml(compName)}" title="مشاركة رقم الحساب">📤 مشاركة</button>` : ''}
-                </div>
+                <button class="view-bank-stmt-btn btn-statement" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف</button>
               </td>
             </tr>`;
             }).join('')}
@@ -1469,31 +1419,6 @@ const AccountManagementComponent = {
       btn.addEventListener('click', () => this._showStatement('BNK_' + btn.dataset.bankId, btn.dataset.bankName));
     });
 
-    section.querySelectorAll('.copy-bank-acct-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const acctNum = btn.dataset.acct;
-        try {
-          await navigator.clipboard.writeText(acctNum);
-          const orig = btn.textContent;
-          btn.textContent = '✅';
-          setTimeout(() => { btn.textContent = orig; }, 1500);
-        } catch (e) {
-          console.warn('⚠️ فشل النسخ:', e.message);
-          showToast('تعذّر النسخ تلقائياً، انسخ يدوياً: ' + acctNum, 'info');
-        }
-      });
-    });
-
-    section.querySelectorAll('.btn-share-bank').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this._openShareBankModal(
-          btn.dataset.bankId,
-          btn.dataset.bankName,
-          btn.dataset.account,
-          btn.dataset.company
-        );
-      });
-    });
   },
 
   _openShareBankModal(bankId, bankName, accountNumber, companyName) {
