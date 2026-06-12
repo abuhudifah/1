@@ -41,6 +41,9 @@ const _initialState = {
   logoUrl            : null,
   kpiData            : null,
   kpiLoading         : false,
+  beneficiaryCompanies : [],
+  beneficiaryBanks     : [],
+  beneficiaryUsers     : [],
 };
 
 let _state = { ..._initialState };
@@ -75,6 +78,7 @@ function setCurrentUser(profile) {
     accountNumber : AuthService.generateAccountNumber(profile),
     currentTab    : AuthService.getAllowedTabs()[0] || null,
   }, 'store:userChanged');
+  _loadBeneficiaries();
 }
 
 function clearCurrentUser() {
@@ -82,6 +86,61 @@ function clearCurrentUser() {
   AppStore.dispatchEvent(new CustomEvent('store:userCleared'));
   AppStore.dispatchEvent(new CustomEvent('store:stateChanged', { detail: { state: _state } }));
 }
+
+// ============================================================
+// المستفيدون (لكل مستخدم — مخزَّنون في localStorage)
+// ============================================================
+function _benefKey() {
+  const uid = AuthService.getCurrentUserId?.();
+  return uid ? `beneficiaries_${uid}` : null;
+}
+function _loadBeneficiaries() {
+  const key = _benefKey();
+  if (!key) return;
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || '{}');
+    setState({
+      beneficiaryCompanies: Array.isArray(raw.companies) ? raw.companies : [],
+      beneficiaryBanks    : Array.isArray(raw.banks)     ? raw.banks     : [],
+      beneficiaryUsers    : Array.isArray(raw.users)     ? raw.users     : [],
+    }, 'store:beneficiariesLoaded');
+  } catch { /* تجاهل */ }
+}
+function _persistBeneficiaries() {
+  const key = _benefKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      companies: _state.beneficiaryCompanies,
+      banks    : _state.beneficiaryBanks,
+      users    : _state.beneficiaryUsers,
+    }));
+  } catch { /* تجاهل */ }
+}
+function addBeneficiaryCompany(c) {
+  if (!c || !c.id) return;
+  if (_state.beneficiaryCompanies.some(x => x.id === c.id)) return;
+  const item = { id: c.id, name: c.name || c.id, account_number: c.account_number || null };
+  setState({ beneficiaryCompanies: [item, ..._state.beneficiaryCompanies] }, 'store:beneficiariesChanged');
+  _persistBeneficiaries();
+}
+function addBeneficiaryBank(b) {
+  if (!b || !b.id) return;
+  if (_state.beneficiaryBanks.some(x => x.id === b.id)) return;
+  const item = { id: b.id, name: b.name || b.id, account_number: b.account_number || null };
+  setState({ beneficiaryBanks: [item, ..._state.beneficiaryBanks] }, 'store:beneficiariesChanged');
+  _persistBeneficiaries();
+}
+function addBeneficiaryUser(u) {
+  if (!u || !u.id) return;
+  if (_state.beneficiaryUsers.some(x => x.id === u.id)) return;
+  const item = { id: u.id, display_name: u.display_name || u.id, account_number: u.account_number || null };
+  setState({ beneficiaryUsers: [item, ..._state.beneficiaryUsers] }, 'store:beneficiariesChanged');
+  _persistBeneficiaries();
+}
+function getBeneficiaryCompanies() { return _state.beneficiaryCompanies; }
+function getBeneficiaryBanks()     { return _state.beneficiaryBanks; }
+function getBeneficiaryUsers()     { return _state.beneficiaryUsers; }
 
 // ============================================================
 // التبويبات
@@ -242,7 +301,7 @@ async function _loadUsers() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.USERS,
     () => supabaseClient.from(TABLES.USERS)
-      .select('id, username, display_name, role, is_active, allowed_tabs')
+      .select('id, username, display_name, role, is_active, allowed_tabs, account_number')
       .eq('is_active', true)
       .order('display_name')
       .limit(QUERY_LIMITS.USERS),
@@ -430,6 +489,8 @@ Object.assign(AppStore, {
   setOnlineStatus, updateSyncQueueLength, setSyncRunning,
   addNotification, decrementUnreadCount,
   setKpiData, setKpiLoading,
+  addBeneficiaryCompany, addBeneficiaryBank, addBeneficiaryUser,
+  getBeneficiaryCompanies, getBeneficiaryBanks, getBeneficiaryUsers,
 });
 
 window.AppStore = AppStore;

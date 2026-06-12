@@ -729,10 +729,11 @@ const AccountManagementComponent = {
         e.stopPropagation();
         const num = btn.dataset.number;
         if (!num) return;
-        if (typeof copyToClipboard !== 'undefined') {
-          copyToClipboard(num, `تم نسخ رقم الحساب: ${num}`);
+        // نسخ + (للمدير/المساعد) نافذة مشاركة كإشعار
+        if (typeof copyAccountNumberWithShare === 'function') {
+          copyAccountNumberWithShare(num, btn.dataset.name || '');
         } else {
-          navigator.clipboard.writeText(num).then(() => showToast(`تم نسخ: ${num}`, 'success'));
+          copyToClipboard(num, `تم نسخ رقم الحساب: ${num}`);
         }
       });
     });
