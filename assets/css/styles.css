@@ -3381,3 +3381,260 @@ body.dark-mode .header-user-center {
   .bank-acct-num { font-size: 0.78rem; }
   .bank-accounts-table { min-width: 520px !important; }
 }
+
+/* ============================================================
+   Bank Actions Cell — statement + share buttons
+   ============================================================ */
+.bank-actions-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.bank-actions-cell .btn-statement,
+.bank-actions-cell .btn-share-bank {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.83rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+.bank-actions-cell .btn-statement {
+  background: var(--bg-hover, #f0f4ff);
+  color: var(--text-primary, #333);
+  border: 1px solid var(--border-color, #e2e8f0);
+}
+
+.bank-actions-cell .btn-statement:hover {
+  background: #e2e8f0;
+}
+
+.bank-actions-cell .btn-share-bank {
+  background: #388e3c;
+  color: #fff;
+}
+
+.bank-actions-cell .btn-share-bank:hover {
+  background: #2e7d32;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(56,142,60,0.3);
+}
+
+@media (max-width: 640px) {
+  .bank-actions-cell { flex-direction: column; gap: 6px; }
+  .bank-actions-cell .btn-statement,
+  .bank-actions-cell .btn-share-bank { width: 100%; text-align: center; }
+}
+
+/* ============================================================
+   Share Bank Modal
+   ============================================================ */
+.share-bank-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.share-bank-modal .modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+}
+
+.share-bank-modal .modal-content {
+  position: relative;
+  background: var(--glass-bg-heavy, #fff);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  animation: modalSlideIn 0.25s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from { opacity: 0; transform: translateY(-40px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.share-bank-modal .modal-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.share-bank-modal .modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.share-bank-modal .modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: var(--text-muted, #888);
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.share-bank-modal .modal-close-btn:hover {
+  background: var(--bg-hover, #f5f5f5);
+  color: var(--text-primary, #333);
+}
+
+.share-bank-modal .modal-body {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.share-bank-modal .account-info-box {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border: 1.5px solid #90caf9;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.share-bank-modal .info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.share-bank-modal .info-row:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.share-bank-modal .info-row .label {
+  color: #555;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.share-bank-modal .info-row .value {
+  color: #1a1a1a;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.share-bank-modal .info-row .value.iban {
+  font-family: 'Courier New', monospace;
+  color: #0d47a1;
+  font-size: 1rem;
+  letter-spacing: 0.5px;
+}
+
+.share-bank-modal .share-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  font-size: 0.93rem;
+}
+
+.share-bank-modal .share-user-select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 2px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: var(--glass-bg-heavy, #fff);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.share-bank-modal .share-user-select:focus {
+  outline: none;
+  border-color: var(--accent, #1976d2);
+}
+
+.share-bank-modal .notification-preview {
+  background: #fff8e1;
+  border-left: 4px solid #ffc107;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.share-bank-modal .preview-label {
+  font-weight: 600;
+  color: #856404;
+  margin-bottom: 8px;
+  font-size: 0.88rem;
+}
+
+.share-bank-modal .preview-text {
+  color: #78560a;
+  line-height: 1.65;
+  font-size: 0.88rem;
+  background: rgba(255,255,255,0.7);
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px dashed #ffc107;
+}
+
+.share-bank-modal .modal-footer {
+  padding: 16px 22px;
+  border-top: 1px solid var(--border-color, #f0f0f0);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.share-bank-modal .btn-send-share {
+  background: #388e3c;
+  color: #fff;
+  border: none;
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+.share-bank-modal .btn-send-share:hover:not(:disabled) {
+  background: #2e7d32;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(56,142,60,0.3);
+}
+
+.share-bank-modal .btn-send-share:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .share-bank-modal .modal-content  { width: 96%; max-height: 92vh; }
+  .share-bank-modal .modal-header,
+  .share-bank-modal .modal-body,
+  .share-bank-modal .modal-footer   { padding: 14px 16px; }
+  .share-bank-modal .modal-footer   { flex-direction: column-reverse; gap: 8px; }
+  .share-bank-modal .btn-cancel-share,
+  .share-bank-modal .btn-send-share  { width: 100%; text-align: center; }
+}

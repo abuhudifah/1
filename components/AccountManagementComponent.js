@@ -1422,7 +1422,7 @@ const AccountManagementComponent = {
     if (!banks.length) return;
 
     const companies = (typeof AppStore !== 'undefined' ? (AppStore.getState('companies') || []) : []);
-    const compById = new Map(companies.map(c => [c.id, c.name]));
+    const compById  = new Map(companies.map(c => [c.id, c.name]));
 
     const section = document.createElement('div');
     section.className = 'glass-card acct-category';
@@ -1435,20 +1435,26 @@ const AccountManagementComponent = {
         </div>
       </div>
       <div class="acct-cat-body"><div class="table-wrapper" style="overflow-x:auto;">
-        <table class="data-table bank-accounts-table" style="min-width:600px;">
-          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>رقم الحساب</th><th>كشف الحركة</th></tr></thead>
+        <table class="data-table bank-accounts-table" style="min-width:680px;">
+          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>رقم الحساب</th><th>الإجراءات</th></tr></thead>
           <tbody>
             ${banks.map(b => {
-              const acct = b.account_number || '—';
-              const hasAcct = b.account_number && b.account_number !== '—';
+              const compName = compById.get(b.company_id) || '';
+              const acct     = b.account_number || '—';
+              const hasAcct  = b.account_number && b.account_number !== '—';
               return `<tr>
               <td style="font-weight:600;">${escapeHtml(b.name || b.id)}</td>
-              <td style="color:var(--text-secondary);">${escapeHtml(compById.get(b.company_id) || '—')}</td>
+              <td style="color:var(--text-secondary);">${escapeHtml(compName || '—')}</td>
               <td class="bank-acct-num-cell">
                 <span class="bank-acct-num" dir="ltr">${escapeHtml(acct)}</span>
                 ${hasAcct ? `<button class="copy-bank-acct-btn btn-icon-sm" data-acct="${escapeHtml(b.account_number)}" title="نسخ رقم الحساب" aria-label="نسخ">📋</button>` : ''}
               </td>
-              <td><button class="view-bank-stmt-btn btn btn-secondary btn-sm" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف الحركة</button></td>
+              <td>
+                <div class="bank-actions-cell">
+                  <button class="view-bank-stmt-btn btn-statement" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف</button>
+                  ${hasAcct ? `<button class="btn-share-bank" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}" data-account="${escapeHtml(b.account_number)}" data-company="${escapeHtml(compName)}" title="مشاركة رقم الحساب">📤 مشاركة</button>` : ''}
+                </div>
+              </td>
             </tr>`;
             }).join('')}
           </tbody>
@@ -1474,6 +1480,98 @@ const AccountManagementComponent = {
         }
       });
     });
+
+    section.querySelectorAll('.btn-share-bank').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._openShareBankModal(
+          btn.dataset.bankId,
+          btn.dataset.bankName,
+          btn.dataset.account,
+          btn.dataset.company
+        );
+      });
+    });
+  },
+
+  _openShareBankModal(bankId, bankName, accountNumber, companyName) {
+    const existing = document.getElementById('share-bank-modal');
+    if (existing) existing.remove();
+
+    const users       = (typeof AppStore !== 'undefined' ? (AppStore.getState('users') || []) : []);
+    const currentUser = (typeof AuthState !== 'undefined' ? AuthState.currentUser : null);
+    const targetUsers = users.filter(u => u.id !== currentUser?.id && u.is_active !== false);
+
+    const modal = document.createElement('div');
+    modal.id        = 'share-bank-modal';
+    modal.className = 'share-bank-modal';
+    modal.innerHTML = `
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>📤 مشاركة رقم الحساب</h3>
+          <button class="modal-close-btn" aria-label="إغلاق">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="account-info-box">
+            <div class="info-row"><span class="label">البنك:</span><span class="value">${escapeHtml(bankName)}</span></div>
+            <div class="info-row"><span class="label">الشركة:</span><span class="value">${escapeHtml(companyName || '—')}</span></div>
+            <div class="info-row"><span class="label">رقم الحساب (IBAN):</span><span class="value iban" dir="ltr">${escapeHtml(accountNumber)}</span></div>
+          </div>
+          <div class="share-section">
+            <label class="share-label" for="share-user-select">اختر المستخدم للمشاركة:</label>
+            <select id="share-user-select" class="share-user-select">
+              <option value="">-- اختر مستخدم --</option>
+              ${targetUsers.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.username || u.id)} (${escapeHtml(u.account_number || '')})</option>`).join('')}
+            </select>
+          </div>
+          <div class="notification-preview">
+            <div class="preview-label">📝 نص الإشعار الذي سيُرسَل:</div>
+            <div class="preview-text">يمكنك الإيداع إلى حساب (${escapeHtml(companyName || bankName)}) عبر هذا الرقم (${escapeHtml(accountNumber)}) وإضافته كمستفيد مستقبلي</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary btn-cancel-share">إلغاء</button>
+          <button class="btn btn-primary btn-send-share">📤 إرسال الإشعار</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    const closeModal = () => modal.remove();
+    modal.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+    modal.querySelector('.btn-cancel-share').addEventListener('click', closeModal);
+    modal.querySelector('.modal-overlay').addEventListener('click', closeModal);
+    modal.querySelector('.btn-send-share').addEventListener('click', () => {
+      const select       = modal.querySelector('#share-user-select');
+      const targetUserId = select.value;
+      if (!targetUserId) { showToast('الرجاء اختيار مستخدم', 'warning'); return; }
+      this._sendBankShareNotification(targetUserId, bankName, companyName, accountNumber, modal);
+    });
+  },
+
+  async _sendBankShareNotification(targetUserId, bankName, companyName, accountNumber, modalEl) {
+    const sendBtn = modalEl?.querySelector('.btn-send-share');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '⏳ جاري الإرسال...'; }
+    try {
+      const currentUser = (typeof AuthState !== 'undefined' ? AuthState.currentUser : null);
+      if (!currentUser?.id) throw new Error('لم يتم تحديد المستخدم الحالي');
+      const { error } = await supabaseClient.from('notifications').insert({
+        from_user_id: currentUser.id,
+        to_user_id:   targetUserId,
+        type:         'account_share',
+        title:        '🏦 مشاركة حساب بنكي',
+        message:      `يمكنك الإيداع إلى حساب (${companyName || bankName}) عبر هذا الرقم (${accountNumber}) وإضافته كمستفيد مستقبلي`,
+        data:         JSON.stringify({ action: 'deposit', account_number: accountNumber, bank_name: bankName, company_name: companyName }),
+        is_read:      false,
+        created_at:   new Date().toISOString(),
+      });
+      if (error) throw new Error(error.message);
+      showToast('✅ تم إرسال الإشعار بنجاح', 'success');
+      if (modalEl) modalEl.remove();
+    } catch (e) {
+      console.error('❌ فشل إرسال إشعار المشاركة:', e.message);
+      showToast('فشل إرسال الإشعار: ' + e.message, 'error');
+      if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '📤 إرسال الإشعار'; }
+    }
   },
 
   _stmtCard(label, value, color) {
