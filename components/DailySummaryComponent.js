@@ -179,47 +179,79 @@ const DailySummaryComponent = {
       : (AppStore.getState('selectedAgentId')||null);
 
     await AppStore.refreshTransactions(date, agentId);
-    this._renderStats();
-    this._renderOpeningBalance(date, agentId);
+
+    let opening = 0;
+    if (agentId) {
+      const bal = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      if (isOk(bal)) opening = bal.data;
+    }
+
+    this._renderStats(opening, agentId);
     this._renderTransactionsList();
   },
 
-  _renderStats() {
+  _renderStats(opening = 0, agentId = null) {
     const el = document.getElementById('summary-stats');
     if (!el) return;
-    const txs = AppStore.getState('transactions').filter(tx=>!tx.is_reversed);
-    const s = {collection:0,deposit:0,bank_withdrawal:0,expense:0,receipt:0,delivery:0};
-    txs.forEach(tx=>{if(s.hasOwnProperty(tx.type))s[tx.type]+=parseFloat(tx.amount||0);});
-    // Fix #18: bank_withdrawal يدخل الصندوق مثل التحصيل
-    const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense-s.delivery;
+
+    // إخفاء عنصر الرصيد الافتتاحي المنفصل (مدمج الآن في الشبكة)
+    const openingEl = document.getElementById('summary-opening');
+    if (openingEl) openingEl.style.display = 'none';
+
+    const txs = AppStore.getState('transactions').filter(tx => !tx.is_reversed);
+    const s   = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
+    const cnt = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
+    txs.forEach(tx => {
+      if (s.hasOwnProperty(tx.type)) {
+        s[tx.type]   += parseFloat(tx.amount || 0);
+        cnt[tx.type] += 1;
+      }
+    });
+
+    // الرصيد المتبقي الفعلي = السابق + واردات − صادرات
+    const closing = opening + s.collection + s.receipt + s.bank_withdrawal
+                            - s.deposit  - s.expense  - s.delivery;
+
+    const agentName = agentId
+      ? (AppStore.getState('users').find(u => u.id === agentId)?.display_name || '')
+      : null;
 
     const kpis = [
-      {label:'تحصيلات',  value:s.collection,     icon:'💰',cls:'kpi-success'},
-      {label:'إيداعات',  value:s.deposit,         icon:'🏦',cls:'kpi-accent'},
-      {label:'سحب بنكي', value:s.bank_withdrawal, icon:'💳',cls:'kpi-info'},
-      {label:'مصروفات',  value:s.expense,         icon:'💸',cls:'kpi-danger'},
-      {label:'استلامات', value:s.receipt,         icon:'📥',cls:'kpi-info'},
-      {label:'تسليمات',  value:s.delivery,        icon:'📤',cls:'kpi-warning'},
-      {label:'المتبقي',  value:net,               icon:'📊',cls:net>=0?'kpi-success':'kpi-danger'},
+      // البطاقة الأولى: الرصيد السابق
+      { label:'الرصيد السابق',                value:opening,           icon:'🏦', cls:'kpi-accent',
+        subtitle: agentName || 'إجمالي المناديب', count:null, highlight:'var(--accent)' },
+      // أنواع العمليات
+      { label:'تحصيلات',       value:s.collection,     icon:'💰', cls:'kpi-success',  count:cnt.collection },
+      { label:'إيداعات',       value:s.deposit,         icon:'🏧', cls:'kpi-info',     count:cnt.deposit },
+      { label:'سحب بنكي',     value:s.bank_withdrawal, icon:'💳', cls:'kpi-info',     count:cnt.bank_withdrawal },
+      { label:'مصروفات',       value:s.expense,         icon:'💸', cls:'kpi-danger',   count:cnt.expense },
+      { label:'حوالات واردة', value:s.receipt,         icon:'📥', cls:'kpi-success',  count:cnt.receipt },
+      { label:'حوالات صادرة', value:s.delivery,        icon:'📤', cls:'kpi-warning',  count:cnt.delivery },
+      // البطاقة الأخيرة: الرصيد الفعلي
+      { label:'الرصيد الفعلي في الصندوق', value:closing, icon:'📊',
+        cls:closing >= 0 ? 'kpi-success' : 'kpi-danger', count:null,
+        highlight: closing >= 0 ? 'var(--success)' : 'var(--danger)' },
     ];
 
-    el.innerHTML = kpis.map(k=>`
-      <div class="kpi-card ${escapeHtml(k.cls)}" style="position:relative;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <span style="font-size:1.3rem;">${k.icon}</span>
-          <span class="kpi-label">${escapeHtml(k.label)}</span>
+    el.innerHTML = kpis.map(k => `
+      <div class="kpi-card ${escapeHtml(k.cls)}"
+           style="${k.highlight ? `border:2px solid ${k.highlight};` : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:1.2rem;">${k.icon}</span>
+          <span class="kpi-label" style="font-size:0.76rem;">${escapeHtml(k.label)}</span>
         </div>
-        <div class="kpi-value" style="font-size:1.15rem;direction:ltr;text-align:right;">
-          ${k.value<0?'−':''}${Math.abs(Math.round(k.value)).toLocaleString('en-US')}
+        ${k.subtitle ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;text-align:right;">${escapeHtml(k.subtitle)}</div>` : ''}
+        <div class="kpi-value" style="font-size:1.1rem;direction:ltr;text-align:right;">
+          ${k.value < 0 ? '−' : ''}${Math.abs(Math.round(k.value)).toLocaleString('en-US')}
           <span style="font-size:0.65rem;font-weight:500;color:var(--text-muted);margin-right:2px;">${APP_CONFIG.CURRENCY_SYMBOL}</span>
         </div>
+        ${k.count !== null ? `<div style="font-size:0.68rem;color:var(--text-muted);text-align:right;margin-top:3px;">${k.count} عملية</div>` : ''}
       </div>`).join('');
   },
 
   async _renderOpeningBalance(date, agentId) {
     const el = document.getElementById('summary-opening');
     if (!el) return;
-    const yesterday = getYesterdaySaudiDate();
     let opening = 0;
     if (agentId) {
       const bal = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
@@ -403,10 +435,10 @@ const DailySummaryComponent = {
       `🏦 إيداعات:  *${s.deposit.toLocaleString('en-US')} ر.س*`,
       s.bank_withdrawal?`💳 سحب بنكي: *${s.bank_withdrawal.toLocaleString('en-US')} ر.س*`:'',
       `💸 مصروفات:  *${s.expense.toLocaleString('en-US')} ر.س*`,
-      s.receipt?`📤 استلامات: *${s.receipt.toLocaleString('en-US')} ر.س*`:'',
-      s.delivery?`📦 تسليمات:  *${s.delivery.toLocaleString('en-US')} ر.س*`:'',
+      s.receipt?`📥 حوالات واردة:  *${s.receipt.toLocaleString('en-US')} ر.س*`:'',
+      s.delivery?`📤 حوالات صادرة: *${s.delivery.toLocaleString('en-US')} ر.س*`:'',
       `────────────────`,
-      `💰 *المتبقي في الصندوق: ${bal>=0?'':'−'}${Math.abs(bal).toLocaleString('en-US')} ر.س*`,
+      `💰 *الرصيد الفعلي في الصندوق: ${bal>=0?'':'−'}${Math.abs(bal).toLocaleString('en-US')} ر.س*`,
       `— نظام أبو حذيفة 🔐`,
     ].filter(Boolean).join('\n');
 
@@ -456,7 +488,7 @@ const DailySummaryComponent = {
         return `${i+1}. ${icon} ${label}: *${amt.toLocaleString('en-US')} ر.س*${who?` — ${who}`:''}`;
       }),
       `────────────────`,
-      `💰 *المتبقي: ${net>=0?'':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س*`,
+      `💰 *الرصيد الفعلي: ${net>=0?'':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س*`,
       `— نظام أبو حذيفة 🔐`,
     ].join('\n');
     const overlay=document.createElement('div');
@@ -519,9 +551,9 @@ const DailySummaryComponent = {
         { label:'🏦 الإيداعات',   value:`−${s.deposit.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
         { label:'💳 السحب البنكي', value:`+${s.bank_withdrawal.toLocaleString('en-US')} ر.س`, color:'#0284c7' },
         { label:'💸 المصروفات',   value:`−${s.expense.toLocaleString('en-US')} ر.س`,   color:'#dc2626' },
-        { label:'📤 الاستلامات',  value:`+${s.receipt.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
-        { label:'📦 التسليمات',   value:`−${s.delivery.toLocaleString('en-US')} ر.س`,  color:'#dc2626' },
-        { label:'💰 المتبقي',     value:`${net>=0?'+':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س`, color: net>=0?'#059669':'#dc2626' },
+        { label:'📥 الحوالات الواردة',  value:`+${s.receipt.toLocaleString('en-US')} ر.س`,  color:'#0284c7' },
+        { label:'📤 الحوالات الصادرة', value:`−${s.delivery.toLocaleString('en-US')} ر.س`, color:'#dc2626' },
+        { label:'💰 الرصيد الفعلي',    value:`${net>=0?'+':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س`, color: net>=0?'#059669':'#dc2626' },
       ],
       tableHTML,
       footerExtra: user?.display_name || '',
