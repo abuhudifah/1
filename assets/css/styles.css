@@ -1762,6 +1762,38 @@ body.dark-mode input[type="time"]        {
   .page-break-before { page-break-before: always; }
   .page-break-after  { page-break-after : always; }
   .no-page-break     { page-break-inside: avoid; }
+
+  /* إخفاء شريط فلتر التاريخ وأزرار التصدير */
+  #stmt-filter-bar,
+  #ao-export-btn,
+  #ds-export-btn { display: none !important; }
+
+  /* تحسين طباعة كشوف الحساب */
+  #acct-stmt-card {
+    box-shadow : none !important;
+    border     : 1px solid #e2e8f0 !important;
+  }
+  #stmt-entries table,
+  #ao-table-wrap table {
+    font-size       : 10pt;
+    border-collapse : collapse !important;
+    width           : 100%;
+  }
+  #stmt-entries th,
+  #stmt-entries td,
+  #ao-table-wrap th,
+  #ao-table-wrap td {
+    border            : 1px solid #ccc !important;
+    padding           : 6px 8px !important;
+    page-break-inside : avoid;
+  }
+  #stmt-entries thead th,
+  #ao-table-wrap thead th {
+    background : #0f172a !important;
+    color      : #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }
 
 /* إخفاء عناصر الطباعة عند العرض العادي */

@@ -141,15 +141,30 @@ const AccountManagementComponent = {
             <button id="stmt-close-btn" class="btn btn-secondary btn-sm" style="color:var(--danger);">✕ إغلاق</button>
           </div>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:flex-end;">
-          <div class="form-group" style="margin:0;flex:1;min-width:120px;">
+        <div id="stmt-filter-bar" class="no-print" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:flex-end;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-size:0.78rem;">نوع الفترة</label>
+            <div style="display:flex;gap:4px;">
+              <button id="stmt-mode-day"   class="btn btn-sm btn-secondary" data-stmt-mode="day">يوم</button>
+              <button id="stmt-mode-month" class="btn btn-sm btn-primary"   data-stmt-mode="month">شهر</button>
+              <button id="stmt-mode-range" class="btn btn-sm btn-secondary" data-stmt-mode="range">فترة</button>
+            </div>
+          </div>
+          <div id="stmt-day-wrap" class="form-group" style="margin:0;flex:1;min-width:130px;display:none;">
+            <label class="form-label" style="font-size:0.78rem;">التاريخ</label>
+            <input id="stmt-day" type="date" class="form-control" style="padding:7px;font-size:0.85rem;">
+          </div>
+          <div id="stmt-month-wrap" class="form-group" style="margin:0;flex:1;min-width:130px;">
+            <label class="form-label" style="font-size:0.78rem;">الشهر</label>
+            <input id="stmt-month-input" type="month" class="form-control" style="padding:7px;font-size:0.85rem;">
+          </div>
+          <div id="stmt-from-wrap" class="form-group" style="margin:0;flex:1;min-width:120px;display:none;">
             <label class="form-label" style="font-size:0.78rem;">من تاريخ</label>
             <input id="stmt-from" type="date" class="form-control" style="padding:7px;font-size:0.85rem;">
           </div>
-          <div class="form-group" style="margin:0;flex:1;min-width:120px;">
+          <div id="stmt-to-wrap" class="form-group" style="margin:0;flex:1;min-width:120px;display:none;">
             <label class="form-label" style="font-size:0.78rem;">إلى تاريخ</label>
-            <input id="stmt-to" type="date" class="form-control" style="padding:7px;font-size:0.85rem;"
-              value="${getCurrentSaudiDate()}">
+            <input id="stmt-to" type="date" class="form-control" style="padding:7px;font-size:0.85rem;">
           </div>
           <button id="stmt-load-btn" class="btn btn-primary btn-sm">عرض الكشف</button>
         </div>
@@ -204,6 +219,17 @@ const AccountManagementComponent = {
         navigator.clipboard.writeText(text).then(() => showToast('تم النسخ', 'success'));
       }
     });
+
+    // ─── فلتر التاريخ المتقدم ───
+    document.querySelectorAll('[data-stmt-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.stmtMode;
+        this._applyFilterMode(mode);
+        try { localStorage.setItem('ahu_stmt_filter_pref', mode); } catch (e) { console.warn('localStorage N/A', e.message); }
+      });
+    });
+    document.getElementById('stmt-day')?.addEventListener('change', () => this._syncFilterDates());
+    document.getElementById('stmt-month-input')?.addEventListener('change', () => this._syncFilterDates());
 
     let _searchTimer = null;
     document.getElementById('acct-search')?.addEventListener('input', (e) => {
@@ -995,14 +1021,7 @@ const AccountManagementComponent = {
     if (titleEl) titleEl.textContent = `📄 كشف حساب: ${accountName}`;
     if (idEl)    idEl.textContent    = accountId;
 
-    const firstOfMonth = new Date();
-    firstOfMonth.setDate(1);
-    const fromEl = document.getElementById('stmt-from');
-    if (fromEl && !fromEl.value) {
-      const tz = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.TIMEZONE) ? APP_CONFIG.TIMEZONE : 'Asia/Riyadh';
-      fromEl.value = firstOfMonth.toLocaleDateString('en-CA', { timeZone: tz });
-    }
-
+    this._initFilterMode();
     stmtSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     this._loadStatement();
   },
@@ -1133,7 +1152,7 @@ const AccountManagementComponent = {
         kind: 'ledger',
         title: `كشف حساب: ${this._selectedAccountName || acc}`,
         accountId: acc,
-        periodText: `الفترة: ${from} ← ${to}`,
+        periodText: this._buildPeriodText(from, to),
         columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
         rows: rows.map(r => [formatDateArabic(r.date), r.time, r.label,
           r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']),
@@ -1231,7 +1250,7 @@ const AccountManagementComponent = {
         kind: 'bank',
         title: `كشف حركة بنك: ${this._selectedAccountName || ('BNK_' + bankId)}`,
         accountId: 'BNK_' + bankId,
-        periodText: `الفترة: ${from} ← ${to}`,
+        periodText: this._buildPeriodText(from, to),
         columns: ['#', 'الوقت', 'نوع العملية', 'المندوب', 'المبلغ'],
         rows: printRows,
         totalsLine: bankTotalsText.split(' | ').map(t => `<span>${t}</span>`).join(''),
@@ -1438,14 +1457,13 @@ const AccountManagementComponent = {
 
   // زر الطباعة يفتح نافذة الطباعة الاحترافية
   async _exportStatementExcel() {
-    const rows = this._stmtPrintRows;
-    if (!rows || !rows.length) { showToast('لا توجد بيانات للتصدير', 'info'); return; }
+    const st = this._lastStatement;
+    if (!st || !st.rows || !st.rows.length) { showToast('لا توجد بيانات للتصدير', 'info'); return; }
     const btn = document.getElementById('stmt-excel-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
     try {
-      const headers = ['#', 'الوقت', 'نوع العملية', 'المندوب', 'المبلغ (ر.س)'];
       const name = this._selectedAccountName || 'كشف_حساب';
-      await PrintService.exportToExcel(headers, rows, 'كشف الحساب', name.replace(/\s+/g, '_'));
+      await PrintService.exportToExcel(st.columns, st.rows, 'كشف الحساب', name.replace(/\s+/g, '_'));
     } catch (e) {
       showToast(`❌ فشل التصدير: ${e.message}`, 'error');
     } finally {
@@ -1455,6 +1473,92 @@ const AccountManagementComponent = {
         if (window.lucide) lucide.createIcons();
       }
     }
+  },
+
+  // ─── فلتر التاريخ: تهيئة من localStorage عند فتح كشف حساب ───
+  _initFilterMode() {
+    const tz = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.TIMEZONE) ? APP_CONFIG.TIMEZONE : 'Asia/Riyadh';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const ym    = today.slice(0, 7); // YYYY-MM
+
+    let mode = 'month';
+    try { mode = localStorage.getItem('ahu_stmt_filter_pref') || 'month'; } catch (e) { console.warn('localStorage N/A', e.message); }
+    if (!['day', 'month', 'range'].includes(mode)) mode = 'month';
+
+    const dayEl   = document.getElementById('stmt-day');
+    const monthEl = document.getElementById('stmt-month-input');
+    const fromEl  = document.getElementById('stmt-from');
+    const toEl    = document.getElementById('stmt-to');
+
+    if (dayEl   && !dayEl.value)   dayEl.value   = today;
+    if (monthEl && !monthEl.value) monthEl.value = ym;
+    if (fromEl  && !fromEl.value)  fromEl.value  = `${ym}-01`;
+    if (toEl    && !toEl.value)    toEl.value    = today;
+
+    this._applyFilterMode(mode);
+  },
+
+  // ─── فلتر التاريخ: إظهار/إخفاء المدخلات حسب الوضع ───
+  _applyFilterMode(mode) {
+    const show = (id, vis) => { const el = document.getElementById(id); if (el) el.style.display = vis ? '' : 'none'; };
+    show('stmt-day-wrap',   mode === 'day');
+    show('stmt-month-wrap', mode === 'month');
+    show('stmt-from-wrap',  mode === 'range');
+    show('stmt-to-wrap',    mode === 'range');
+
+    document.querySelectorAll('[data-stmt-mode]').forEach(btn => {
+      const active = btn.dataset.stmtMode === mode;
+      btn.classList.toggle('btn-primary',   active);
+      btn.classList.toggle('btn-secondary', !active);
+    });
+
+    this._syncFilterDates();
+  },
+
+  // ─── فلتر التاريخ: مزامنة stmt-from/stmt-to من الوضع النشط ───
+  _syncFilterDates() {
+    const tz    = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.TIMEZONE) ? APP_CONFIG.TIMEZONE : 'Asia/Riyadh';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+
+    const activeBtn = document.querySelector('[data-stmt-mode].btn-primary');
+    const mode = activeBtn?.dataset.stmtMode || 'range';
+
+    const fromEl = document.getElementById('stmt-from');
+    const toEl   = document.getElementById('stmt-to');
+
+    if (mode === 'day') {
+      const day = document.getElementById('stmt-day')?.value || today;
+      if (fromEl) fromEl.value = day;
+      if (toEl)   toEl.value   = day;
+    } else if (mode === 'month') {
+      const ym = document.getElementById('stmt-month-input')?.value;
+      if (ym) {
+        const [y, m]     = ym.split('-').map(Number);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        if (fromEl) fromEl.value = `${ym}-01`;
+        if (toEl)   toEl.value   = `${ym}-${String(daysInMonth).padStart(2, '0')}`;
+      }
+    }
+    // mode === 'range': المستخدم يتحكم في stmt-from/stmt-to مباشرةً
+  },
+
+  // ─── نص الفترة الزمنية بتنسيق يناسب الوضع المختار ───
+  _buildPeriodText(from, to) {
+    let mode = 'range';
+    try { mode = localStorage.getItem('ahu_stmt_filter_pref') || 'range'; } catch (e) { console.warn('localStorage N/A', e.message); }
+
+    if (mode === 'day' && from === to) {
+      return `يوم: ${from}`;
+    }
+    if (mode === 'month') {
+      const ym = document.getElementById('stmt-month-input')?.value;
+      if (ym) {
+        const [y, m] = ym.split('-').map(Number);
+        const label  = new Date(y, m - 1, 1).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long' });
+        return `شهر: ${label}`;
+      }
+    }
+    return `الفترة: ${from} ← ${to}`;
   },
 
   _printStatement() { this._printProfessional(); },
@@ -1503,9 +1607,10 @@ const AccountManagementComponent = {
     const rows = tbl ? [...tbl.querySelectorAll('tbody tr')].map(tr =>
       [...tr.querySelectorAll('td')].map(td => td.textContent.trim()).join(' | ')) : [];
 
+    const periodDisplay = this._lastStatement?.periodText || `الفترة: ${from} → ${to}`;
     const lines = [
       `📄 كشف حساب: ${name}`,
-      `🗓️ الفترة: ${from} → ${to}`,
+      `🗓️ ${periodDisplay}`,
       '─'.repeat(30),
       ...rows,
       '─'.repeat(30),
