@@ -3341,3 +3341,43 @@ body.dark-mode .header-user-center {
   .search-results-dropdown { max-height: 160px; }
   .search-result-item       { padding: 8px 10px; }
 }
+
+/* ============================================================
+   Bank Accounts Table — account number cell & copy button
+   ============================================================ */
+.bank-acct-num-cell {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bank-acct-num {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-primary, #1a1a2e);
+  letter-spacing: 0.5px;
+}
+
+.btn-icon-sm {
+  background: transparent;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-icon-sm:hover {
+  background: var(--bg-hover, #f0f4ff);
+  border-color: var(--accent, #1976d2);
+}
+
+@media (max-width: 640px) {
+  .bank-acct-num { font-size: 0.78rem; }
+  .bank-accounts-table { min-width: 520px !important; }
+}

@@ -1408,9 +1408,16 @@ const AccountManagementComponent = {
     let banks = (typeof AppStore !== 'undefined' ? (AppStore.getState('bankAccounts') || []) : []);
     if (!banks.length) {
       try {
-        if (this._isOnline()) { const { data } = await supabaseClient.from('bank_accounts').select('id, name, company_id'); banks = data || []; }
-        else if (typeof db !== 'undefined' && db.isOpen()) banks = await db.bank_accounts.toArray();
-      } catch { /* تجاهل */ }
+        if (this._isOnline()) {
+          const { data } = await supabaseClient.from('bank_accounts')
+            .select('id, name, company_id, account_number, internal_account_number');
+          banks = data || [];
+        } else if (typeof db !== 'undefined' && db.isOpen()) {
+          banks = await db.bank_accounts.toArray();
+        }
+      } catch (e) {
+        console.warn('⚠️ AccountManagement: فشل جلب الحسابات البنكية:', e.message);
+      }
     }
     if (!banks.length) return;
 
@@ -1428,20 +1435,44 @@ const AccountManagementComponent = {
         </div>
       </div>
       <div class="acct-cat-body"><div class="table-wrapper" style="overflow-x:auto;">
-        <table class="data-table" style="min-width:480px;">
-          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>كشف الحركة</th></tr></thead>
+        <table class="data-table bank-accounts-table" style="min-width:600px;">
+          <thead><tr><th>البنك</th><th>الشركة التابعة</th><th>رقم الحساب</th><th>كشف الحركة</th></tr></thead>
           <tbody>
-            ${banks.map(b => `<tr>
+            ${banks.map(b => {
+              const acct = b.account_number || '—';
+              const hasAcct = b.account_number && b.account_number !== '—';
+              return `<tr>
               <td style="font-weight:600;">${escapeHtml(b.name || b.id)}</td>
               <td style="color:var(--text-secondary);">${escapeHtml(compById.get(b.company_id) || '—')}</td>
+              <td class="bank-acct-num-cell">
+                <span class="bank-acct-num" dir="ltr">${escapeHtml(acct)}</span>
+                ${hasAcct ? `<button class="copy-bank-acct-btn btn-icon-sm" data-acct="${escapeHtml(b.account_number)}" title="نسخ رقم الحساب" aria-label="نسخ">📋</button>` : ''}
+              </td>
               <td><button class="view-bank-stmt-btn btn btn-secondary btn-sm" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف الحركة</button></td>
-            </tr>`).join('')}
+            </tr>`;
+            }).join('')}
           </tbody>
         </table>
       </div></div>`;
     containerEl.appendChild(section);
+
     section.querySelectorAll('.view-bank-stmt-btn').forEach(btn => {
       btn.addEventListener('click', () => this._showStatement('BNK_' + btn.dataset.bankId, btn.dataset.bankName));
+    });
+
+    section.querySelectorAll('.copy-bank-acct-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const acctNum = btn.dataset.acct;
+        try {
+          await navigator.clipboard.writeText(acctNum);
+          const orig = btn.textContent;
+          btn.textContent = '✅';
+          setTimeout(() => { btn.textContent = orig; }, 1500);
+        } catch (e) {
+          console.warn('⚠️ فشل النسخ:', e.message);
+          showToast('تعذّر النسخ تلقائياً، انسخ يدوياً: ' + acctNum, 'info');
+        }
+      });
     });
   },
 
