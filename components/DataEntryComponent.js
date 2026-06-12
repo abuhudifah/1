@@ -93,7 +93,7 @@ const DataEntryComponent = {
       if (isOnline()) {
         const { data } = await supabaseClient
           .from('bank_accounts')
-          .select('id,name,financial_ceiling,company_id,reset_time,account_number,internal_account_number')
+          .select('id,name,financial_ceiling,company_id,reset_time')
           .order('name');
         allBanks = data || [];
       } else {
@@ -561,7 +561,7 @@ const DataEntryComponent = {
         chip.className = 'btn btn-secondary btn-sm';
         chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
         chip.textContent = bank.name.length > 20 ? bank.name.slice(0, 18) + '…' : bank.name;
-        chip.title = bank.account_number || '';
+        chip.title = bank.name;
         chip.addEventListener('click', () => onSelect(bank));
         listDiv.appendChild(chip);
       });
@@ -638,7 +638,7 @@ const DataEntryComponent = {
       if (resultDisplay) {
         resultDisplay.style.display = '';
         resultDisplay.style.background = 'rgba(99,102,241,0.08)';
-        resultDisplay.innerHTML = `🏢 ${escapeHtml(company.name)}<br><span style="font-size:0.7rem;color:var(--text-muted);">رقم الحساب: ${escapeHtml(company.account_number || '—')}</span>`;
+        resultDisplay.innerHTML = `🏢 ${escapeHtml(company.name)}`;
       }
     });
     companySection.appendChild(beneficiariesList);

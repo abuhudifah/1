@@ -724,18 +724,6 @@ const AccountManagementComponent = {
     }
     
     // ربط الأحداث (كشف، قيد، حذف)
-    el.querySelectorAll('.copy-account-number-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const num = btn.dataset.number;
-        if (!num) return;
-        if (typeof copyToClipboard !== 'undefined') {
-          copyToClipboard(num, `تم نسخ رقم الحساب: ${num}`);
-        } else {
-          navigator.clipboard.writeText(num).then(() => showToast(`تم نسخ: ${num}`, 'success'));
-        }
-      });
-    });
     el.querySelectorAll('.view-stmt-btn').forEach(btn => btn.addEventListener('click', () => this._showStatement(btn.dataset.account, btn.dataset.name)));
     el.querySelectorAll('.quick-entry-btn').forEach(btn => btn.addEventListener('click', () => this._openJournalModal(btn.dataset.account, btn.dataset.name)));
     el.querySelectorAll('.delete-account-btn').forEach(btn => btn.addEventListener('click', () => this._deleteAccount(btn.dataset.account, btn.dataset.name)));
@@ -753,8 +741,7 @@ const AccountManagementComponent = {
       const rows = section.querySelectorAll('.acct-row');
       let visible = 0;
       rows.forEach(row => {
-        const match = !q || row.dataset.name?.includes(q) ||
-          row.querySelector('td:nth-child(2)')?.textContent.toLowerCase().includes(q);
+        const match = !q || row.dataset.name?.includes(q);
         row.style.display = match ? '' : 'none';
         if (match) visible++;
       });
@@ -921,7 +908,6 @@ const AccountManagementComponent = {
     } catch { /* تجاهل — نعرض المتاح */ }
 
     // ── تصفية حسب صلاحيات المندوب ──
-    const allowedBanks     = (typeof AuthService !== 'undefined') ? AuthService.getAllowedBanks()     : null;
     const allowedCompanies = (typeof AuthService !== 'undefined') ? AuthService.getAllowedCompanies() : null;
     const allowedUsers     = (typeof AuthService !== 'undefined') ? AuthService.getAllowedUsers()     : null;
 
@@ -1449,7 +1435,7 @@ const AccountManagementComponent = {
             <label class="share-label" for="share-user-select">اختر المستخدم للمشاركة:</label>
             <select id="share-user-select" class="share-user-select">
               <option value="">-- اختر مستخدم --</option>
-              ${targetUsers.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.username || u.id)} (${escapeHtml(u.account_number || '')})</option>`).join('')}
+              ${targetUsers.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name || u.username || u.id)}</option>`).join('')}
             </select>
           </div>
           <div class="notification-preview">
