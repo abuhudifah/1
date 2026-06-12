@@ -35,8 +35,9 @@ const TABLES = Object.freeze({
   SYSTEM_SETTINGS   : 'system_settings',
   COMPANIES         : 'companies',
   EXPENSE_ACCOUNTS  : 'expense_accounts',
-  SYSTEM_COMMANDS    : 'system_commands',
-  TRANSFER_REQUESTS  : 'transfer_requests',
+  SYSTEM_COMMANDS      : 'system_commands',
+  TRANSFER_REQUESTS    : 'transfer_requests',
+  USER_BENEFICIARIES   : 'user_beneficiaries',
 });
 
 // ============================================================

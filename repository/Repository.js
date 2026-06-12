@@ -62,6 +62,7 @@ const _REPO_TABLES_WITHOUT_UPDATED_AT = new Set([
   'audit_logs',
   'daily_closings',
   'quick_login_rate_limit',
+  'user_beneficiaries',
 ]);
 
 // ============================================================

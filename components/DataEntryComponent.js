@@ -39,62 +39,77 @@ const DataEntryComponent = {
     container.appendChild(await this._buildPage());
   },
 
-  // ✅ جلب المستفيدين المحفوظين (للإيداع/السحب)
+  // جلب المستفيدين المحفوظين (بنوك وشركات) من Supabase
   async _loadBeneficiaries() {
     try {
       const userId = AuthService.getCurrentUserId();
+      if (!userId) return;
       const result = await repo.query(TABLES.USER_BENEFICIARIES, { user_id: userId });
       if (isOk(result)) {
-        const beneficiaries = result.data.data || [];
-        // تصفية فقط المستفيدين الذين هم بنوك (نحتفظ بمعرف البنك)
-        this._beneficiariesCache = beneficiaries.filter(b => b.beneficiary_type === 'bank' || !b.beneficiary_type);
+        const all = result.data.data || [];
+        this._beneficiariesCache     = all.filter(b => b.beneficiary_type === 'bank');
+        this._companyBeneficiaries   = all.filter(b => b.beneficiary_type === 'company');
+        // ترحيل: نقل الشركات المحفوظة في localStorage إلى Supabase
+        this._migrateLocalStorageBeneficiaries(userId, all);
       }
-      
-      // جلب المستفيدين من الشركات من localStorage
-      const saved = localStorage.getItem(`company_beneficiaries_${userId}`);
-      if (saved) {
-        try {
-          this._companyBeneficiaries = JSON.parse(saved);
-        } catch { this._companyBeneficiaries = []; }
-      } else {
-        this._companyBeneficiaries = [];
-      }
-    } catch {
-      this._beneficiariesCache = [];
-      this._companyBeneficiaries = [];
+    } catch (e) {
+      console.warn('⚠️ DataEntry: فشل تحميل المستفيدين:', e.message);
+      this._beneficiariesCache     = [];
+      this._companyBeneficiaries   = [];
     }
   },
 
-  // ✅ حفظ شركة كمستفيد
-  async _saveCompanyBeneficiary(companyId, companyName, accountNumber) {
-    const userId = AuthService.getCurrentUserId();
-    const exists = this._companyBeneficiaries.some(b => b.id === companyId);
-    if (!exists) {
-      this._companyBeneficiaries.push({
-        id: companyId,
-        name: companyName,
-        account_number: accountNumber,
-        type: 'company'
+  // ترحيل بيانات المستفيدين من localStorage إلى Supabase (يُشغَّل مرة واحدة)
+  _migrateLocalStorageBeneficiaries(userId, existingInDB) {
+    const legacyKey = `company_beneficiaries_${userId}`;
+    const raw = localStorage.getItem(legacyKey);
+    if (!raw) return;
+    try {
+      const legacy = JSON.parse(raw);
+      legacy.forEach(b => {
+        const alreadySaved = existingInDB.some(
+          e => e.beneficiary_id === b.id && e.beneficiary_type === 'company'
+        );
+        if (!alreadySaved && b.id) {
+          repo.create(TABLES.USER_BENEFICIARIES, {
+            user_id          : userId,
+            beneficiary_id   : b.id,
+            beneficiary_type : 'company',
+            beneficiary_name : b.name,
+            beneficiary_account: b.account_number,
+          }).catch(e => console.warn('⚠️ ترحيل مستفيد شركة:', e.message));
+        }
       });
-      localStorage.setItem(`company_beneficiaries_${userId}`, JSON.stringify(this._companyBeneficiaries));
-    }
+      localStorage.removeItem(legacyKey);
+    } catch (e) { console.warn('⚠️ _migrateLocalStorageBeneficiaries:', e.message); }
   },
 
-  // ✅ حفظ بنك كمستفيد
-  async _saveBankBeneficiary(bankId, bankName, accountNumber) {
+  // حفظ مستفيد عام (بنك أو شركة) في Supabase
+  async _saveBeneficiary(referenceId, displayName, accountNumber, type) {
     const userId = AuthService.getCurrentUserId();
-    // التحقق من عدم التكرار
-    const exists = this._beneficiariesCache.some(b => b.beneficiary_id === bankId);
-    if (!exists) {
+    if (!userId || !referenceId) return;
+    const cache = type === 'bank' ? this._beneficiariesCache : this._companyBeneficiaries;
+    const exists = cache.some(b => b.beneficiary_id === referenceId);
+    if (exists) return;
+    try {
       await repo.create(TABLES.USER_BENEFICIARIES, {
-        user_id: userId,
-        beneficiary_id: bankId,
-        beneficiary_type: 'bank',
-        beneficiary_name: bankName,
-        beneficiary_account: accountNumber
+        user_id          : userId,
+        beneficiary_id   : referenceId,
+        beneficiary_type : type,
+        beneficiary_name : displayName,
+        beneficiary_account: accountNumber,
       });
       await this._loadBeneficiaries();
-    }
+    } catch (e) { console.warn(`⚠️ _saveBeneficiary(${type}):`, e.message); }
+  },
+
+  // دوال مساعدة للتوافق مع الكود القديم
+  async _saveCompanyBeneficiary(companyId, companyName, accountNumber) {
+    await this._saveBeneficiary(companyId, companyName, accountNumber, 'company');
+  },
+
+  async _saveBankBeneficiary(bankId, bankName, accountNumber) {
+    await this._saveBeneficiary(bankId, bankName, accountNumber, 'bank');
   },
 
   /* ── جلب البنوك وترتيبها ── */

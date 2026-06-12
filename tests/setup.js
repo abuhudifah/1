@@ -37,7 +37,7 @@ Object.assign(globalThis, {
     ACCOUNT_BALANCES: 'account_balances', DAILY_CLOSINGS: 'daily_closings',
     SYSTEM_SETTINGS: 'system_settings', COMPANIES: 'companies',
     EXPENSE_ACCOUNTS: 'expense_accounts', SYSTEM_COMMANDS: 'system_commands',
-    TRANSFER_REQUESTS: 'transfer_requests',
+    TRANSFER_REQUESTS: 'transfer_requests', USER_BENEFICIARIES: 'user_beneficiaries',
   }),
   DEXIE_TABLES: Object.freeze({
     TRANSACTIONS: 'transactions', USERS: 'users', SYNC_QUEUE: 'sync_queue',
