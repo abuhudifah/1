@@ -212,7 +212,7 @@ function formatDateArabic(dateStr) {
       month    : 'long',
       day      : 'numeric',
     });
-  } catch {
+  } catch (e) {
     return String(dateStr);
   }
 }
@@ -234,7 +234,7 @@ function formatDateTimeArabic(dateStr) {
       hour     : '2-digit',
       minute   : '2-digit',
     });
-  } catch {
+  } catch (e) {
     return String(dateStr);
   }
 }
@@ -258,7 +258,7 @@ function timeAgo(dateStr) {
     if (hours < 24)  return `منذ ${hours} ساعة`;
     if (days  < 7)   return `منذ ${days} يوم`;
     return formatDateArabic(dateStr);
-  } catch {
+  } catch (e) {
     return '—';
   }
 }
@@ -584,14 +584,21 @@ function throttle(fn, limit = 300) {
 // 9. تشفير SHA-256 (للمعادلة السريعة وكلمات المرور المحلية)
 // ============================================================
 
+// Salt ثابت على مستوى التطبيق — يمنع هجمات Rainbow Table على الهاشات المخزنة
+const APP_SALT = 'ahu_secure_salt_v1_2024';
+
 /**
- * يحسب هاش SHA-256 لنص ما
- * @param {string} text - النص المراد تشفيره
+ * يحسب هاش SHA-256 مع Salt لنص ما
+ * @param {string} text   - النص المراد تشفيره (المعادلة)
+ * @param {string|null} userId - إذا مُرِّر، يُدمج في النص لربط الهاش بمستخدم محدد
  * @returns {Promise<string>} - الهاش بصيغة hex
  */
-async function hashSHA256(text) {
+async function hashSHA256(text, userId = null) {
+  const salted  = userId
+    ? `${userId}:${String(text)}:${APP_SALT}`
+    : `${String(text)}:${APP_SALT}`;
   const encoder = new TextEncoder();
-  const data     = encoder.encode(String(text));
+  const data     = encoder.encode(salted);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray  = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -612,7 +619,7 @@ async function copyToClipboard(text, successMsg = 'تم النسخ إلى الح
     await navigator.clipboard.writeText(String(text));
     showToast(successMsg, 'success', 2000);
     return true;
-  } catch {
+  } catch (e) {
     // fallback للمتصفحات القديمة
     try {
       const ta = document.createElement('textarea');
@@ -625,7 +632,7 @@ async function copyToClipboard(text, successMsg = 'تم النسخ إلى الح
       document.body.removeChild(ta);
       showToast(successMsg, 'success', 2000);
       return true;
-    } catch {
+    } catch (e) {
       showToast('فشل النسخ', 'error');
       return false;
     }
@@ -709,7 +716,7 @@ async function shareText(text, title = APP_CONFIG.NAME_SHORT) {
     try {
       await navigator.share({ title, text });
       return;
-    } catch { /* المستخدم أغلق نافذة المشاركة */ }
+    } catch (e) { /* المستخدم أغلق نافذة المشاركة أو رفض الإذن */ }
   }
   // fallback: نسخ للحافظة
   await copyToClipboard(text, 'تم نسخ التقرير للحافظة — يمكنك لصقه في واتساب ✓');
@@ -761,10 +768,15 @@ function isValidEmail(email) {
  */
 function saveSession(sessionData) {
   try {
-    sessionStorage.setItem(
-      SECURITY_CONFIG.SESSION_KEY,
-      JSON.stringify(sessionData)
-    );
+    // ✅ S8: الحفاظ على sessionExpiresAt الأصلية عند تجديد الجلسة لمنع إعادة ضبط الـ 8 ساعات
+    const existing = getSession();
+    const data = {
+      ...sessionData,
+      sessionExpiresAt: sessionData.sessionExpiresAt
+        ?? existing?.sessionExpiresAt
+        ?? (Date.now() + 8 * 60 * 60 * 1000),
+    };
+    sessionStorage.setItem(SECURITY_CONFIG.SESSION_KEY, JSON.stringify(data));
   } catch (e) {
     console.error('خطأ في حفظ الجلسة:', e);
   }
@@ -778,7 +790,7 @@ function getSession() {
   try {
     const raw = sessionStorage.getItem(SECURITY_CONFIG.SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }
@@ -790,7 +802,7 @@ function clearSession() {
   try {
     sessionStorage.removeItem(SECURITY_CONFIG.SESSION_KEY);
     sessionStorage.removeItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY);
-  } catch { /* تجاهل */ }
+  } catch (e) { /* sessionStorage غير متاح */ }
 }
 
 // ============================================================
@@ -992,6 +1004,93 @@ Object.assign(window, {
 });
 
 console.log('✅ helpers.js محمّل — جميع الدوال المساعدة جاهزة');
+
+// ============================================================
+// Skeleton States — دالة مساعدة لعرض حالة التحميل الهيكلية
+// ============================================================
+
+/**
+ * يُولّد HTML لـ Skeleton placeholders متطابقة مع شكل المحتوى الحقيقي.
+ * @param {'card'|'row'|'text'} type - شكل الـ skeleton
+ * @param {number} [count=3] - عدد العناصر
+ * @returns {string} HTML string
+ */
+function renderSkeleton(type, count = 3) {
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    if (type === 'card') {
+      html += '<div class="skeleton skeleton-card"></div>';
+    } else if (type === 'row') {
+      html += '<div class="skeleton skeleton-row"></div>';
+    } else if (type === 'text') {
+      html += '<div class="skeleton skeleton-text"></div>';
+    }
+  }
+  return html;
+}
+window.renderSkeleton = renderSkeleton;
+
+// ============================================================
+// دالة تنسيق رسائل الأخطاء للمستخدم
+// ============================================================
+
+/**
+ * تحوّل خطأ JavaScript أو رسالة نصية إلى رسالة عربية مفهومة للمستخدم.
+ * تُخفي التفاصيل التقنية وتُبقي على النص الصريح من err().
+ * @param {Error|string|object} error
+ * @returns {string}
+ */
+function formatErrorMessage(error) {
+  if (!error) return 'حدث خطأ غير متوقع';
+
+  // رسالة نصية مباشرة
+  if (typeof error === 'string') return error;
+
+  // كائن خطأ من err()
+  if (typeof error === 'object' && error.ok === false && error.error) {
+    return error.error;
+  }
+
+  const msg = error.message || String(error);
+
+  // أخطاء الشبكة
+  if (
+    msg.includes('Failed to fetch') ||
+    msg.includes('NetworkError') ||
+    msg.includes('Network request failed') ||
+    error instanceof TypeError
+  ) {
+    return 'تعذّر الاتصال بالخادم. تحقق من اتصالك بالإنترنت';
+  }
+
+  // أخطاء المصادقة
+  if (msg.includes('Invalid login') || msg.includes('invalid_credentials')) {
+    return 'اسم المستخدم أو كلمة المرور غير صحيحة';
+  }
+  if (msg.includes('Email not confirmed')) {
+    return 'البريد الإلكتروني غير مفعّل. يُرجى التحقق من بريدك';
+  }
+  if (msg.includes('JWT') || msg.includes('token')) {
+    return 'انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً';
+  }
+
+  // أخطاء قاعدة البيانات
+  if (msg.includes('duplicate key') || msg.includes('23505')) {
+    return 'هذا السجل موجود مسبقاً';
+  }
+  if (msg.includes('violates foreign key') || msg.includes('23503')) {
+    return 'لا يمكن تنفيذ العملية: يوجد ارتباط ببيانات أخرى';
+  }
+  if (msg.includes('permission denied') || msg.includes('42501')) {
+    return 'ليس لديك صلاحية لتنفيذ هذه العملية';
+  }
+
+  // خطأ مفهوم بالعربية أو إنجليزية قصيرة — إعادته مباشرة
+  if (msg && msg.length < 150) return msg;
+
+  return 'حدث خطأ غير متوقع. حاول مجدداً';
+}
+window.formatErrorMessage = formatErrorMessage;
 
 // ============================================================
 // TASK-6.2: مُلقِّط الأخطاء غير المعالجة

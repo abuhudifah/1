@@ -249,7 +249,7 @@ async function _fetchFromSupabaseWithFallback(tableName, supabaseQuery, dexieFal
 async function _loadCompanies() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.COMPANIES,
-    () => supabaseClient.from(TABLES.COMPANIES).select('*').order('name'),
+    () => supabaseClient.from(TABLES.COMPANIES).select('*').order('name').limit(QUERY_LIMITS.COMPANIES),
     () => db.isOpen() ? db.companies.toArray().catch(() => []) : []
   );
   setState({ companies: data || [] }, 'store:companiesLoaded');
@@ -258,7 +258,7 @@ async function _loadCompanies() {
 async function _loadExpenseAccounts() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.EXPENSE_ACCOUNTS,
-    () => supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name'),
+    () => supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.EXPENSE_ACCOUNTS),
     () => db.isOpen() ? db.expense_accounts.toArray().catch(() => []) : []
   );
   setState({ expenseAccounts: data || [] }, 'store:expenseAccountsLoaded');
@@ -267,7 +267,7 @@ async function _loadExpenseAccounts() {
 async function _loadSystemSettings() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.SYSTEM_SETTINGS,
-    () => supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*'),
+    () => supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').limit(QUERY_LIMITS.SYSTEM_SETTINGS),
     () => db.isOpen() ? db.system_settings.toArray().catch(() => []) : []
   );
   const settingsMap = new Map();
@@ -282,7 +282,7 @@ async function _loadSystemSettings() {
 async function _loadBankAccounts() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.BANK_ACCOUNTS,
-    () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name'),
+    () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.BANK_ACCOUNTS),
     () => db.isOpen() ? db.bank_accounts.toArray().catch(() => []) : []
   );
   setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
@@ -291,7 +291,7 @@ async function _loadBankAccounts() {
 async function _loadDebtors() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.DEBTORS,
-    () => supabaseClient.from(TABLES.DEBTORS).select('*').order('name'),
+    () => supabaseClient.from(TABLES.DEBTORS).select('*').order('name').limit(QUERY_LIMITS.DEBTORS),
     () => db.isOpen() ? db.debtors.toArray().catch(() => []) : []
   );
   setState({ debtors: data || [] }, 'store:debtorsLoaded');
@@ -303,7 +303,8 @@ async function _loadUsers() {
     () => supabaseClient.from(TABLES.USERS)
       .select('id, username, display_name, role, is_active, allowed_tabs, account_number')
       .eq('is_active', true)
-      .order('display_name'),
+      .order('display_name')
+      .limit(QUERY_LIMITS.USERS),
     () => db.isOpen()
       ? db.users.where('is_active').equals(1).toArray().catch(() => [])
       : []
@@ -360,7 +361,7 @@ async function _loadAgentBankAccounts(agentId) {
   try {
     const data = await _fetchFromSupabaseWithFallback(
       TABLES.BANK_ACCOUNTS,
-      () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name'),
+      () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.BANK_ACCOUNTS),
       () => db.isOpen() ? db.bank_accounts.orderBy('name').toArray().catch(() => []) : []
     );
     setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
@@ -376,7 +377,8 @@ async function _loadAgentDebtors(agentId) {
         .from(TABLES.DEBTORS)
         .select('*')
         .contains('assigned_agents', [agentId])
-        .order('name');
+        .order('name')
+        .limit(QUERY_LIMITS.DEBTORS);
       data = res || [];
       if (data.length && db.isOpen()) {
         (async () => {

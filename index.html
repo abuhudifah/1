@@ -89,6 +89,9 @@
 
 <body class="font-arabic" id="app-body">
 
+  <!-- skip-to-content — يظهر فقط عند التنقل بـ Tab (إمكانية الوصول) -->
+  <a href="#app-root" class="skip-link">تخطي إلى المحتوى الرئيسي</a>
+
   <!-- ============================================================
        شاشة التحميل الأولية
        تُخفى بعد اكتمال تهيئة التطبيق من App.js
@@ -135,6 +138,9 @@
   <script src="repository/SupabaseClient.js" defer></script>
   <script src="repository/Repository.js"    defer></script>
   <script src="repository/SyncQueue.js"     defer></script>
+
+  <!-- مودالات مشتركة (قبل الخدمات لأن AuthService يستخدمها) -->
+  <script src="components/PasswordDialog.js"  defer></script>
 
   <!-- الطبقة الرابعة: الخدمات -->
   <script src="services/DataSourceConfig.js"  defer></script>

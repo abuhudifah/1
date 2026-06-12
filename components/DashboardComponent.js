@@ -514,7 +514,7 @@ const DashboardComponent = {
         const balArr = await db.account_balances.where('account_id').anyOf(agents.map(a=>`AGT_${a.id}`)).toArray();
         balArr.forEach(b => { balances[b.account_id] = Math.round(parseFloat(b.balance)||0); });
       }
-    } catch {}
+    } catch (e) { console.warn('⚠️ Dashboard: فشل تحميل البيانات:', e.message); }
 
     const agentsData = agents.map(a => ({
       agent_id    : a.id,
@@ -667,11 +667,11 @@ const DashboardComponent = {
 
     // تدمير Chart.js لتحرير ذاكرة Canvas
     if (this._chart1) {
-      try { this._chart1.destroy(); } catch { }
+      try { this._chart1.destroy(); } catch { /* non-critical canvas cleanup */ }
       this._chart1 = null;
     }
     if (this._chart2) {
-      try { this._chart2.destroy(); } catch { }
+      try { this._chart2.destroy(); } catch { /* non-critical canvas cleanup */ }
       this._chart2 = null;
     }
 

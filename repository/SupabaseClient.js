@@ -142,7 +142,17 @@ window.addEventListener('offline', () => {
 });
 
 function isOnline() {
+  // وضع Offline النشط يتجاوز حالة navigator.onLine
+  if (window.AuthState?.isOffline) return false;
   return _isOnline;
+}
+
+/**
+ * فحص حقيقي للاتصال بـ Supabase (أبطأ من isOnline لكن أدق)
+ * @returns {Promise<boolean>}
+ */
+async function checkRealConnection() {
+  return pingSupabase();
 }
 
 async function pingSupabase() {
@@ -217,6 +227,7 @@ window.isSessionActive       = isSessionActive;
 window.getAccessToken        = getAccessToken;
 window.callRPC               = callRPC;
 window.isOnline              = isOnline;
+window.checkRealConnection   = checkRealConnection;
 window.pingSupabase          = pingSupabase;
 window.subscribeToTable      = subscribeToTable;
 window.unsubscribeAll        = unsubscribeAll;

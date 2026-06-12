@@ -45,7 +45,7 @@ const QuickLoginBanner = {
         const { until } = JSON.parse(raw);
         if (until && Date.now() < until) return; // لا تزال فترة التعليق سارية
       }
-    } catch {}
+    } catch { /* localStorage may be unavailable */ }
 
     this._render(profile);
   },
@@ -152,7 +152,7 @@ const QuickLoginBanner = {
       try {
         const until = Date.now() + this._SNOOZE_DAYS * 24 * 60 * 60 * 1000;
         localStorage.setItem(this._DISMISS_KEY, JSON.stringify({ until }));
-      } catch {}
+      } catch { /* localStorage may be unavailable */ }
       this._hide(banner);
     });
 
@@ -161,7 +161,7 @@ const QuickLoginBanner = {
         // إغلاق لمدة طويلة جداً (سنة)
         const until = Date.now() + 365 * 24 * 60 * 60 * 1000;
         localStorage.setItem(this._DISMISS_KEY, JSON.stringify({ until }));
-      } catch {}
+      } catch { /* localStorage may be unavailable */ }
       this._hide(banner);
     });
 
@@ -192,7 +192,7 @@ const QuickLoginBanner = {
     try {
       const until = Date.now() + 365 * 24 * 60 * 60 * 1000;
       localStorage.setItem(this._DISMISS_KEY, JSON.stringify({ until }));
-    } catch {}
+    } catch { /* localStorage may be unavailable */ }
   },
 };
 

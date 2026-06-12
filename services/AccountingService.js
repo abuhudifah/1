@@ -44,7 +44,7 @@ async function _generateVoucherNumber() {
     try {
       const { data, error } = await supabaseClient.rpc(RPC.GET_NEXT_VOUCHER_NUMBER);
       if (!error && data) return data;
-    } catch {}
+    } catch (e) { console.warn('⚠️ _generateVoucherNumber RPC فشل، يُستخدم الرقم المحلي:', e.message); }
   }
   const today = getCurrentSaudiDate().replace(/-/g, '');
   return `V${today}-LOCAL-${Date.now()}`;
@@ -148,6 +148,19 @@ function _buildReceiptEntries(tx, voucher) {
       description: 'استلام حوالة من مندوب' },
     { voucher_number: voucher, date, account_id: AccountId.agent(tx.from_agent_id), debit: 0, credit: tx.amount,
       description: 'تسليم حوالة للمندوب المستلم' },
+  ];
+}
+
+function _buildDeliveryEntries(tx, voucher) {
+  const date = tx.date || getCurrentSaudiDate();
+
+  // تحويل بين مندوبين (مرسِل): AGT_(المستلم) مدين ← AGT_(المرسِل) دائن — بلا حساب وسيط
+  if (!tx.to_agent_id) return err('التسليم يتطلب تحديد المندوب المستلم');
+  return [
+    { voucher_number: voucher, date, account_id: AccountId.agent(tx.to_agent_id), debit: tx.amount, credit: 0,
+      description: 'استلام حوالة من مندوب' },
+    { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id),    debit: 0, credit: tx.amount,
+      description: 'تسليم حوالة إلى مندوب آخر' },
   ];
 }
 
@@ -536,7 +549,8 @@ async function reverseEntries(transactionId) {
         const { data: reversalEntries } = await supabaseClient
           .from(TABLES.ACCOUNT_LEDGER)
           .select('*')
-          .like('voucher_number', `REV_${transactionId}%`);
+          .like('voucher_number', `REV_${transactionId}%`)
+          .limit(QUERY_LIMITS.REVERSAL_ENTRIES);
 
         if (reversalEntries && reversalEntries.length > 0) {
           await db.account_ledger.bulkPut(

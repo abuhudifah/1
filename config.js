@@ -35,8 +35,9 @@ const TABLES = Object.freeze({
   SYSTEM_SETTINGS   : 'system_settings',
   COMPANIES         : 'companies',
   EXPENSE_ACCOUNTS  : 'expense_accounts',
-  SYSTEM_COMMANDS    : 'system_commands',
-  TRANSFER_REQUESTS  : 'transfer_requests',
+  SYSTEM_COMMANDS      : 'system_commands',
+  TRANSFER_REQUESTS    : 'transfer_requests',
+  USER_BENEFICIARIES   : 'user_beneficiaries',
 });
 
 // ============================================================
@@ -290,6 +291,31 @@ const PAGINATION_CONFIG = Object.freeze({
 });
 
 // ============================================================
+// حدود الاستعلامات — يمنع استرجاع بيانات غير محدودة
+// كل قيمة هي الحد الأقصى لعدد الصفوف في استعلام واحد
+// ============================================================
+const QUERY_LIMITS = Object.freeze({
+  // بيانات مرجعية (تُحمَّل مرة عند بدء التطبيق)
+  BANK_ACCOUNTS       : 200,
+  COMPANIES           : 200,
+  EXPENSE_ACCOUNTS    : 200,
+  DEBTORS             : 500,
+  SYSTEM_SETTINGS     : 100,
+  USERS               : 200,
+
+  // مزامنة دورية
+  TRANSACTIONS_SYNC   : 200,
+  NOTIFICATIONS_SYNC  : 50,
+
+  // كشوف حسابات (مقيدة بنطاق تاريخ في استعلام المكوّن)
+  LEDGER_ENTRIES      : 1_000,
+  REVERSAL_ENTRIES    : 20,
+
+  // التعارضات في الذاكرة
+  CONFLICTS           : 100,
+});
+
+// ============================================================
 // حدود المبالغ المالية
 // ============================================================
 
@@ -356,6 +382,7 @@ window.SYNC_ACTIONS          = SYNC_ACTIONS;
 window.SYNC_CONFIG           = SYNC_CONFIG;
 window.CACHE_CONFIG          = CACHE_CONFIG;
 window.PAGINATION_CONFIG     = PAGINATION_CONFIG;
+window.QUERY_LIMITS          = QUERY_LIMITS;
 window.AMOUNT_CONFIG         = AMOUNT_CONFIG;
 window.SECURITY_CONFIG       = SECURITY_CONFIG;
 window.DEXIE_CONFIG          = DEXIE_CONFIG;
