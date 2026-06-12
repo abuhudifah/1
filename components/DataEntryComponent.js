@@ -120,13 +120,14 @@ const DataEntryComponent = {
       if (isOnline()) {
         const { data } = await supabaseClient
           .from('bank_accounts')
-          .select('id,name,financial_ceiling,company_id,reset_time,account_number')
+          .select('id,name,financial_ceiling,company_id,reset_time,account_number,internal_account_number')
           .order('name');
         allBanks = data || [];
       } else {
         allBanks = await db.bank_accounts.toArray();
       }
-    } catch {
+    } catch (e) {
+      console.warn('⚠️ DataEntry: فشل جلب البنوك:', e.message);
       allBanks = AppStore.getState('bankAccounts') || [];
     }
     if (!allBanks.length) allBanks = AppStore.getState('bankAccounts') || [];
@@ -386,9 +387,10 @@ const DataEntryComponent = {
       
       let matches = [];
       if (q) {
-        matches = allBanks.filter(b => 
-          b.name?.toLowerCase().includes(q) || 
-          b.account_number?.toLowerCase().includes(q)
+        matches = allBanks.filter(b =>
+          b.name?.toLowerCase().includes(q) ||
+          b.account_number?.toLowerCase().includes(q) ||
+          b.internal_account_number?.toLowerCase().includes(q)
         );
       } else {
         matches = allBanks.slice(0, 10);
@@ -406,7 +408,7 @@ const DataEntryComponent = {
         item.style.cssText = 'padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border-color);transition:background 150ms;';
         item.innerHTML = `
           <div style="font-weight:600;font-size:0.85rem;">${escapeHtml(bank.name)}</div>
-          <div style="font-size:0.72rem;color:var(--text-muted);direction:ltr;">${escapeHtml(bank.account_number || 'لا يوجد رقم حساب')}</div>
+          <div style="font-size:0.72rem;color:var(--text-muted);direction:ltr;">${escapeHtml(bank.internal_account_number || bank.account_number || 'لا يوجد رقم')}</div>
         `;
         item.addEventListener('mouseenter', () => item.style.background = 'var(--bg-hover)');
         item.addEventListener('mouseleave', () => item.style.background = '');
@@ -415,7 +417,7 @@ const DataEntryComponent = {
           hiddenId.value = bank.id;
           resultDisplay.style.display = '';
           resultDisplay.style.background = 'rgba(99,102,241,0.08)';
-          resultDisplay.innerHTML = `🏦 ${escapeHtml(bank.name)}<br><span style="font-size:0.7rem;color:var(--text-muted);">رقم الحساب: ${escapeHtml(bank.account_number || '—')}</span>`;
+          resultDisplay.innerHTML = `🏦 ${escapeHtml(bank.name)}<br><span style="font-size:0.7rem;color:var(--text-muted);">الرقم الداخلي: ${escapeHtml(bank.internal_account_number || bank.account_number || '—')}</span>`;
           dropdown.style.display = 'none';
           if (onSelect) onSelect(bank);
         });
@@ -919,7 +921,7 @@ const DataEntryComponent = {
       const bankId = document.getElementById('wd-bank-search-id')?.value;
       const saveBeneficiary = document.getElementById('wd-save-beneficiary')?.checked;
       if (saveBeneficiary && bankId && selectedBank) {
-        await this._saveBankBeneficiary(bankId, selectedBank.name, selectedBank.account_number);
+        await this._saveBankBeneficiary(bankId, selectedBank.name, selectedBank.internal_account_number || selectedBank.account_number);
       }
       await this._saveBankWithdrawal({
         bankId: bankId,
@@ -1034,7 +1036,7 @@ const DataEntryComponent = {
       const bankId = document.getElementById('dep-bank-search-id')?.value;
       const saveBeneficiary = document.getElementById('dep-save-beneficiary')?.checked;
       if (saveBeneficiary && bankId && selectedBank) {
-        await this._saveBankBeneficiary(bankId, selectedBank.name, selectedBank.account_number);
+        await this._saveBankBeneficiary(bankId, selectedBank.name, selectedBank.internal_account_number || selectedBank.account_number);
       }
       await this._saveDeposit({
         bankId: bankId,
