@@ -2338,12 +2338,19 @@ const AccountManagementComponent = {
     const errEl = this._shareModal.querySelector('#acct-share-error');
     errEl.textContent = '';
 
+    // تحديد نوع الكيان من معرف الحساب
+    const entityType = accountId?.startsWith('AGT_')  ? 'user'
+                     : accountId?.startsWith('COMP_') ? 'company'
+                     : accountId?.startsWith('BNK_')  ? 'bank'
+                     : 'user';
+
     // عرض معلومات الحساب
     this._shareModal.querySelector('#acct-share-info').textContent =
       `${accountName}  ·  ${accountNumber}`;
     // تخزين البيانات على الـ modal مؤقتاً
     this._shareModal.dataset.accountName   = accountName;
     this._shareModal.dataset.accountNumber = accountNumber;
+    this._shareModal.dataset.entityType    = entityType;
 
     // ملء قائمة المستخدمين النشطين (باستثناء المستخدم الحالي)
     const users   = (AppStore.getState('users') || []).filter(u => u.is_active);
@@ -2381,12 +2388,19 @@ const AccountManagementComponent = {
     const target = users.find(u => u.id === toUserId && u.is_active);
     if (!target) { errEl.textContent = 'المستخدم المختار غير موجود أو غير نشط'; return; }
 
+    const entityType   = this._shareModal.dataset.entityType || 'user';
+    const actionMap    = { user: 'transfer', company: 'collection', bank: 'deposit' };
+    const action       = actionMap[entityType] || 'transfer';
+    const msgText      = `يمكنك التحويل إلى حساب ${accountName} عبر هذا الرقم (${accountNumber}) وإضافته كمستفيد مستقبلي`;
+
     const restore = setButtonLoading(sendBtn, 'جاري الإرسال...');
     try {
       const result = await repo.create(TABLES.NOTIFICATIONS, {
-        title     : 'مشاركة رقم حساب 📤',
-        body      : `رقم حساب ${accountName}: ${accountNumber}`,
-        type      : 'info',
+        title     : '📤 مشاركة رقم حساب',
+        body      : msgText,
+        message   : msgText,
+        type      : 'account_share',
+        data      : JSON.stringify({ action, account_number: accountNumber, entity_name: accountName, entity_type: entityType }),
         target    : JSON.stringify([toUserId]),
         sender_id : AuthService.getCurrentUserId(),
         read_by   : '[]',
