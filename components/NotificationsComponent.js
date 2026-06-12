@@ -172,12 +172,20 @@ const NotificationsComponent = {
 
   /* ── معالجة النقر على إشعار account_share ── */
   async _handleNotificationClick(notification) {
+    if (notification.type !== 'account_share') return;
     try {
       const data = JSON.parse(notification.data || '{}');
-      if (data.action !== 'deposit') {
-        showToast('⚠️ نوع العملية غير مدعوم حالياً', 'info');
+      if (!data.action || !data.account_number) {
+        console.warn('⚠️ _handleNotificationClick: بيانات الإشعار غير مكتملة', notification.id);
         return;
       }
+
+      // خريطة العمليات المدعومة → معرّفات DOM الفعلية في DataEntryComponent
+      const operationMap = {
+        deposit    : { formTabId: 'form-tab-deposit',    searchId: 'dep-bank-search' },
+        collection : { formTabId: 'form-tab-collection', searchId: 'col-company-search' },
+      };
+      const config = operationMap[data.action];
 
       // 1. الانتقال إلى تبويب إدخال البيانات
       if (typeof _navigateTo === 'function') {
@@ -188,37 +196,43 @@ const NotificationsComponent = {
         await new Promise(r => setTimeout(r, 400));
       }
 
-      // 2. تفعيل نموذج الإيداع البنكي
-      const depositTabBtn = document.getElementById('form-tab-deposit');
-      if (depositTabBtn) {
-        depositTabBtn.click();
+      // نوع غير مدعوم حالياً (transfer…): انتقل فقط واعرض الرقم للبحث اليدوي
+      if (!config) {
+        showToast(`📋 رقم الحساب: ${data.account_number} — ابحث يدوياً`, 'info');
+        return;
+      }
+
+      // 2. تفعيل نموذج العملية المناسب
+      const formTabBtn = document.getElementById(config.formTabId);
+      if (formTabBtn) {
+        formTabBtn.click();
         await new Promise(r => setTimeout(r, 200));
       }
 
       // 3. تعبئة حقل البحث برقم الحساب
-      if (data.account_number) {
-        const input = document.getElementById('dep-bank-search');
-        if (input) {
-          input.value = data.account_number;
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          await new Promise(r => setTimeout(r, 150));
+      const input = document.getElementById(config.searchId);
+      if (!input) {
+        showToast('⚠️ افتح النموذج يدوياً', 'warning');
+        return;
+      }
 
-          // 4. اختيار أول نتيجة تلقائياً
-          const dropdown  = input.nextElementSibling;
-          const firstItem = dropdown?.firstElementChild;
-          if (firstItem && dropdown?.style.display !== 'none') {
-            firstItem.click();
-            showToast('✅ تم تعبئة بيانات الإيداع', 'success');
-          } else {
-            showToast('⚠️ لم يُعثر على الحساب، ابحث يدوياً', 'warning');
-          }
-        } else {
-          showToast('⚠️ افتح نموذج الإيداع يدوياً', 'warning');
-        }
+      input.value = data.account_number;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 150));
+
+      // 4. اختيار أول نتيجة تلقائياً
+      const dropdown  = input.nextElementSibling;
+      const firstItem = dropdown?.firstElementChild;
+      if (firstItem && dropdown?.style.display !== 'none') {
+        firstItem.click();
+        const typeNames = { deposit: 'الإيداع', collection: 'التحصيل' };
+        showToast(`✅ تم تعبئة نموذج ${typeNames[data.action] || 'العملية'}`, 'success');
+      } else {
+        showToast('⚠️ لم يُعثر على الحساب، ابحث يدوياً', 'warning');
       }
     } catch (e) {
       console.warn('⚠️ _handleNotificationClick:', e.message);
-      showToast('تعذّر فتح نموذج الإيداع', 'warning');
+      showToast('تعذّر فتح النموذج', 'warning');
     }
   },
 
