@@ -358,8 +358,9 @@ const DataEntryComponent = {
 
     let allBanks = this._sortedBanks;
 
+    // ✅ خصوصية: مطابقة دقيقة لرقم الحساب فقط — لا تصفّح بالاسم ولا عرض للقائمة الكاملة
     const renderDropdown = (query) => {
-      const q = query.trim().toLowerCase();
+      const q = query.trim();
       dropdown.innerHTML = '';
       
       let matches = [];
@@ -369,11 +370,15 @@ const DataEntryComponent = {
         matches = allBanks.slice(0, 10);
       }
 
-      if (matches.length === 0 && q) {
+      const matches = allBanks.filter(b => b.account_number && String(b.account_number) === q);
+
+      if (matches.length === 0) {
         const noResult = document.createElement('div');
         noResult.style.cssText = 'padding:10px 14px;color:var(--text-muted);font-size:0.82rem;';
-        noResult.textContent = 'لا توجد نتائج';
+        noResult.textContent = 'لا يوجد حساب بنكي بهذا الرقم';
         dropdown.appendChild(noResult);
+        dropdown.style.display = '';
+        return;
       }
 
       matches.forEach(bank => {
@@ -444,8 +449,9 @@ const DataEntryComponent = {
     const allowedCompanies = (typeof AuthService !== 'undefined') ? AuthService.getAllowedCompanies() : null;
     if (allowedCompanies) companies = companies.filter(c => allowedCompanies.includes(c.id));
 
+    // ✅ خصوصية: مطابقة دقيقة لرقم الحساب فقط — لا تصفّح بالاسم ولا عرض للقائمة الكاملة
     const renderDropdown = (query) => {
-      const q = query.trim().toLowerCase();
+      const q = query.trim();
       dropdown.innerHTML = '';
 
       let matches = [];
@@ -455,11 +461,15 @@ const DataEntryComponent = {
         matches = companies.slice(0, 10);
       }
 
-      if (matches.length === 0 && q) {
+      const matches = companies.filter(c => c.account_number && String(c.account_number) === q);
+
+      if (matches.length === 0) {
         const noResult = document.createElement('div');
         noResult.style.cssText = 'padding:10px 14px;color:var(--text-muted);font-size:0.82rem;';
-        noResult.textContent = 'لا توجد شركات تطابق البحث';
+        noResult.textContent = 'لا توجد شركة بهذا الرقم';
         dropdown.appendChild(noResult);
+        dropdown.style.display = '';
+        return;
       }
 
       matches.forEach(company => {
@@ -512,25 +522,29 @@ const DataEntryComponent = {
     
     const refreshList = () => {
       listDiv.innerHTML = '';
-      if (this._companyBeneficiaries.length === 0) {
-        listDiv.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا توجد شركات محفوظة</span>';
+      // ✅ المحفوظون فقط (لا تُعرض كل الشركات) — الخصوصية: لا وصول إلا بالرقم المُشارَك
+      const saved = AppStore.getBeneficiaryCompanies?.() || this._companyBeneficiaries || [];
+      if (saved.length === 0) {
+        listDiv.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا توجد شركات محفوظة — ابحث برقم الحساب المُشارَك</span>';
         return;
       }
-      this._companyBeneficiaries.forEach(b => {
+      saved.forEach(b => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'btn btn-secondary btn-sm';
         chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
         chip.textContent = b.name;
         chip.addEventListener('click', () => {
-          const company = AppStore.getState('companies').find(c => c.id === b.id);
-          if (company) onSelect(company);
+          const company = (AppStore.getState('companies') || []).find(c => c.id === b.id);
+          onSelect(company || b);
         });
         listDiv.appendChild(chip);
       });
     };
-    
+
     refreshList();
+    AppStore.addEventListener('store:beneficiariesChanged', refreshList);
+    AppStore.addEventListener('store:beneficiariesLoaded', refreshList);
     wrap.appendChild(listDiv);
     return wrap;
   },
@@ -550,24 +564,31 @@ const DataEntryComponent = {
     
     const refreshList = () => {
       listDiv.innerHTML = '';
-      if (this._beneficiariesCache.length === 0 && this._sortedBanks.length === 0) {
-        listDiv.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا توجد حسابات بنكية محفوظة</span>';
+      // ✅ المحفوظون فقط (لا تُعرض كل البنوك) — الخصوصية: لا وصول إلا بالرقم المُشارَك
+      const saved = AppStore.getBeneficiaryBanks?.() || [];
+      if (saved.length === 0) {
+        listDiv.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا توجد حسابات بنكية محفوظة — ابحث برقم الحساب المُشارَك</span>';
         return;
       }
-      // عرض جميع البنوك المتاحة (وليس فقط المحفوظة)
-      this._sortedBanks.slice(0, 8).forEach(bank => {
+      saved.forEach(b => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'btn btn-secondary btn-sm';
         chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
-        chip.textContent = bank.name.length > 20 ? bank.name.slice(0, 18) + '…' : bank.name;
-        chip.title = bank.name;
-        chip.addEventListener('click', () => onSelect(bank));
+        chip.textContent = b.name.length > 20 ? b.name.slice(0, 18) + '…' : b.name;
+        chip.title = b.account_number || '';
+        chip.addEventListener('click', () => {
+          // استخدام بيانات البنك الكاملة إن توفّرت (company_id/السقف) وإلا بيانات المستفيد
+          const full = (AppStore.getState('bankAccounts') || []).find(x => x.id === b.id);
+          onSelect(full || b);
+        });
         listDiv.appendChild(chip);
       });
     };
-    
+
     refreshList();
+    AppStore.addEventListener('store:beneficiariesChanged', refreshList);
+    AppStore.addEventListener('store:beneficiariesLoaded', refreshList);
     wrap.appendChild(listDiv);
     return wrap;
   },
@@ -679,15 +700,7 @@ const DataEntryComponent = {
 
     frag.appendChild(this._saveBtn('col-save-btn', '💾 حفظ التحصيل', async () => {
       const companyId = document.getElementById('col-company-id')?.value;
-      const saveBeneficiary = document.getElementById('col-save-beneficiary')?.checked;
-      let companyToSave = null;
-      if (saveBeneficiary && companyId) {
-        const companies = AppStore.getState('companies') || [];
-        companyToSave = companies.find(c => c.id === companyId);
-        if (companyToSave) {
-          await this._saveCompanyBeneficiary(companyToSave.id, companyToSave.name, companyToSave.account_number);
-        }
-      }
+      // الحفظ كمستفيد يتم تلقائياً بعد نجاح العملية داخل _saveCollection
       await this._saveCollection({
         mode      : colMode,
         amount    : amtInput.value,
@@ -1202,7 +1215,7 @@ const DataEntryComponent = {
     frag.appendChild(recentWrap);
 
     const refreshBeneficiariesList = () => {
-      const beneficiaries = AppStore.getState('beneficiaries') || [];
+      const beneficiaries = AppStore.getBeneficiaryUsers?.() || [];
       recentList.innerHTML = '';
       if (beneficiaries.length === 0) {
         recentList.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا يوجد مستفيدون محفوظون</span>';
@@ -1215,14 +1228,15 @@ const DataEntryComponent = {
         chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
         chip.textContent = b.display_name;
         chip.addEventListener('click', () => {
-          acctInput.value = `AGT-${b.beneficiary_id.slice(0,6)}`;
-          hiddenRecipientId.value = b.beneficiary_id;
+          acctInput.value = b.account_number || '';
+          hiddenRecipientId.value = b.id;
+          this._selectedRecipient = b;
           acctResult.style.display = '';
           acctResult.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <span style="font-weight:700;">${escapeHtml(b.display_name)}</span>
-                <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">(مندوب)</span>
+                <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;direction:ltr;">${escapeHtml(b.account_number || '—')}</span>
               </div>
               <span style="color:var(--success);font-size:0.75rem;">✓ مستفيد محفوظ</span>
             </div>`;
@@ -1234,6 +1248,7 @@ const DataEntryComponent = {
 
     refreshBeneficiariesList();
     AppStore.addEventListener('store:beneficiariesLoaded', refreshBeneficiariesList);
+    AppStore.addEventListener('store:beneficiariesChanged', refreshBeneficiariesList);
 
     const amtField = this._field('tr-amount', 'المبلغ', true);
     const amtInput = this._input('tr-amount', 'number', 'أدخل المبلغ', { min: '1', step: '1' });
@@ -1329,6 +1344,11 @@ const DataEntryComponent = {
         const newDebt = Math.max(0, parseFloat(debtorRecord.debt_amount || 0) - rounded);
         try { await repo.update(TABLES.DEBTORS, customerId, { debt_amount: newDebt }); } catch (e) { console.warn('⚠️ DataEntry: فشل تحديث رصيد المدين:', e.message); }
       }
+      // ✅ حفظ تلقائي للشركة كمستفيد بعد أول تحصيل ناجح
+      if (mode === 'company' && companyId) {
+        const comp = (AppStore.getState('companies') || []).find(c => c.id === companyId);
+        if (comp) await this._saveCompanyBeneficiary(comp.id, comp.name, comp.account_number);
+      }
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
       const colBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
@@ -1370,6 +1390,8 @@ const DataEntryComponent = {
     });
     restore();
     if (isOk(result)) {
+      // ✅ حفظ تلقائي للبنك كمستفيد بعد أول سحب ناجح
+      if (bank) await this._saveBankBeneficiary(bankId, bank.name, bank.account_number);
       showToast('✅ تم حفظ السحب البنكي', 'success');
       this._resetForm('wd');
       const wdBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
@@ -1414,6 +1436,8 @@ const DataEntryComponent = {
     const result = await AccountingService.createTransactionWithEntries(txData);
     restore();
     if (isOk(result)) {
+      // ✅ حفظ تلقائي للبنك كمستفيد بعد أول إيداع ناجح
+      if (bank) await this._saveBankBeneficiary(bankId, bank.name, bank.account_number);
       showToast('✅ تم حفظ الإيداع', 'success');
       this._resetForm('dep');
       const ceil = Math.round(bank?.financial_ceiling || 0);
@@ -1459,15 +1483,10 @@ const DataEntryComponent = {
     try {
       const myUserId = AuthService.getCurrentUserId();
       const myName = AuthService.getCurrentUser()?.display_name || 'مستخدم';
-      const recipient = AppStore.getState('users').find(u => u.id === recipientId);
+      const recipient = (this._selectedRecipient && this._selectedRecipient.id === recipientId)
+        ? this._selectedRecipient
+        : AppStore.getState('users').find(u => u.id === recipientId);
       const recipientName = recipient?.display_name || 'المستخدم الآخر';
-
-      if (saveBeneficiary && mode === 'transfer') {
-        const addResult = await AppStore.addBeneficiary(myUserId, recipientId);
-        if (isOk(addResult)) {
-          console.log('تم حفظ المستفيد بنجاح');
-        }
-      }
 
       const txDate = AppStore.getState('selectedDate') || getCurrentSaudiDate();
 
@@ -1530,6 +1549,13 @@ const DataEntryComponent = {
         await repo.create(TABLES.NOTIFICATIONS, notifData);
         showToast(`✅ تم إرسال طلب الأموال إلى ${recipientName}. بانتظار الموافقة.`, 'success');
       }
+
+      // ✅ حفظ تلقائي للمستخدم كمستفيد بعد أول عملية ناجحة
+      AppStore.addBeneficiaryUser?.({
+        id: recipientId,
+        display_name: recipientName,
+        account_number: recipient?.account_number || null,
+      });
 
       this._resetForm('tr');
     } catch (err) {

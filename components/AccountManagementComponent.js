@@ -724,6 +724,19 @@ const AccountManagementComponent = {
     }
     
     // ربط الأحداث (كشف، قيد، حذف)
+    el.querySelectorAll('.copy-account-number-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const num = btn.dataset.number;
+        if (!num) return;
+        // نسخ + (للمدير/المساعد) نافذة مشاركة كإشعار
+        if (typeof copyAccountNumberWithShare === 'function') {
+          copyAccountNumberWithShare(num, btn.dataset.name || '');
+        } else {
+          copyToClipboard(num, `تم نسخ رقم الحساب: ${num}`);
+        }
+      });
+    });
     el.querySelectorAll('.view-stmt-btn').forEach(btn => btn.addEventListener('click', () => this._showStatement(btn.dataset.account, btn.dataset.name)));
     el.querySelectorAll('.quick-entry-btn').forEach(btn => btn.addEventListener('click', () => this._openJournalModal(btn.dataset.account, btn.dataset.name)));
     el.querySelectorAll('.delete-account-btn').forEach(btn => btn.addEventListener('click', () => this._deleteAccount(btn.dataset.account, btn.dataset.name)));
