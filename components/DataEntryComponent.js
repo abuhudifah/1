@@ -1376,14 +1376,16 @@ const DataEntryComponent = {
       }
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
+      const colBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
       await this._showResultModal({
-        title    : '✅ تم تسجيل تحصيل جديد',
-        type     : 'تحصيل',
-        amount   : rounded,
-        customer : customer || null,
-        newDebt  : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
+        title        : '✅ تم تسجيل تحصيل جديد',
+        type         : 'تحصيل',
+        amount       : rounded,
+        customer     : customer || null,
+        newDebt      : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
         agentId,
-        date     : txData.date,
+        date         : txData.date,
+        agentBalance : isOk(colBalRes) ? colBalRes.data : null,
       });
     } else {
       showToast(`❌ ${result.error}`, 'error');
@@ -1415,7 +1417,8 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ السحب البنكي', 'success');
       this._resetForm('wd');
-      await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate() });
+      const wdBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate(), agentBalance: isOk(wdBalRes) ? wdBalRes.data : null });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1460,7 +1463,8 @@ const DataEntryComponent = {
       this._resetForm('dep');
       const ceil = Math.round(bank?.financial_ceiling || 0);
       const used = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
-      await this._showResultModal({ title:'✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: Math.max(0, ceil - used) });
+      const depBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({ title:'✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: Math.max(0, ceil - used), agentBalance: isOk(depBalRes) ? depBalRes.data : null });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1664,17 +1668,20 @@ const DataEntryComponent = {
     box.innerHTML = `
       <div class="modal-header">
         <h3 class="modal-title" style="color:var(--success);">${escapeHtml(data.title || '✅ تمت العملية')}</h3>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        <button class="modal-close" id="result-close-x">✕</button>
       </div>
       <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.88rem;line-height:1.8;padding:12px;background:var(--bg-input);border-radius:10px;margin-bottom:16px;direction:rtl;text-align:right;">${escapeHtml(lines.slice(1).join('\n'))}</pre>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary" style="flex:1;" id="result-copy-btn">📋 نسخ</button>
         <button class="btn btn-secondary" style="flex:1;" id="result-share-btn">📤 مشاركة</button>
-        <button class="btn btn-secondary" style="flex:1;" onclick="this.closest('.modal-overlay').remove()">✖️ إغلاق</button>
+        <button class="btn btn-secondary" style="flex:1;" id="result-close-btn">✖️ إغلاق</button>
       </div>`;
 
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+
+    box.querySelector('#result-close-x').addEventListener('click', () => overlay.remove());
+    box.querySelector('#result-close-btn').addEventListener('click', () => overlay.remove());
 
     box.querySelector('#result-copy-btn').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(text); showToast('تم النسخ', 'success'); }
