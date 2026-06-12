@@ -23,6 +23,7 @@ const AccountManagementComponent = {
   _selectedAccountName: null,
   _addModal           : null,
   _journalModal       : null,
+  _shareModal         : null,
   _allAccounts        : [], // قائمة كل الحسابات لاستخدامها في القيود
   _currentAddType     : null,
   _currentJournalType : 'simple',
@@ -161,6 +162,10 @@ const AccountManagementComponent = {
     /* ── مودال القيود المحاسبية ── */
     this._journalModal = this._buildJournalModal();
     wrap.appendChild(this._journalModal);
+
+    /* ── مودال مشاركة رقم الحساب ── */
+    this._shareModal = this._buildShareModal();
+    wrap.appendChild(this._shareModal);
 
     container.appendChild(wrap);
 
@@ -705,9 +710,14 @@ const AccountManagementComponent = {
                 </td>
                 <td style="font-weight:700;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ر.س</td>
                 <td>
-                  <div style="display:flex;gap:4px;">
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;">
                     <button class="view-stmt-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">📄 كشف</button>
                     <button class="quick-entry-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">✏️ قيد</button>
+                    <button class="share-account-btn btn btn-secondary btn-sm acct-share-btn"
+                      data-account="${escapeHtml(acc.account_id)}"
+                      data-name="${escapeHtml(acc.name || acc.account_id)}"
+                      data-number="${escapeHtml(accountNumber)}"
+                      title="مشاركة رقم الحساب">📤</button>
                     <button class="delete-account-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">🗑️ حذف</button>
                   </div>
                 </td>
@@ -742,6 +752,10 @@ const AccountManagementComponent = {
     });
     el.querySelectorAll('.view-stmt-btn').forEach(btn => btn.addEventListener('click', () => this._showStatement(btn.dataset.account, btn.dataset.name)));
     el.querySelectorAll('.quick-entry-btn').forEach(btn => btn.addEventListener('click', () => this._openJournalModal(btn.dataset.account, btn.dataset.name)));
+    el.querySelectorAll('.share-account-btn').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._openShareModal(btn.dataset.account, btn.dataset.name, btn.dataset.number);
+    }));
     el.querySelectorAll('.delete-account-btn').forEach(btn => btn.addEventListener('click', () => this._deleteAccount(btn.dataset.account, btn.dataset.name)));
     
     if (window.lucide) lucide.createIcons();
@@ -2013,6 +2027,120 @@ const AccountManagementComponent = {
     } catch (e) {
       restore();
       errEl.textContent = `خطأ: ${e.message}`;
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // مشاركة رقم الحساب مع مستخدم آخر
+  // ─────────────────────────────────────────────────────────
+
+  _buildShareModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'acct-share-modal';
+    overlay.style.display = 'none';
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:420px;">
+        <div class="modal-header">
+          <h3 class="modal-title">📤 مشاركة رقم الحساب</h3>
+          <button class="modal-close" id="acct-share-close">✕</button>
+        </div>
+        <div style="margin-bottom:16px;">
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:4px;">الحساب</p>
+          <p id="acct-share-info" style="font-weight:700;color:var(--text-primary);font-family:monospace;font-size:0.95rem;"></p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">اختر المستخدم المستلم</label>
+          <select id="acct-share-user-select" class="form-control">
+            <option value="">— اختر مستخدماً —</option>
+          </select>
+        </div>
+        <div id="acct-share-error" style="color:var(--danger);font-size:0.82rem;min-height:18px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="acct-share-cancel" class="btn btn-secondary">إلغاء</button>
+          <button id="acct-share-send" class="btn btn-primary">
+            <i data-lucide="send" style="width:14px;height:14px;"></i> إرسال
+          </button>
+        </div>
+      </div>`;
+
+    overlay.querySelector('#acct-share-close').addEventListener('click', () => { overlay.style.display = 'none'; });
+    overlay.querySelector('#acct-share-cancel').addEventListener('click', () => { overlay.style.display = 'none'; });
+    overlay.querySelector('#acct-share-send').addEventListener('click', () => this._sendAccountShare());
+
+    return overlay;
+  },
+
+  _openShareModal(accountId, accountName, accountNumber) {
+    if (!this._shareModal) return;
+    const errEl = this._shareModal.querySelector('#acct-share-error');
+    errEl.textContent = '';
+
+    // عرض معلومات الحساب
+    this._shareModal.querySelector('#acct-share-info').textContent =
+      `${accountName}  ·  ${accountNumber}`;
+    // تخزين البيانات على الـ modal مؤقتاً
+    this._shareModal.dataset.accountName   = accountName;
+    this._shareModal.dataset.accountNumber = accountNumber;
+
+    // ملء قائمة المستخدمين النشطين (باستثناء المستخدم الحالي)
+    const users   = (AppStore.getState('users') || []).filter(u => u.is_active);
+    const myId    = AuthService.getCurrentUserId();
+    const select  = this._shareModal.querySelector('#acct-share-user-select');
+    select.innerHTML = '<option value="">— اختر مستخدماً —</option>';
+    users
+      .filter(u => u.id !== myId)
+      .forEach(u => {
+        const opt = document.createElement('option');
+        opt.value       = u.id;
+        opt.textContent = `${u.display_name || u.username} (${u.role === 'admin' ? 'مدير' : u.role === 'admin_assistant' ? 'مساعد' : 'مندوب'})`;
+        select.appendChild(opt);
+      });
+
+    this._shareModal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+    select.focus();
+  },
+
+  async _sendAccountShare() {
+    const errEl      = this._shareModal.querySelector('#acct-share-error');
+    const select     = this._shareModal.querySelector('#acct-share-user-select');
+    const sendBtn    = this._shareModal.querySelector('#acct-share-send');
+    const toUserId   = select.value;
+    const accountName   = this._shareModal.dataset.accountName   || '';
+    const accountNumber = this._shareModal.dataset.accountNumber || '';
+
+    errEl.textContent = '';
+
+    if (!toUserId) { errEl.textContent = 'يُرجى اختيار مستخدم'; return; }
+
+    // التحقق من أن المستخدم المختار نشط
+    const users  = AppStore.getState('users') || [];
+    const target = users.find(u => u.id === toUserId && u.is_active);
+    if (!target) { errEl.textContent = 'المستخدم المختار غير موجود أو غير نشط'; return; }
+
+    const restore = setButtonLoading(sendBtn, 'جاري الإرسال...');
+    try {
+      const result = await repo.create(TABLES.NOTIFICATIONS, {
+        title     : 'مشاركة رقم حساب 📤',
+        body      : `رقم حساب ${accountName}: ${accountNumber}`,
+        type      : 'info',
+        target    : JSON.stringify([toUserId]),
+        sender_id : AuthService.getCurrentUserId(),
+        read_by   : '[]',
+        hidden_by : '[]',
+      });
+      if (!isOk(result)) throw new Error(result.error || 'فشل الإرسال');
+
+      this._shareModal.style.display = 'none';
+      showToast(`✅ تم إرسال رقم الحساب إلى ${escapeHtml(target.display_name || target.username)}`, 'success');
+    } catch (e) {
+      errEl.textContent = formatErrorMessage(e);
+      console.warn('⚠️ _sendAccountShare:', e.message);
+    } finally {
+      restore();
     }
   },
 
