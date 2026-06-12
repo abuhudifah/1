@@ -149,6 +149,13 @@ async function checkSession() {
       return err('الجلسة غير صالحة. يُرجى تسجيل الدخول مجدداً');
     }
 
+    // ✅ S8: فحص انتهاء صلاحية الجلسة المحلية (8 ساعات مطلقة)
+    const localSession = getSession();
+    if (localSession?.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
+      await logout();
+      return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
+    }
+
     const profileResult = await _fetchUserProfile(session.user.id);
     if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
 
