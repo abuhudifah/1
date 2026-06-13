@@ -1332,15 +1332,19 @@ const DataEntryComponent = {
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
       const colBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      const companyRecord = companyId ? (AppStore.getState('companies') || []).find(c => c.id === companyId) : null;
       await this._showResultModal({
-        title        : '✅ تم تسجيل تحصيل جديد',
-        type         : 'تحصيل',
-        amount       : rounded,
-        customer     : customer || null,
-        newDebt      : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
+        title          : '✅ تم تسجيل تحصيل جديد',
+        type           : 'تحصيل',
+        amount         : rounded,
+        customer       : customer || null,
+        newDebt        : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
+        companyName    : companyRecord?.name || null,
+        companyAccount : companyRecord?.account_number || null,
+        notes          : notes || null,
         agentId,
-        date         : txData.date,
-        agentBalance : isOk(colBalRes) ? colBalRes.data : null,
+        date           : txData.date,
+        agentBalance   : isOk(colBalRes) ? colBalRes.data : null,
       });
     } else {
       showToast(`❌ ${result.error}`, 'error');
@@ -1429,7 +1433,16 @@ const DataEntryComponent = {
     if (!expenseType) { showToast('اختر نوع المصروف', 'error'); return; }
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
+    const EXPENSE_LABELS = {
+      GENERAL    : 'عام',
+      TRANSPORT  : 'مواصلات',
+      MAINTENANCE: 'صيانة',
+      SUPPLIES   : 'قرطاسية',
+    };
+    const expenseLabel = EXPENSE_LABELS[expenseType] || expenseType;
+
     const rounded = roundAmount(amount);
+    const txDate  = AppStore.getState('selectedDate') || getCurrentSaudiDate();
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn     = document.getElementById('exp-save-btn');
     const restore = setButtonLoading(btn);
@@ -1438,7 +1451,7 @@ const DataEntryComponent = {
     const result  = await AccountingService.createTransactionWithEntries({
       type        : 'expense',
       amount      : rounded,
-      date        : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      date        : txDate,
       agent_id    : agentId,
       expense_type: expenseType,
       details     : details ? `${details} (نوع: ${expenseType})` : `مصروف من نوع ${expenseType}`,
@@ -1447,6 +1460,17 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ المصروف', 'success');
       this._resetForm('exp');
+      const expBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({
+        title        : '✅ تم تسجيل مصروف',
+        type         : 'مصروف',
+        amount       : rounded,
+        expenseLabel,
+        notes        : details || null,
+        agentId,
+        date         : txDate,
+        agentBalance : isOk(expBalRes) ? expBalRes.data : null,
+      });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1612,8 +1636,12 @@ const DataEntryComponent = {
     lines.push(`💰 المبلغ: ${formatCurrency(data.amount)}`);
     if (data.customer) lines.push(`👤 العميل: ${data.customer}`);
     if (data.newDebt !== null && data.newDebt !== undefined) lines.push(`💰 الرصيد المتبقي عند العميل: ${formatCurrency(data.newDebt)}`);
+    if (data.companyName) lines.push(`🏢 الشركة: ${data.companyName}`);
+    if (data.companyAccount) lines.push(`🔢 رقم الحساب: ${data.companyAccount}`);
+    if (data.expenseLabel) lines.push(`🗂️ فئة المصروف: ${data.expenseLabel}`);
     if (data.bankName) lines.push(`🏦 الحساب البنكي: ${data.bankName}`);
     if (data.ceilingRemain !== undefined && data.ceilingRemain !== null) lines.push(`🏦 المتبقي من السقف المالي: ${formatCurrency(data.ceilingRemain)}`);
+    if (data.notes) lines.push(`📝 الملاحظات: ${data.notes}`);
     lines.push(`📅 التاريخ: ${data.date}`);
     lines.push(`⏰ الوقت: ${timeStr}`);
     lines.push(`👤 المندوب: ${agentNm}`);
