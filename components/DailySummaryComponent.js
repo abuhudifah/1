@@ -412,31 +412,30 @@ const DailySummaryComponent = {
   },
 
   async _exportDailyExcel() {
-    const txs  = AppStore.getState('transactions');
-    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const txs      = AppStore.getState('transactions').filter(t => !t.is_reversed);
+    const date     = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const agentId  = AuthService.isAgent()
+      ? AuthService.getCurrentUserId()
+      : (AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId());
+    const user     = AppStore.getState('users').find(u => u.id === agentId) || AuthService.getCurrentUser();
 
-    const LAKUM_TYPES = new Set(['collection', 'receipt', 'bank_withdrawal']);
-
-    const headers = ['#', 'التاريخ', 'الوقت', 'نوع العملية', 'لكم (ر.س)', 'عليكم (ر.س)', 'التفاصيل', 'الحالة'];
-    const rows = txs.map((tx, i) => {
-      const amt     = Math.round(parseFloat(tx.amount || 0));
-      const isLakum = LAKUM_TYPES.has(tx.type);
-      return [
-        i + 1,
-        tx.date || '—',
-        tx.time ? tx.time.substring(0, 5) : '—',
-        TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
-        isLakum  ? amt : '',
-        !isLakum ? amt : '',
-        tx.customer_name || tx.details || '—',
-        tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن'),
-      ];
+    // نفس الدالة المشتركة المستخدمة في طباعة PDF
+    const pd = PrintService.buildStatementPrintData(txs, {
+      date: formatDateArabic(date), userName: user?.display_name || '',
     });
 
-    // صف الإجماليات
-    const totalLakum   = txs.filter(t => LAKUM_TYPES.has(t.type) && !t.is_reversed).reduce((s,t)=>s+Math.round(parseFloat(t.amount||0)),0);
-    const totalAlaykum = txs.filter(t => !LAKUM_TYPES.has(t.type) && !t.is_reversed).reduce((s,t)=>s+Math.round(parseFloat(t.amount||0)),0);
-    rows.push(['الإجمالي', '', `${txs.length} عملية`, '', totalLakum || '', totalAlaykum || '', '', '']);
+    // إضافة عمود الحالة (للـ Excel فقط) وصف الإجماليات
+    const headers = [...pd.columns, 'الحالة'];
+    const allTxs  = AppStore.getState('transactions');
+    const rows    = allTxs.map((tx, i) => {
+      const base = pd.rows[i] || ['—','—','—','—','—','—'];
+      const status = tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن');
+      return [...base, status];
+    });
+    const fmt = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+    rows.push(['الإجمالي', '', `${txs.length} عملية`,
+      `لكم: ${fmt(pd.totalLakum)}`, `عليكم: ${fmt(pd.totalAlaykum)}`,
+      `الصافي: ${fmt(pd.net)} ${pd.netSign}`, '']);
 
     const btn = document.querySelector('[data-lucide="table-2"]')?.closest('button');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
@@ -552,70 +551,30 @@ const DailySummaryComponent = {
   },
 
   _printSummary() {
-    const txs  = AppStore.getState('transactions').filter(t => !t.is_reversed);
-    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
-    const logo = AppStore.getState('logoUrl') || '';
-
-    const agentId = AuthService.isAgent()
+    const txs      = AppStore.getState('transactions').filter(t => !t.is_reversed);
+    const date     = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const logo     = AppStore.getState('logoUrl') || '';
+    const agentId  = AuthService.isAgent()
       ? AuthService.getCurrentUserId()
       : (AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId());
     const user     = AppStore.getState('users').find(u => u.id === agentId) || AuthService.getCurrentUser();
     const userName = user?.display_name || '';
 
-    // لكم = credit للمندوب (رصيده يزيد) | عليكم = debit (رصيده ينقص)
-    const LAKUM_TYPES = new Set(['collection', 'receipt', 'bank_withdrawal']);
-
-    const s = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
-    txs.forEach(tx => { if (s.hasOwnProperty(tx.type)) s[tx.type] += Math.round(parseFloat(tx.amount || 0)); });
-
-    const totalLakum   = s.collection + s.receipt + s.bank_withdrawal;
-    const totalAlaykum = s.deposit + s.expense + s.delivery;
-    const net          = totalLakum - totalAlaykum;
-    const netSign      = net >= 0 ? 'لكم' : 'عليكم';
-    const fmt          = n => Math.abs(Math.round(n)).toLocaleString('en-US');
-
-    const rows = txs.map((tx, i) => {
-      const amt     = Math.round(parseFloat(tx.amount || 0));
-      const isLakum = LAKUM_TYPES.has(tx.type);
-      const time    = tx.created_at
-        ? new Date(tx.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' })
-        : (tx.time ? tx.time.substring(0, 5) : '—');
-      return [
-        i + 1,
-        time,
-        TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
-        tx.customer_name || tx.details || '—',
-        isLakum  ? amt.toLocaleString('en-US') : '0',
-        !isLakum ? amt.toLocaleString('en-US') : '0',
-      ];
+    // الدالة المشتركة مع كشف الحساب — نفس الأعمدة والترتيب والمنطق
+    const pd = PrintService.buildStatementPrintData(txs, {
+      date: formatDateArabic(date), userName,
     });
 
-    const totalsLine = [
-      `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
-      `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
-      `<span>الصافي: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(net)} ${netSign} ر.س</b></span>`,
-    ].join('');
-
-    const shareText = [
-      `📊 الملخص اليومي — ${formatDateArabic(date)}`,
-      `👤 ${userName}`,
-      `────────────────`,
-      `✅ لكم:    ${fmt(totalLakum)} ر.س`,
-      `❌ عليكم:  ${fmt(totalAlaykum)} ر.س`,
-      `💰 الصافي: ${fmt(net)} ${netSign} ر.س`,
-      `📋 عدد العمليات: ${txs.length}`,
-    ].join('\n');
-
     PrintService.printStatementAdvanced({
-      title      : 'الملخص اليومي',
+      title      : `الملخص اليومي — ${userName}`,
       subtitle   : 'نظام أبو حذيفة للصرافة والتحويلات',
       periodText : formatDateArabic(date),
       userName,
       logo,
-      columns    : ['#', 'الوقت', 'نوع العملية', 'التفاصيل', 'لكم (ر.س)', 'عليكم (ر.س)'],
-      rows,
-      totalsLine,
-      shareText,
+      columns    : pd.columns,
+      rows       : pd.rows,
+      totalsLine : pd.totalsLine,
+      shareText  : pd.shareText,
     });
   },
 

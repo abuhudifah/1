@@ -385,6 +385,67 @@ const PrintService = (() => {
   }
 
   /* ══════════════════════════════════════════════════════
+     buildStatementPrintData — دالة مشتركة لتحويل المعاملات الخام
+     إلى صفوف بنفس تنسيق كشف الحساب في إدارة الحسابات
+     الأعمدة: التاريخ | الوقت | نوع العملية | لكم (ر.س) | عليكم (ر.س) | التفاصيل
+  ══════════════════════════════════════════════════════ */
+  function buildStatementPrintData(transactions, { date, userName } = {}) {
+    const LAKUM_TYPES = new Set(['collection', 'receipt', 'bank_withdrawal']);
+    const TYPE_LABELS = window.TRANSACTION_TYPE_LABELS || {};
+    const fmt         = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+
+    const fmtTime = (tx) => {
+      if (tx.created_at) {
+        return new Date(tx.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' });
+      }
+      return tx.time ? String(tx.time).substring(0, 5) : '—';
+    };
+
+    let totalLakum = 0, totalAlaykum = 0;
+
+    const rows = transactions.map(tx => {
+      const amt     = Math.round(parseFloat(tx.amount || 0));
+      const isLakum = LAKUM_TYPES.has(tx.type);
+      if (isLakum) totalLakum += amt; else totalAlaykum += amt;
+      return [
+        tx.date || date || '—',
+        fmtTime(tx),
+        TYPE_LABELS[tx.type] || tx.type,
+        isLakum  ? amt.toLocaleString('en-US') : '0',   // لكم
+        !isLakum ? amt.toLocaleString('en-US') : '0',   // عليكم
+        tx.customer_name || tx.details || '—',           // التفاصيل — آخراً ككشف الحساب
+      ];
+    });
+
+    const net     = totalLakum - totalAlaykum;
+    const netSign = net >= 0 ? 'لكم' : 'عليكم';
+
+    const totalsLine = [
+      `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
+      `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
+      `<span>الصافي: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(net)} ${netSign} ر.س</b></span>`,
+    ].join('');
+
+    const totalsText = `لكم: ${fmt(totalLakum)} | عليكم: ${fmt(totalAlaykum)} | الصافي: ${fmt(net)} ${netSign}`;
+
+    const shareText = [
+      date     ? `📅 ${date}`    : '',
+      userName ? `👤 ${userName}` : '',
+      '────────────────',
+      `✅ لكم:    ${fmt(totalLakum)} ر.س`,
+      `❌ عليكم:  ${fmt(totalAlaykum)} ر.س`,
+      `💰 الصافي: ${fmt(net)} ${netSign} ر.س`,
+      `📋 عدد العمليات: ${transactions.length}`,
+    ].filter(Boolean).join('\n');
+
+    return {
+      columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم (ر.س)', 'عليكم (ر.س)', 'التفاصيل'],
+      rows, totalsLine, totalsText, shareText,
+      totalLakum, totalAlaykum, net, netSign,
+    };
+  }
+
+  /* ══════════════════════════════════════════════════════
      تصدير Excel — يحمّل مكتبة SheetJS من CDN عند الحاجة
   ══════════════════════════════════════════════════════ */
 
@@ -434,7 +495,7 @@ const PrintService = (() => {
     XLSX.writeFile(wb, `${filename}.xlsx`);
   }
 
-  return { print, share, copyText, buildTable, printStatementAdvanced, exportToExcel };
+  return { print, share, copyText, buildTable, printStatementAdvanced, exportToExcel, buildStatementPrintData };
 })();
 
 window.PrintService = PrintService;
