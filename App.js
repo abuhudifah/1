@@ -120,6 +120,7 @@ async function _bootApp(profile) {
   _bindStoreEvents();
   _startCommandsWatcher(); // مراقبة أوامر النظام (RESET_ALL_DATA وغيرها)
   _updateSyncWidget(); // العرض الأولي لـ widget العمليات المعلقة
+  _startNotificationsRealtime(profile); // اشتراك Realtime للإشعارات
 
   const firstTab = AuthService.getAllowedTabs()[0];
   if (firstTab) await _navigateTo(firstTab);
@@ -665,14 +666,16 @@ function _bindStoreEvents() {
     }
   });
 
-  AppStore.addEventListener('store:notifCountChanged', (e) => {
+  const _updateNotifBadge = (e) => {
     const unreadNotifCount = e.detail.state.unreadNotifCount;
     const badge = document.getElementById('notif-badge');
     if (badge) {
       badge.style.display = unreadNotifCount > 0 ? 'flex' : 'none';
       badge.textContent   = unreadNotifCount > 9 ? '9+' : String(unreadNotifCount);
     }
-  });
+  };
+  AppStore.addEventListener('store:notifCountChanged',   _updateNotifBadge);
+  AppStore.addEventListener('store:notificationsLoaded', _updateNotifBadge);
 
   AppStore.addEventListener('store:userCleared', () => {
     _showLoginScreen();
@@ -828,7 +831,8 @@ function _updateHeaderLogo() {
 // ============================================================
 function _showLoginScreen() {
   if (window.IdleTimer) IdleTimer.stop();
-  _stopCommandsWatcher(); // إيقاف مراقبة الأوامر عند الخروج
+  _stopCommandsWatcher();      // إيقاف مراقبة الأوامر عند الخروج
+  _stopNotificationsRealtime(); // إيقاف Realtime الإشعارات
   _hideLoadingScreen();
   _stopDateClock();
   _destroyActiveComponent();
@@ -1021,6 +1025,46 @@ function _startCommandsWatcher() {
 function _stopCommandsWatcher() {
   if (_cmdWatcherTimer) { clearInterval(_cmdWatcherTimer); _cmdWatcherTimer = null; }
   window.removeEventListener('online', _checkSystemCommands);
+}
+
+// ============================================================
+// Realtime — اشتراك Supabase لتحديث الإشعارات فورياً
+// ============================================================
+
+let _notifsChannel = null;
+
+function _startNotificationsRealtime(profile) {
+  if (!window.supabaseClient || !profile?.id) return;
+
+  // إلغاء القناة القديمة إن وُجدت
+  if (_notifsChannel) {
+    try { supabaseClient.removeChannel(_notifsChannel); } catch { /* non-critical */ }
+    _notifsChannel = null;
+  }
+
+  try {
+    _notifsChannel = supabaseClient
+      .channel('notifications-realtime-' + profile.id)
+      .on('postgres_changes', {
+        event  : '*',
+        schema : 'public',
+        table  : 'notifications',
+      }, () => {
+        // إعادة تحميل الإشعارات فور وصول تغيير من Supabase
+        window.dispatchEvent(new Event('store:notificationsUpdated'));
+      })
+      .subscribe();
+    console.log('✅ Realtime: مشترك في جدول notifications');
+  } catch (e) {
+    console.warn('⚠️ _startNotificationsRealtime:', e.message);
+  }
+}
+
+function _stopNotificationsRealtime() {
+  if (_notifsChannel) {
+    try { supabaseClient.removeChannel(_notifsChannel); } catch { /* non-critical */ }
+    _notifsChannel = null;
+  }
 }
 
 // ============================================================

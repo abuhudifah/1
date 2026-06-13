@@ -296,7 +296,7 @@ async function createTransactionWithEntries(txData) {
     }
 
     const isReceiptByAgent = txData.type === TRANSACTION_TYPES.RECEIPT
-      && AuthService.currentUser()?.role === ROLES.AGENT;
+      && AuthService.getCurrentUser()?.role === ROLES.AGENT;
 
     const transaction = {
       ...txData,
@@ -847,7 +847,7 @@ async function createTransferFromRequest(requestId) {
         title: 'تم قبول طلب التحويل',
         body: `${AuthService.getCurrentUser()?.display_name || 'المستخدم'} قبل طلب تحويل مبلغ ${formatCurrency(request.amount)} إليك.`,
         type: 'success',
-        target: [senderId],
+        target: JSON.stringify([senderId]),
         sender_id: currentUserId,
         read_by: '[]',
         hidden_by: '[]',
