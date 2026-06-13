@@ -217,13 +217,34 @@ const PrintService = (() => {
     background:#1e293b;border:1px solid #334155;border-radius:8px;
     padding:6px 12px;line-height:1.5;text-align:center;max-width:220px;
   }
+  .tb-sep{width:1px;height:24px;background:#334155;margin:0 2px;}
+  .tb-opt{
+    display:inline-flex;align-items:center;gap:6px;
+    color:#cbd5e1;font-size:12px;font-weight:600;
+  }
+  .tb-opt select{
+    border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;
+    padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer;
+    font-family:inherit;
+  }
 
   /* ── ورقة A4 ── */
   .page{
+    position:relative;overflow:hidden;
     width:210mm;min-height:297mm;
     margin:20px auto;background:#fff;
     padding:18mm 16mm 14mm;
     box-shadow:0 6px 28px rgba(0,0,0,.14);
+  }
+  .page > *:not(.watermark){position:relative;z-index:1;}
+
+  /* ── علامة مائية (خلف النص، لا تغطّيه) ── */
+  .watermark{
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    width:62%;max-width:380px;height:auto;
+    opacity:0.05;z-index:0;pointer-events:none;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
   }
 
   /* ── ترويسة ── */
@@ -242,7 +263,7 @@ const PrintService = (() => {
   /* ── الجدول الاحترافي ── */
   table{
     width:100%;border-collapse:collapse;
-    font-size:11.5px;margin-bottom:0;
+    font-size:12.5px;margin-bottom:0;
     border:1.5px solid #94a3b8;
     border-radius:2px;
   }
@@ -252,8 +273,8 @@ const PrintService = (() => {
     display:table-header-group;
   }
   th{
-    padding:10px 9px;text-align:center;
-    font-weight:700;font-size:10.5px;letter-spacing:0.4px;
+    padding:11px 9px;text-align:center;
+    font-weight:800;font-size:11.5px;letter-spacing:0.4px;
     border-left:1px solid rgba(255,255,255,0.18);
   }
   th:last-child{border-left:none;}
@@ -321,16 +342,32 @@ const PrintService = (() => {
       font-size:8pt;color:#94a3b8;
     }
   }
-</style></head>
+</style>
+<style id="page-style"></style></head>
 <body>
   <div class="toolbar">
-    <button class="tb-back"  onclick="window.close()">⬅ رجوع</button>
-    <button class="tb-print" onclick="window.print()">🖨️ طباعة</button>
-    <button class="tb-pdf"   onclick="doPdf()">📄 حفظ PDF</button>
+    <button class="tb-back"  onclick="window.close()">⬅ إغلاق</button>
+    <button class="tb-print" onclick="window.print()">🖨️ طباعة الآن</button>
+    <button class="tb-pdf"   onclick="doPdf()">📄 تحميل PDF</button>
     <button class="tb-share" id="tb-share">📲 مشاركة</button>
+    <span class="tb-sep"></span>
+    <label class="tb-opt">الاتجاه:
+      <select id="opt-orient">
+        <option value="portrait" selected>عمودي</option>
+        <option value="landscape">أفقي</option>
+      </select>
+    </label>
+    <label class="tb-opt">الهوامش:
+      <select id="opt-margin">
+        <option value="narrow">ضيّق</option>
+        <option value="normal" selected>عادي</option>
+        <option value="wide">واسع</option>
+      </select>
+    </label>
     <div id="pdf-tip">في نافذة الطباعة اختر<br><b>«حفظ كـ PDF»</b> كطابعة</div>
   </div>
   <div class="page">
+    ${logo ? `<img class="watermark" src="${logo}" alt="">` : ''}
     <div class="doc-header">
       <div>
         <div class="doc-title">${title}</div>
@@ -359,6 +396,24 @@ const PrintService = (() => {
   </div>
 
   <script>
+    var MARGINS = {
+      narrow: { page:'6mm 6mm',   screen:'8mm 8mm 8mm'    },
+      normal: { page:'12mm 10mm', screen:'18mm 16mm 14mm' },
+      wide:   { page:'20mm 18mm', screen:'24mm 22mm 20mm' }
+    };
+    function applyLayout(){
+      var orient = document.getElementById('opt-orient').value;
+      var mKey   = document.getElementById('opt-margin').value;
+      var M      = MARGINS[mKey] || MARGINS.normal;
+      var land   = orient === 'landscape';
+      var pw     = land ? '297mm' : '210mm';
+      var ph     = land ? '210mm' : '297mm';
+      document.getElementById('page-style').textContent =
+        '@page{size:A4 '+orient+';margin:'+M.page+';' +
+          '@bottom-center{content:"صفحة " counter(page) " من " counter(pages);font-size:8pt;color:#94a3b8;}}' +
+        '.page{width:'+pw+';min-height:'+ph+';padding:'+M.screen+';}' +
+        '@media print{.page{width:auto;min-height:auto;padding:'+M.page+';box-shadow:none;}}';
+    }
     function doPdf(){
       var tip=document.getElementById('pdf-tip');
       tip.style.display = tip.style.display==='block' ? 'none' : 'block';
@@ -371,6 +426,10 @@ const PrintService = (() => {
         if(navigator.share){navigator.share({title:${JSON.stringify(title)},text:txt}).catch(function(){});}
         else{window.open('https://api.whatsapp.com/send?text='+encodeURIComponent(txt),'_blank');}
       });
+      var so=document.getElementById('opt-orient'), sm=document.getElementById('opt-margin');
+      if(so) so.addEventListener('change', applyLayout);
+      if(sm) sm.addEventListener('change', applyLayout);
+      applyLayout();
     })();
   <\/script>
 </body></html>`;
@@ -499,34 +558,27 @@ const PrintService = (() => {
   }
 
   async function exportToExcel(headers, rows, sheetName, filename) {
-    await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    // SheetJS محمّل مسبقاً من index.html — إن لم يكن، نحمّله عند الطلب كبديل
+    if (!window.XLSX) {
+      await _loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+    }
     const XLSX = window.XLSX;
-    if (!XLSX) throw new Error('مكتبة XLSX غير متاحة');
+    if (!XLSX) throw new Error('مكتبة XLSX غير متاحة — تحقق من الاتصال بالإنترنت');
 
     const allRows = [headers, ...rows];
     const ws = XLSX.utils.aoa_to_sheet(allRows);
 
-    // عرض الأعمدة: حد أدنى 14، حد أقصى 35
+    // اتجاه الورقة من اليمين لليسار (دعم العربية في Excel)
+    ws['!views'] = [{ RTL: true }];
+
+    // عرض الأعمدة: حد أدنى 14، حد أقصى 35 حسب أطول قيمة
     ws['!cols'] = headers.map((h, ci) => {
       const maxLen = allRows.reduce((m, r) => Math.max(m, String(r[ci] ?? '').length), 0);
       return { wch: Math.min(35, Math.max(14, maxLen + 2)) };
     });
 
-    // تنسيق صف العناوين (خط عريض، خلفية داكنة)
-    const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: '0F172A' } }, alignment: { horizontal: 'center', readingOrder: 2 } };
-    for (let ci = 0; ci < headers.length; ci++) {
-      const cellRef = XLSX.utils.encode_cell({ r: 0, c: ci });
-      if (ws[cellRef]) ws[cellRef].s = headerStyle;
-    }
-
-    // تنسيق صف الإجماليات (آخر صف — خط عريض)
-    if (rows.length > 0) {
-      const lastR = rows.length; // 0-indexed after headers
-      for (let ci = 0; ci < headers.length; ci++) {
-        const cellRef = XLSX.utils.encode_cell({ r: lastR, c: ci });
-        if (ws[cellRef]) ws[cellRef].s = { font: { bold: true }, fill: { fgColor: { rgb: 'F1F5F9' } } };
-      }
-    }
+    // تجميد صف العناوين عند التمرير
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'تقرير').slice(0, 31));
