@@ -93,8 +93,7 @@ const DailySummaryComponent = {
       <option value="deposit">🏦 إيداع</option>
       <option value="bank_withdrawal">💳 سحب بنكي</option>
       <option value="expense">💸 مصروف</option>
-      <option value="receipt">📥 استلام</option>
-      <option value="delivery">📤 تسليم</option>`;
+      <option value="receipt">🔄 تحويل</option>`;
     typeSelect.addEventListener('change', () => {
       this._typeFilter = typeSelect.value;
       this._page = 1;
@@ -258,14 +257,18 @@ const DailySummaryComponent = {
       const bal = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
       if (isOk(bal)) opening = bal.data;
     }
-    const agentName = agentId ? (AppStore.getState('users').find(u=>u.id===agentId)?.display_name||'') : 'إجمالي المناديب';
+    const previous = current - todayNet;
+
+    const agentName = AppStore.getState('users').find(u => u.id === agentId)?.display_name || '';
+    const fmtBal = (v) => `${Math.abs(v).toLocaleString('en-US')} ${v >= 0 ? 'عليه' : 'له'}`;
+
     el.innerHTML = `
-      <span style="font-size:0.85rem;color:var(--text-secondary);">
-        ${agentId?`رصيد صندوق ${escapeHtml(agentName)}`:'الرصيد الإجمالي'}
-      </span>
-      <span style="font-size:1rem;font-weight:700;color:${opening>=0?'var(--success)':'var(--danger)'};">
-        ${formatCurrency(opening)}
-      </span>`;
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:0.8rem;color:var(--text-secondary);">صندوق ${escapeHtml(agentName)}</span>
+        <span style="font-size:0.82rem;">الرصيد السابق: <b style="color:var(--text-secondary);direction:ltr;">${fmtBal(previous)}</b></span>
+        <span style="font-size:0.82rem;">حركة اليوم: <b style="color:${todayNet >= 0 ? 'var(--success)' : 'var(--danger)'};direction:ltr;">${todayNet >= 0 ? '+' : '−'}${Math.abs(todayNet).toLocaleString('en-US')}</b></span>
+        <span style="font-size:0.92rem;">الرصيد الحالي: <b style="color:${current >= 0 ? 'var(--success)' : 'var(--danger)'};direction:ltr;">${fmtBal(current)}</b></span>
+      </div>`;
   },
 
   _renderTransactionsList() {
