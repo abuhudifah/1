@@ -281,10 +281,30 @@ const PrintService = (() => {
     const XLSX = window.XLSX;
     if (!XLSX) throw new Error('مكتبة XLSX غير متاحة');
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const allRows = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(allRows);
 
-    // عرض تلقائي للأعمدة
-    ws['!cols'] = headers.map(() => ({ wch: 20 }));
+    // عرض الأعمدة: حد أدنى 14، حد أقصى 35
+    ws['!cols'] = headers.map((h, ci) => {
+      const maxLen = allRows.reduce((m, r) => Math.max(m, String(r[ci] ?? '').length), 0);
+      return { wch: Math.min(35, Math.max(14, maxLen + 2)) };
+    });
+
+    // تنسيق صف العناوين (خط عريض، خلفية داكنة)
+    const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: '0F172A' } }, alignment: { horizontal: 'center', readingOrder: 2 } };
+    for (let ci = 0; ci < headers.length; ci++) {
+      const cellRef = XLSX.utils.encode_cell({ r: 0, c: ci });
+      if (ws[cellRef]) ws[cellRef].s = headerStyle;
+    }
+
+    // تنسيق صف الإجماليات (آخر صف — خط عريض)
+    if (rows.length > 0) {
+      const lastR = rows.length; // 0-indexed after headers
+      for (let ci = 0; ci < headers.length; ci++) {
+        const cellRef = XLSX.utils.encode_cell({ r: lastR, c: ci });
+        if (ws[cellRef]) ws[cellRef].s = { font: { bold: true }, fill: { fgColor: { rgb: 'F1F5F9' } } };
+      }
+    }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'تقرير').slice(0, 31));

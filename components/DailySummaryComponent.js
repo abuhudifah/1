@@ -415,16 +415,28 @@ const DailySummaryComponent = {
     const txs  = AppStore.getState('transactions');
     const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
 
-    const headers = ['#', 'التاريخ', 'الوقت', 'النوع', 'المبلغ (ر.س)', 'العميل / التفاصيل', 'الحالة'];
-    const rows = txs.map((tx, i) => [
-      i + 1,
-      tx.date || '—',
-      tx.time ? tx.time.substring(0, 5) : '—',
-      TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
-      Math.round(parseFloat(tx.amount || 0)),
-      tx.customer_name || tx.details || '—',
-      tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن'),
-    ]);
+    const LAKUM_TYPES = new Set(['collection', 'receipt', 'bank_withdrawal']);
+
+    const headers = ['#', 'التاريخ', 'الوقت', 'نوع العملية', 'لكم (ر.س)', 'عليكم (ر.س)', 'التفاصيل', 'الحالة'];
+    const rows = txs.map((tx, i) => {
+      const amt     = Math.round(parseFloat(tx.amount || 0));
+      const isLakum = LAKUM_TYPES.has(tx.type);
+      return [
+        i + 1,
+        tx.date || '—',
+        tx.time ? tx.time.substring(0, 5) : '—',
+        TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
+        isLakum  ? amt : '',
+        !isLakum ? amt : '',
+        tx.customer_name || tx.details || '—',
+        tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن'),
+      ];
+    });
+
+    // صف الإجماليات
+    const totalLakum   = txs.filter(t => LAKUM_TYPES.has(t.type) && !t.is_reversed).reduce((s,t)=>s+Math.round(parseFloat(t.amount||0)),0);
+    const totalAlaykum = txs.filter(t => !LAKUM_TYPES.has(t.type) && !t.is_reversed).reduce((s,t)=>s+Math.round(parseFloat(t.amount||0)),0);
+    rows.push(['الإجمالي', '', `${txs.length} عملية`, '', totalLakum || '', totalAlaykum || '', '', '']);
 
     const btn = document.querySelector('[data-lucide="table-2"]')?.closest('button');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
@@ -542,44 +554,68 @@ const DailySummaryComponent = {
   _printSummary() {
     const txs  = AppStore.getState('transactions').filter(t => !t.is_reversed);
     const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
-    const user = AuthService.getCurrentUser();
     const logo = AppStore.getState('logoUrl') || '';
-    const s    = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
+
+    const agentId = AuthService.isAgent()
+      ? AuthService.getCurrentUserId()
+      : (AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId());
+    const user     = AppStore.getState('users').find(u => u.id === agentId) || AuthService.getCurrentUser();
+    const userName = user?.display_name || '';
+
+    // لكم = credit للمندوب (رصيده يزيد) | عليكم = debit (رصيده ينقص)
+    const LAKUM_TYPES = new Set(['collection', 'receipt', 'bank_withdrawal']);
+
+    const s = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
     txs.forEach(tx => { if (s.hasOwnProperty(tx.type)) s[tx.type] += Math.round(parseFloat(tx.amount || 0)); });
-    const net   = s.collection + s.receipt + s.bank_withdrawal - s.deposit - s.expense - s.delivery;
-    const total = Math.round(txs.reduce((acc, t) => acc + parseFloat(t.amount || 0), 0));
 
-    const tableHTML = PrintService.buildTable(
-      ['#', 'النوع', 'المبلغ (ر.س)', 'التفاصيل', 'الوقت'],
-      txs.map((tx, i) => [
+    const totalLakum   = s.collection + s.receipt + s.bank_withdrawal;
+    const totalAlaykum = s.deposit + s.expense + s.delivery;
+    const net          = totalLakum - totalAlaykum;
+    const netSign      = net >= 0 ? 'لكم' : 'عليكم';
+    const fmt          = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+
+    const rows = txs.map((tx, i) => {
+      const amt     = Math.round(parseFloat(tx.amount || 0));
+      const isLakum = LAKUM_TYPES.has(tx.type);
+      const time    = tx.created_at
+        ? new Date(tx.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' })
+        : (tx.time ? tx.time.substring(0, 5) : '—');
+      return [
         i + 1,
+        time,
         TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
-        Math.round(parseFloat(tx.amount || 0)).toLocaleString('en-US'),
         tx.customer_name || tx.details || '—',
-        tx.created_at
-          ? new Date(tx.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' })
-          : '—',
-      ]),
-      [`الإجمالي (${txs.length} عملية)`, '', total.toLocaleString('en-US'), '', ''],
-    );
+        isLakum  ? amt.toLocaleString('en-US') : '—',
+        !isLakum ? amt.toLocaleString('en-US') : '—',
+      ];
+    });
 
-    PrintService.print({
-      title    : 'الملخص اليومي',
-      subtitle : 'نظام أبو حذيفة للصرافة والتحويلات',
-      date     : formatDateArabic(date),
-      userName : user?.display_name || '',
+    const totalsLine = [
+      `إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)}</b> ر.س`,
+      `إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)}</b> ر.س`,
+      `الصافي: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(net)} ${netSign}</b> ر.س`,
+    ].join(' &nbsp;|&nbsp; ');
+
+    const shareText = [
+      `📊 الملخص اليومي — ${formatDateArabic(date)}`,
+      `👤 ${userName}`,
+      `────────────────`,
+      `✅ لكم:    ${fmt(totalLakum)} ر.س`,
+      `❌ عليكم:  ${fmt(totalAlaykum)} ر.س`,
+      `💰 الصافي: ${fmt(net)} ${netSign} ر.س`,
+      `📋 عدد العمليات: ${txs.length}`,
+    ].join('\n');
+
+    PrintService.printStatementAdvanced({
+      title      : 'الملخص اليومي',
+      subtitle   : 'نظام أبو حذيفة للصرافة والتحويلات',
+      periodText : formatDateArabic(date),
+      userName,
       logo,
-      statsCards: [
-        { label:'📥 التحصيلات',  value:`+${s.collection.toLocaleString('en-US')} ر.س`, color:'#059669' },
-        { label:'🏦 الإيداعات',   value:`−${s.deposit.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
-        { label:'💳 السحب البنكي', value:`+${s.bank_withdrawal.toLocaleString('en-US')} ر.س`, color:'#0284c7' },
-        { label:'💸 المصروفات',   value:`−${s.expense.toLocaleString('en-US')} ر.س`,   color:'#dc2626' },
-        { label:'📥 الحوالات الواردة',  value:`+${s.receipt.toLocaleString('en-US')} ر.س`,  color:'#0284c7' },
-        { label:'📤 الحوالات الصادرة', value:`−${s.delivery.toLocaleString('en-US')} ر.س`, color:'#dc2626' },
-        { label:'💰 الرصيد الفعلي',    value:`${net>=0?'+':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س`, color: net>=0?'#059669':'#dc2626' },
-      ],
-      tableHTML,
-      footerExtra: user?.display_name || '',
+      columns    : ['#', 'الوقت', 'نوع العملية', 'التفاصيل', 'لكم (ر.س)', 'عليكم (ر.س)'],
+      rows,
+      totalsLine,
+      shareText,
     });
   },
 
