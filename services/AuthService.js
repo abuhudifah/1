@@ -24,19 +24,55 @@ const AuthState = {
 };
 
 // ── Brute Force helpers ─────────────────────────────────────────────────────
-// مخزّنة في sessionStorage لتبقى بعد F5 وتُمسح تلقائياً عند إغلاق التبويب.
-// لا تُخزَّن في localStorage لتجنب تسرب بيانات القفل بين جلسات مختلفة.
+// sessionStorage للقفل المؤقت (يُمسح بإغلاق التبويب)
 const _BF_PREFIX = 'ahu_bf_';
 function _bfRead(key) {
   try { return JSON.parse(sessionStorage.getItem(_BF_PREFIX + key) || 'null'); }
   catch (e) { return null; }
 }
 function _bfWrite(key, data) {
-  try { sessionStorage.setItem(_BF_PREFIX + key, JSON.stringify(data)); } catch (e) { /* sessionStorage غير متاح */ }
+  try { sessionStorage.setItem(_BF_PREFIX + key, JSON.stringify(data)); } catch (e) { }
 }
 function _resetAttempts(key) {
-  try { sessionStorage.removeItem(_BF_PREFIX + key); } catch (e) { /* sessionStorage غير متاح */ }
+  try { sessionStorage.removeItem(_BF_PREFIX + key); } catch (e) { }
 }
+
+// localStorage للقفل الدائم (يبقى عبر جلسات المتصفح)
+const _LS_BF_PREFIX = 'ahu_lsbf_';
+function _lsBfRead(key) {
+  try { return JSON.parse(localStorage.getItem(_LS_BF_PREFIX + key) || 'null'); }
+  catch (e) { return null; }
+}
+function _lsBfWrite(key, data) {
+  try { localStorage.setItem(_LS_BF_PREFIX + key, JSON.stringify(data)); } catch (e) { }
+}
+function _lsResetAttempts(key) {
+  try { localStorage.removeItem(_LS_BF_PREFIX + key); } catch (e) { }
+}
+
+// فحص القفل الدائم (localStorage-backed)
+function _checkLsBruteForce(key) {
+  const r = _lsBfRead(key);
+  if (!r) return ok(true);
+  if (r.lockedUntil && Date.now() < r.lockedUntil) {
+    const mins = Math.ceil((r.lockedUntil - Date.now()) / 60000);
+    return err(`تم قفل الحساب. حاول بعد ${mins} دقيقة`);
+  }
+  if (r.lockedUntil && Date.now() >= r.lockedUntil) _lsResetAttempts(key);
+  return ok(true);
+}
+function _recordLsFailedAttempt(key) {
+  const now = Date.now();
+  const r   = _lsBfRead(key) || { count: 0, lastAttempt: now };
+  r.count++;
+  r.lastAttempt = now;
+  // قفل متعدد المراحل
+  if      (r.count >= 20) r.lockedUntil = now + 60 * 60 * 1000;   // 1 ساعة
+  else if (r.count >= 10) r.lockedUntil = now + 15 * 60 * 1000;   // 15 دقيقة
+  else if (r.count >= 5)  r.lockedUntil = now + 5  * 60 * 1000;   // 5 دقائق
+  _lsBfWrite(key, r);
+}
+// ────────────────────────────────────────────────────────────────────────────
 // ────────────────────────────────────────────────────────────────────────────
 
 // ============================================================
@@ -44,8 +80,11 @@ function _resetAttempts(key) {
 // ============================================================
 async function login(email, password) {
   try {
+    // فحص مزدوج: sessionStorage (مؤقت) + localStorage (دائم عبر الجلسات)
     const lockCheck = _checkBruteForce(email);
     if (!isOk(lockCheck)) return lockCheck;
+    const lsLockCheck = _checkLsBruteForce(`login_${email}`);
+    if (!isOk(lsLockCheck)) return lsLockCheck;
 
     if (!email || !password) return err('البريد الإلكتروني وكلمة المرور مطلوبان');
     if (!isValidEmail(email))  return err('البريد الإلكتروني غير صالح');
@@ -56,10 +95,12 @@ async function login(email, password) {
 
     if (authError) {
       _recordFailedAttempt(email);
+      _recordLsFailedAttempt(`login_${email}`);
       return err(_translateAuthError(authError.message));
     }
 
     _resetAttempts(email);
+    _lsResetAttempts(`login_${email}`);
 
     const profileResult = await _fetchUserProfile(authData.user.id);
     if (!isOk(profileResult)) {
@@ -91,6 +132,15 @@ async function login(email, password) {
       accountNumber: profile.account_number,
     });
 
+    // ✅ حفظ وقت انتهاء الجلسة في localStorage للبقاء مسجلاً بعد إغلاق المتصفح
+    // يُحذف لاحقاً إذا اختار المستخدم "جلسة مؤقتة" من مودال تفضيل الجهاز
+    try {
+      const devPref = localStorage.getItem(`ahu_device_pref_${profile.id}`);
+      if (devPref !== 'temporary') {
+        localStorage.setItem(`ahu_sess_exp_${profile.id}`, String(Date.now() + 8 * 60 * 60 * 1000));
+      }
+    } catch { /* localStorage غير متاح */ }
+
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
@@ -109,12 +159,20 @@ async function logout(clearLocalData = false) {
   try {
     if (window.unsubscribeAll) await unsubscribeAll();
     if (window.SyncQueue) SyncQueue.clearRetryTimers();
+
+    // ✅ حذف وقت انتهاء الجلسة الدائمة عند الخروج
+    const uid = AuthState.currentUser?.id;
+    if (uid) {
+      try { localStorage.removeItem(`ahu_sess_exp_${uid}`); } catch { }
+    }
+
     await supabaseClient.auth.signOut();
     clearSession();
 
     AuthState.currentUser   = null;
     AuthState.authUser      = null;
     AuthState.isInitialized = false;
+    AuthState.isOffline     = false;
 
     window.dispatchEvent(new CustomEvent('auth:logout'));
     return ok(true);
@@ -123,6 +181,7 @@ async function logout(clearLocalData = false) {
     clearSession();
     AuthState.currentUser = null;
     AuthState.authUser    = null;
+    AuthState.isOffline   = false;
     return ok(true);
   }
 }
@@ -132,52 +191,117 @@ async function logout(clearLocalData = false) {
 // ============================================================
 async function checkSession() {
   try {
-    // 1. تحقق سريع من الجلسة المحلية — فشل فوري دون استدعاء Supabase
+    // 1. تحقق من sessionStorage (مسار سريع للجلسات القائمة)
     const localSession = getSession();
-    if (!localSession) return err('لا توجد جلسة نشطة');
 
-    // 2. فحص انتهاء الصلاحية المحلية (8 ساعات مطلقة) ✅ S8
-    if (localSession.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
+    // 2. فحص انتهاء الصلاحية المحلية (8 ساعات) — فقط إذا كانت موجودة
+    if (localSession?.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
       await logout();
       return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
     }
 
-    // 3. التحقق من صلاحية JWT مع Supabase
+    // 3. ✅ FIX: التحقق من JWT في Supabase (المصدر الحقيقي — يُخزَّن في localStorage)
     const { data: { session }, error } = await supabaseClient.auth.getSession();
-    if (error || !session) {
-      await logout();
-      return err('الجلسة غير صالحة. يُرجى تسجيل الدخول مجدداً');
+
+    if (!error && session) {
+      // JWT صالح — إذا كانت الجلسة المحلية مفقودة (أُغلق المتصفح) أعد بناءها
+      if (!localSession) {
+        const uid = session.user.id;
+        // تحقق من تفضيل الجهاز: إذا كان مؤقتاً لا نُعيد البناء التلقائي
+        const devPref = localStorage.getItem(`ahu_device_pref_${uid}`);
+        if (devPref === 'temporary') {
+          // المستخدم اختار جلسة مؤقتة — لا إعادة بناء بعد الإغلاق
+          const offlineResult = await _checkOfflineSessionFallback();
+          if (offlineResult) return offlineResult;
+          return err('لا توجد جلسة نشطة');
+        }
+        // فحص مهلة الجلسة الدائمة (localStorage)
+        const persistedExpiry = localStorage.getItem(`ahu_sess_exp_${uid}`);
+        if (persistedExpiry && Date.now() > parseInt(persistedExpiry, 10)) {
+          await logout();
+          return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
+        }
+      }
+
+      const profileResult = await _fetchUserProfile(session.user.id);
+      if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
+
+      const profile = profileResult.data;
+      if (!profile.is_active) { await logout(); return err('تم تعطيل هذا الحساب'); }
+
+      await _ensureUserAccountNumber(profile.id, profile);
+
+      AuthState.currentUser   = profile;
+      AuthState.authUser      = session.user;
+      AuthState.isInitialized = true;
+
+      saveSession({
+        userId      : profile.id,
+        role        : profile.role,
+        displayName : profile.display_name,
+        username    : profile.username,
+        allowedTabs : profile.allowed_tabs || [],
+        accountNumber: profile.account_number,
+      });
+
+      _saveToDexieBackground(profile);
+      _migrateQuickLoginStorage();
+      return ok({ user: session.user, profile });
     }
 
-    const profileResult = await _fetchUserProfile(session.user.id);
-    if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
+    // 4. لا يوجد JWT صالح — تحقق من جلسة offline (Quick Login)
+    const offlineResult = await _checkOfflineSessionFallback();
+    if (offlineResult) return offlineResult;
 
-    const profile = profileResult.data;
-    if (!profile.is_active) { await logout(); return err('تم تعطيل هذا الحساب'); }
-
-    // ✅ التأكد من وجود رقم حساب للمستخدم
-    await _ensureUserAccountNumber(profile.id, profile);
-
-    AuthState.currentUser   = profile;
-    AuthState.authUser      = session.user;
-    AuthState.isInitialized = true;
-
-    saveSession({
-      userId      : profile.id,
-      role        : profile.role,
-      displayName : profile.display_name,
-      username    : profile.username,
-      allowedTabs : profile.allowed_tabs || [],
-      accountNumber: profile.account_number,
-    });
-
-    _saveToDexieBackground(profile);
-    _migrateQuickLoginStorage();
-    return ok({ user: session.user, profile });
+    // 5. لا توجد جلسة بأي شكل
+    clearSession();
+    return err('لا توجد جلسة نشطة');
 
   } catch (e) {
     return err(formatErrorMessage(e));
   }
+}
+
+// ============================================================
+// 3b. استعادة جلسة Offline بعد إغلاق المتصفح
+// ============================================================
+async function _checkOfflineSessionFallback() {
+  try {
+    if (typeof db === 'undefined' || !db.isOpen()) return null;
+
+    // البحث عن Quick Login offline محفوظ لأي مستخدم
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('ahu_quick_')) continue;
+      try {
+        const data = JSON.parse(localStorage.getItem(key) || '{}');
+        if (!data?.userId) continue;
+
+        const profile = await db.users.get(data.userId);
+        if (!profile?.is_active) continue;
+
+        AuthState.currentUser   = profile;
+        AuthState.isOffline     = true;
+        AuthState.isInitialized = true;
+        AuthState.authUser      = null;
+
+        saveSession({
+          userId       : profile.id,
+          displayName  : profile.display_name,
+          username     : profile.username,
+          offlineSession: true,
+          quickLoginMode: true,
+          accountNumber : profile.account_number,
+        });
+
+        console.log('✅ [checkSession] استعادة جلسة offline من Quick Login:', profile.display_name);
+        return ok({ profile, offline: true });
+      } catch { continue; }
+    }
+  } catch (e) {
+    console.warn('⚠️ _checkOfflineSessionFallback:', e.message);
+  }
+  return null;
 }
 
 // ============================================================
@@ -829,8 +953,10 @@ function _recordFailedAttempt(key) {
   const r   = _bfRead(key) || { count: 0, lastAttempt: now };
   r.count++;
   r.lastAttempt = now;
-  if (r.count >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS)
-    r.lockedUntil = now + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
+  // قفل متعدد المراحل
+  if      (r.count >= 20) r.lockedUntil = now + 60 * 60 * 1000;   // 1 ساعة
+  else if (r.count >= 10) r.lockedUntil = now + 15 * 60 * 1000;   // 15 دقيقة
+  else if (r.count >= 5)  r.lockedUntil = now + 5  * 60 * 1000;   // 5 دقائق
   _bfWrite(key, r);
 }
 function _translateAuthError(msg) {
@@ -939,6 +1065,39 @@ function getAllowedTabs() {
 }
 
 // ============================================================
+// 17. تسجيل الخروج من الأجهزة الأخرى
+// ============================================================
+async function signOutOtherDevices() {
+  try {
+    const { error } = await supabaseClient.auth.signOut({ scope: 'others' });
+    if (error) return err('فشل تسجيل الخروج من الأجهزة الأخرى: ' + error.message);
+    return ok(true);
+  } catch (e) {
+    return err(formatErrorMessage(e));
+  }
+}
+
+async function signOutAllDevices() {
+  try {
+    const uid = AuthState.currentUser?.id;
+    if (uid) {
+      try { localStorage.removeItem(`ahu_sess_exp_${uid}`); } catch { }
+    }
+    const { error } = await supabaseClient.auth.signOut({ scope: 'global' });
+    if (error) return err('فشل تسجيل الخروج: ' + error.message);
+    clearSession();
+    AuthState.currentUser   = null;
+    AuthState.authUser      = null;
+    AuthState.isInitialized = false;
+    AuthState.isOffline     = false;
+    window.dispatchEvent(new CustomEvent('auth:logout'));
+    return ok(true);
+  } catch (e) {
+    return err(formatErrorMessage(e));
+  }
+}
+
+// ============================================================
 // تصدير
 // ============================================================
 const AuthService = {
@@ -950,9 +1109,10 @@ const AuthService = {
   verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
   getUserAccountNumber, createAccountNumber, generateBankAccountNumber, createBankAccount,
+  signOutOtherDevices, signOutAllDevices,
   _state: AuthState,
 };
 
 window.AuthService = AuthService;
 window.AuthState   = AuthState;   // مطلوب لـ LoginComponent._offlineLogin و OfflineAuthService
-console.log('✅ AuthService.js v5.3 — createBankAccount: توليد internal_account_number تلقائياً عند الإنشاء');
+console.log('✅ AuthService.js v6.0 — checkSession: JWT الدائم كمصدر حقيقة + offline fallback + Rate Limiting متعدد المراحل');

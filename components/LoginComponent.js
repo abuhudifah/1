@@ -1279,9 +1279,19 @@ const LoginComponent = {
         if (window.showToast) showToast(`⚡ مرحباً ${res.data.profile.display_name}`, 'success');
         setTimeout(() => this._onSuccess?.(res.data.profile), 400);
       } else {
-        if (rEl)    rEl.style.color = '';
-        if (statEl) statEl.textContent = '';
-        // لا نُظهر خطأ — المستخدم يستمر باستخدام الآلة
+        if (rEl)    { rEl.style.color = '#f87171'; }
+        // عرض رسالة خطأ واضحة (دون كشف تفاصيل أمنية)
+        const errMsg = res.error?.includes('قفل') || res.error?.includes('محاولات')
+          ? res.error
+          : 'المعادلة غير صحيحة، حاول مرة أخرى';
+        if (statEl) {
+          statEl.style.color = '#f87171';
+          statEl.textContent = `❌ ${errMsg}`;
+          setTimeout(() => {
+            if (statEl) { statEl.textContent = ''; statEl.style.color = '#60a5fa'; }
+            if (rEl) rEl.style.color = '';
+          }, 2500);
+        }
       }
     } catch (e) {
       console.error('[LoginComponent v5] خطأ في _tryQuickLogin:', e);
@@ -1325,8 +1335,15 @@ const LoginComponent = {
       const profile = result.data.profile;
       if (window.showToast) showToast(`مرحباً ${profile.display_name} 👋`, 'success');
 
-      // إذا لم يكن Quick Login مُفعَّلاً → اعرض Modal الإعداد
-      if (!profile.quick_equation_hash) {
+      // تحقق من تفضيل الجهاز (هل الجلسة دائمة أم مؤقتة؟)
+      const devPrefKey = `ahu_device_pref_${profile.id}`;
+      const devPref    = localStorage.getItem(devPrefKey);
+
+      if (!devPref) {
+        // أول دخول على هذا الجهاز — اعرض مودال تفضيل الجهاز
+        this._showDevicePreferenceModal(profile);
+      } else if (!profile.quick_equation_hash) {
+        // تفضيل محفوظ لكن الدخول السريع غير مفعّل → اعرض Modal الإعداد
         this._showQuickSetupModal(profile);
       } else {
         setTimeout(() => this._onSuccess?.(profile), 400);
@@ -1341,6 +1358,72 @@ const LoginComponent = {
         setTimeout(() => { card.style.animation = ''; }, 450);
       }
     }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // Modal تفضيل الجهاز (يظهر مرة واحدة عند أول دخول)
+  // ─────────────────────────────────────────────────────────
+  _showDevicePreferenceModal(profile) {
+    const overlay = document.createElement('div');
+    overlay.className = 'ql-setup-overlay';
+
+    const sheet = document.createElement('div');
+    sheet.className = 'ql-setup-sheet';
+    sheet.innerHTML = `
+      <div style="text-align:center;font-size:2rem;margin-bottom:10px;">📱</div>
+      <div class="ql-setup-title">هل تريد البقاء مسجلاً الدخول؟</div>
+      <div class="ql-setup-desc">
+        اختر طريقة حفظ جلستك على هذا الجهاز.<br>
+        يمكنك تغيير هذا لاحقاً من إعدادات الملف الشخصي.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+        <button id="dev-pref-yes" style="
+          width:100%;padding:14px 16px;border:none;border-radius:14px;
+          background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;
+          font-size:.94rem;font-weight:700;cursor:pointer;font-family:inherit;
+          display:flex;align-items:center;gap:10px;box-shadow:0 4px 14px rgba(37,99,235,.35);">
+          <span style="font-size:1.4rem;">✅</span>
+          <div style="text-align:right;">
+            <div>نعم — ابقَ مسجلاً الدخول</div>
+            <div style="font-size:.75rem;opacity:.8;font-weight:400;">الجلسة تبقى حتى بعد إغلاق المتصفح (8 ساعات)</div>
+          </div>
+        </button>
+        <button id="dev-pref-no" style="
+          width:100%;padding:14px 16px;border:1px solid rgba(15,23,42,.15);
+          border-radius:14px;background:transparent;
+          color:var(--text-secondary,#475569);
+          font-size:.94rem;font-weight:600;cursor:pointer;font-family:inherit;
+          display:flex;align-items:center;gap:10px;">
+          <span style="font-size:1.4rem;">🔒</span>
+          <div style="text-align:right;">
+            <div>لا — جلسة مؤقتة فقط</div>
+            <div style="font-size:.75rem;opacity:.7;font-weight:400;">تُحذف الجلسة عند إغلاق المتصفح</div>
+          </div>
+        </button>
+      </div>`;
+
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+
+    const uid = profile.id;
+
+    const proceed = (pref) => {
+      overlay.remove();
+      localStorage.setItem(`ahu_device_pref_${uid}`, pref);
+      if (pref === 'temporary') {
+        // إزالة وقت انتهاء الجلسة الدائمة
+        localStorage.removeItem(`ahu_sess_exp_${uid}`);
+      }
+      // بعد الاختيار → تحقق من Quick Login
+      if (!profile.quick_equation_hash) {
+        this._showQuickSetupModal(profile);
+      } else {
+        setTimeout(() => this._onSuccess?.(profile), 300);
+      }
+    };
+
+    document.getElementById('dev-pref-yes')?.addEventListener('click', () => proceed('persistent'));
+    document.getElementById('dev-pref-no')?.addEventListener('click',  () => proceed('temporary'));
   },
 
   // ─────────────────────────────────────────────────────────
@@ -1475,4 +1558,4 @@ const LoginComponent = {
 };
 
 window.LoginComponent = LoginComponent;
-console.log('✅ LoginComponent v5.1 Phase3 — تصميم بصري مُعاد + هوية أبو حذيفة + شبكة نقطية + Brand Header');
+console.log('✅ LoginComponent v5.2 — تفضيل الجهاز + رسائل خطأ دخول سريع + مودال احترافي');

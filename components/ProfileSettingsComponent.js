@@ -58,9 +58,13 @@ const ProfileSettingsComponent = {
     // ── بطاقة الدخول السريع ──
     wrap.appendChild(this._buildQuickLoginCard(user));
 
+    // ── بطاقة الأجهزة النشطة ──
+    wrap.appendChild(this._buildActiveDevicesCard(user));
+
     container.appendChild(wrap);
 
     this._bindEvents(user);
+    this._bindDeviceEvents(user);
     if (window.lucide) lucide.createIcons();
   },
 
@@ -192,6 +196,156 @@ const ProfileSettingsComponent = {
         border:1px solid #fca5a5;border-radius:8px;color:#dc2626;font-size:.83rem;margin-top:10px;"></div>`;
 
     return card;
+  },
+
+  // ────────────────────────────────────────────────────────
+  // بطاقة الأجهزة النشطة (جديدة — المرحلة 1)
+  // ────────────────────────────────────────────────────────
+  _buildActiveDevicesCard(user) {
+    const card = this._card('📱 الأجهزة النشطة');
+    card.setAttribute('data-psc-devices-card', '');
+
+    // استخراج معلومات الجهاز الحالي من userAgent
+    const ua = navigator.userAgent;
+    let browser = 'متصفح';
+    if      (ua.includes('Edg'))     browser = 'Edge';
+    else if (ua.includes('Chrome'))  browser = 'Chrome';
+    else if (ua.includes('Firefox')) browser = 'Firefox';
+    else if (ua.includes('Safari'))  browser = 'Safari';
+    let os = 'جهاز';
+    if      (ua.includes('iPhone'))  os = 'iPhone';
+    else if (ua.includes('iPad'))    os = 'iPad';
+    else if (ua.includes('Android')) os = 'Android';
+    else if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Mac'))     os = 'Mac';
+    else if (ua.includes('Linux'))   os = 'Linux';
+
+    const devPrefKey = `ahu_device_pref_${user.id}`;
+    const devPref    = localStorage.getItem(devPrefKey) || 'persistent';
+    const prefLabel  = devPref === 'temporary' ? 'جلسة مؤقتة' : 'جلسة دائمة';
+    const prefColor  = devPref === 'temporary' ? '#f59e0b' : '#16a34a';
+
+    card.innerHTML += `
+      <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
+        إدارة الجلسات النشطة لحسابك عبر الأجهزة المختلفة.
+      </p>
+
+      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px;">
+        <!-- الجهاز الحالي -->
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:rgba(99,102,241,.06);">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+            display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">
+            💻
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:.88rem;color:var(--text-primary);">
+              ${escapeHtml(browser)} على ${escapeHtml(os)}
+            </div>
+            <div style="font-size:.76rem;color:var(--text-muted);margin-top:2px;">
+              هذا الجهاز · <span style="color:${prefColor};font-weight:500;">${escapeHtml(prefLabel)}</span>
+            </div>
+          </div>
+          <span style="padding:3px 10px;background:rgba(99,102,241,.12);color:#6366f1;
+            border-radius:20px;font-size:.73rem;font-weight:600;white-space:nowrap;">الجهاز الحالي</span>
+        </div>
+      </div>
+
+      <!-- تغيير تفضيل الجهاز -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;
+        padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;">
+        <div style="flex:1;">
+          <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">تفضيل هذا الجهاز</div>
+          <div style="font-size:.76rem;color:var(--text-muted);margin-top:2px;">
+            ${devPref === 'temporary'
+              ? 'جلسة مؤقتة — تُحذف عند إغلاق المتصفح'
+              : 'جلسة دائمة — تبقى حتى بعد إغلاق المتصفح (8 ساعات)'}
+          </div>
+        </div>
+        <button id="psc-toggle-pref" style="
+          padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:600;
+          border:1px solid var(--border);background:transparent;color:var(--text-secondary);
+          cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s;">
+          ${devPref === 'temporary' ? 'تحويل لدائم' : 'تحويل لمؤقت'}
+        </button>
+      </div>
+
+      <!-- أزرار الخروج -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="psc-signout-others" class="btn btn-sm"
+          style="flex:1;background:rgba(245,158,11,.08);color:#d97706;
+            border:1px solid rgba(245,158,11,.25);min-width:160px;">
+          <i data-lucide="log-out" style="width:13px;height:13px;"></i>
+          تسجيل الخروج من الأجهزة الأخرى
+        </button>
+        <button id="psc-signout-all" class="btn btn-sm"
+          style="background:rgba(220,38,38,.07);color:#dc2626;
+            border:1px solid rgba(220,38,38,.2);min-width:130px;">
+          <i data-lucide="shield-off" style="width:13px;height:13px;"></i>
+          خروج من كل الأجهزة
+        </button>
+      </div>`;
+
+    return card;
+  },
+
+  // ────────────────────────────────────────────────────────
+  // _bindDeviceEvents
+  // ────────────────────────────────────────────────────────
+  _bindDeviceEvents(user) {
+    // تبديل تفضيل الجهاز
+    document.getElementById('psc-toggle-pref')?.addEventListener('click', () => {
+      const key     = `ahu_device_pref_${user.id}`;
+      const current = localStorage.getItem(key) || 'persistent';
+      const next    = current === 'temporary' ? 'persistent' : 'temporary';
+      localStorage.setItem(key, next);
+      if (next === 'temporary') {
+        localStorage.removeItem(`ahu_sess_exp_${user.id}`);
+      } else {
+        localStorage.setItem(`ahu_sess_exp_${user.id}`, String(Date.now() + 8 * 60 * 60 * 1000));
+      }
+      const label = next === 'temporary' ? 'جلسة مؤقتة' : 'جلسة دائمة';
+      showToast(`✅ تم التغيير إلى ${label}`, 'success');
+      // إعادة رسم البطاقة
+      const card = document.querySelector('[data-psc-devices-card]');
+      if (card) {
+        const newCard = this._buildActiveDevicesCard(user);
+        newCard.setAttribute('data-psc-devices-card', '');
+        card.replaceWith(newCard);
+        this._bindDeviceEvents(user);
+        if (window.lucide) lucide.createIcons();
+      }
+    });
+
+    // تسجيل الخروج من الأجهزة الأخرى
+    document.getElementById('psc-signout-others')?.addEventListener('click', async () => {
+      if (!isOnline()) { showToast('يتطلب اتصالاً بالإنترنت', 'warning'); return; }
+      const btn = document.getElementById('psc-signout-others');
+      if (btn) { btn.disabled = true; btn.innerHTML = '⏳ جارٍ...'; }
+      const res = await AuthService.signOutOtherDevices();
+      if (isOk(res)) {
+        showToast('✅ تم تسجيل الخروج من جميع الأجهزة الأخرى', 'success');
+      } else {
+        showToast(res.error, 'error');
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="log-out" style="width:13px;height:13px;"></i> تسجيل الخروج من الأجهزة الأخرى';
+        if (window.lucide) lucide.createIcons();
+      }
+    });
+
+    // تسجيل الخروج من جميع الأجهزة
+    document.getElementById('psc-signout-all')?.addEventListener('click', async () => {
+      const confirmed = await confirmDialog(
+        'تسجيل الخروج من جميع الأجهزة؟\n\nستحتاج لتسجيل الدخول مجدداً على هذا الجهاز أيضاً.',
+        'تأكيد الخروج', 'إلغاء', 'danger'
+      );
+      if (!confirmed) return;
+      if (!isOnline()) { showToast('يتطلب اتصالاً بالإنترنت', 'warning'); return; }
+      const res = await AuthService.signOutAllDevices();
+      if (!isOk(res)) showToast(res.error, 'error');
+      // signOutAllDevices يُرسل auth:logout → App.js يعيد التوجيه لشاشة الدخول
+    });
   },
 
   // ────────────────────────────────────────────────────────
@@ -450,4 +604,4 @@ const ProfileSettingsComponent = {
 };
 
 window.ProfileSettingsComponent = ProfileSettingsComponent;
-console.log('✅ ProfileSettingsComponent.js v1.1 — السلوك الرابع: عرض رقم الحساب الفعلي من users.account_number');
+console.log('✅ ProfileSettingsComponent.js v2.0 — إدارة الأجهزة النشطة + تفضيل الجلسة الدائمة/المؤقتة');
