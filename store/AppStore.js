@@ -149,6 +149,7 @@ async function refreshData() {
     } else if (user.role === ROLES.AGENT) {
       tasks.push(_loadAgentBankAccounts(user.id));
       tasks.push(_loadAgentDebtors(user.id));
+      tasks.push(_loadUsers()); // المندوب يحتاج قائمة المستخدمين لقائمة المستلمين
     }
 
     await Promise.allSettled(tasks);
@@ -242,7 +243,7 @@ async function _loadUsers() {
   const data = await _fetchFromSupabaseWithFallback(
     TABLES.USERS,
     () => supabaseClient.from(TABLES.USERS)
-      .select('id, username, display_name, role, is_active, allowed_tabs')
+      .select('id, username, display_name, role, is_active, allowed_tabs, allowed_companies, allowed_banks, allowed_users')
       .eq('is_active', true)
       .order('display_name')
       .limit(QUERY_LIMITS.USERS),

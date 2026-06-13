@@ -203,7 +203,7 @@ const DataEntryComponent = {
     selfOpt.textContent = `👤 ${currentUser?.display_name || 'نفسي'} (أنا)`;
     select.appendChild(selfOpt);
 
-    const allUsers = AppStore.getState('users').filter(u =>
+    const allUsers = (AppStore.getState('users') || []).filter(u =>
       u.is_active && u.id !== currentUser?.id
     );
 
