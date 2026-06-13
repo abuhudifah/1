@@ -281,34 +281,32 @@ function _pinRender() {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-label', _pinTitle);
+  overlay.setAttribute('tabindex', '-1');
 
+  // الهيكل الثابت بدون أي inline onclick (متوافق مع CSP)
   overlay.innerHTML = `
     <div class="pin-dialog" id="pin-dialog-box">
-
       <div class="pin-icon">🔐</div>
-
       <p class="pin-title" id="pin-title-text">${_escHtml(_pinTitle)}</p>
       <p class="pin-subtitle" id="pin-subtitle-text">${_escHtml(_pinSubtitle)}</p>
-
-      <!-- خانات الـ PIN -->
       <div class="pin-dots" id="pin-dots-row" aria-live="polite" aria-label="خانات PIN">
         ${_renderDots()}
       </div>
-
-      <!-- رسائل الخطأ والمحاولات -->
       <div class="pin-error"    id="pin-error-msg" role="alert" aria-live="assertive"></div>
       <div class="pin-attempts" id="pin-attempts-msg"></div>
-
-      <!-- لوحة الأرقام -->
-      <div class="pin-keypad" id="pin-keypad">
-        ${_renderKeypad()}
-      </div>
-
-      <button class="pin-cancel-btn" onclick="PinDialog._cancel()">إلغاء</button>
+      <div class="pin-keypad"   id="pin-keypad"></div>
+      <button class="pin-cancel-btn" id="pin-cancel-btn" type="button">إلغاء</button>
     </div>
   `;
 
   document.body.appendChild(overlay);
+
+  // ربط لوحة الأرقام بـ addEventListener (يعمل حتى مع CSP الصارم)
+  _buildKeypad(overlay.querySelector('#pin-keypad'));
+
+  // ربط زر الإلغاء
+  overlay.querySelector('#pin-cancel-btn')
+    ?.addEventListener('click', () => PinDialog._cancel());
 
   // استماع لضغطات لوحة المفاتيح الفعلية
   overlay.addEventListener('keydown', _pinHandleKeyboard);
@@ -324,19 +322,29 @@ function _renderDots() {
   return html;
 }
 
-function _renderKeypad() {
+// بناء لوحة الأرقام عبر DOM مع addEventListener — لا inline onclick
+function _buildKeypad(container) {
+  if (!container) return;
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
-  return keys.map((k, idx) => {
-    if (k === '') return `<div></div>`;
-    if (k === '⌫') {
-      return `<button class="pin-key pin-key--del"
-                      onclick="PinDialog._delete()"
-                      aria-label="حذف آخر رقم">${k}</button>`;
+  keys.forEach(k => {
+    if (k === '') {
+      container.appendChild(document.createElement('div'));
+      return;
     }
-    return `<button class="pin-key"
-                    onclick="PinDialog._press('${k}')"
-                    aria-label="${k}">${k}</button>`;
-  }).join('');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = k;
+    if (k === '⌫') {
+      btn.className = 'pin-key pin-key--del';
+      btn.setAttribute('aria-label', 'حذف آخر رقم');
+      btn.addEventListener('click', () => PinDialog._delete());
+    } else {
+      btn.className = 'pin-key';
+      btn.setAttribute('aria-label', k);
+      btn.addEventListener('click', () => PinDialog._press(k));
+    }
+    container.appendChild(btn);
+  });
 }
 
 // ============================================================
@@ -577,9 +585,11 @@ const PinDialog = {
           <span id="pin-lock-countdown">--:--</span>
         </span>
         <br><br>
-        <button class="pin-cancel-btn" onclick="PinDialog._cancel()">إغلاق</button>
+        <button class="pin-cancel-btn" id="pin-lock-close-btn" type="button">إغلاق</button>
       </div>
     `;
+    box.querySelector('#pin-lock-close-btn')
+      ?.addEventListener('click', () => PinDialog._cancel());
 
     tick();
   },
