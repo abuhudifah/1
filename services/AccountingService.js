@@ -427,11 +427,6 @@ async function createTransactionWithEntries(txData) {
 
 async function getAccountBalance(accountId) {
   try {
-    if (typeof db !== 'undefined' && db.isOpen()) {
-      const localBalance = await getLocalAccountBalance(accountId);
-      if (localBalance !== 0) return ok(localBalance);
-    }
-
     if (isOnline()) {
       const { data, error } = await supabaseClient
         .from(TABLES.ACCOUNT_BALANCES)
@@ -443,6 +438,12 @@ async function getAccountBalance(accountId) {
         await setLocalAccountBalance(accountId, parseFloat(data.balance));
         return ok(parseFloat(data.balance));
       }
+    }
+
+    // Offline fallback
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      const localBalance = await getLocalAccountBalance(accountId);
+      return ok(localBalance);
     }
 
     return ok(0);
