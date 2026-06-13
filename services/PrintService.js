@@ -164,10 +164,22 @@ const PrintService = (() => {
       year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
-    const isNum = (c) => typeof c === 'number' || (typeof c === 'string' && /^[−\-\d]/.test(String(c).trim()));
+    // كشف أعمدة لكم/عليكم لتلوينها تلقائياً
+    const lakumIdx   = columns.findIndex(c => String(c).includes('لكم')  && !String(c).includes('عليكم'));
+    const alaykumIdx = columns.findIndex(c => String(c).includes('عليكم'));
+
+    const getCellAttr = (ci, value) => {
+      const v = String(value ?? '');
+      if (ci === lakumIdx   && v !== '0' && v !== '—' && v !== '') return ' class="cl"';
+      if (ci === alaykumIdx && v !== '0' && v !== '—' && v !== '') return ' class="cd"';
+      return '';
+    };
+
     const theadHTML = `<tr>${columns.map(h => `<th>${h}</th>`).join('')}</tr>`;
-    const tbodyHTML = rows.map(r =>
-      `<tr>${r.map(c => `<td${isNum(c) ? ' style="direction:ltr;text-align:left;"' : ''}>${(c ?? '—')}</td>`).join('')}</tr>`
+    const tbodyHTML = rows.map((r, ri) =>
+      `<tr class="${ri % 2 === 1 ? 'even' : ''}">${r.map((c, ci) =>
+        `<td${getCellAttr(ci, c)}>${c ?? '—'}</td>`
+      ).join('')}</tr>`
     ).join('');
 
     const html = `<!DOCTYPE html>
@@ -177,82 +189,187 @@ const PrintService = (() => {
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700;800&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;}
   body{background:#e9edf3;color:#0f172a;direction:rtl;}
-  /* شريط الأدوات (يختفي عند الطباعة) */
-  .toolbar{position:sticky;top:0;z-index:10;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
-    padding:12px;background:#0f172a;box-shadow:0 2px 10px rgba(0,0,0,.2);}
-  .toolbar button{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:10px;
-    padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;transition:.15s;}
-  .tb-print{background:#2563eb;color:#fff;} .tb-pdf{background:#059669;color:#fff;}
-  .tb-share{background:#25d366;color:#fff;} .tb-back{background:#e2e8f0;color:#0f172a;}
-  .toolbar button:hover{opacity:.9;transform:translateY(-1px);}
-  /* ورقة A4 */
-  .page{width:210mm;min-height:297mm;margin:18px auto;background:#fff;padding:18mm 16mm;
-    box-shadow:0 6px 24px rgba(0,0,0,.15);}
-  .doc-header{display:flex;justify-content:space-between;align-items:flex-start;
-    border-bottom:3px solid #0f172a;padding-bottom:14px;margin-bottom:20px;}
-  .doc-title{font-size:20px;font-weight:800;line-height:1.2;}
-  .doc-subtitle{font-size:12px;color:#64748b;margin-top:3px;}
-  .doc-meta{text-align:left;}
-  .doc-logo{height:54px;object-fit:contain;display:block;margin-bottom:6px;margin-inline-start:auto;}
-  .doc-period{font-size:13px;font-weight:700;}
-  .doc-user{font-size:11px;color:#64748b;margin-top:2px;}
-  table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;}
-  thead{background:#0f172a;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  th{padding:9px 8px;text-align:right;font-weight:700;font-size:11px;}
-  td{padding:7px 8px;text-align:right;border-bottom:1px solid #e2e8f0;}
-  tr:nth-child(even) td{background:#f8fafc;}
-  .totals{display:flex;gap:20px;flex-wrap:wrap;justify-content:flex-end;
-    padding:12px 14px;background:#f1f5f9;border-radius:10px;border:1px solid #e2e8f0;
-    font-size:13px;font-weight:700;}
-  .doc-footer{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:12px;
-    display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}
+
+  /* ── شريط الأدوات ── */
+  .toolbar{
+    position:sticky;top:0;z-index:10;
+    display:flex;gap:10px;justify-content:center;flex-wrap:wrap;align-items:center;
+    padding:11px 16px;background:#0f172a;box-shadow:0 2px 12px rgba(0,0,0,.25);
+  }
+  .toolbar button{
+    display:inline-flex;align-items:center;gap:6px;
+    border:none;border-radius:10px;padding:9px 18px;
+    font-size:13px;font-weight:700;cursor:pointer;transition:.15s;
+  }
+  .tb-print{background:#2563eb;color:#fff;}
+  .tb-pdf  {background:#059669;color:#fff;}
+  .tb-share{background:#25d366;color:#fff;}
+  .tb-back {background:#334155;color:#e2e8f0;}
+  .toolbar button:hover{opacity:.88;transform:translateY(-1px);}
+  #pdf-tip{
+    display:none;font-size:11px;color:#94a3b8;
+    background:#1e293b;border:1px solid #334155;border-radius:8px;
+    padding:6px 12px;line-height:1.5;text-align:center;max-width:220px;
+  }
+
+  /* ── ورقة A4 ── */
+  .page{
+    width:210mm;min-height:297mm;
+    margin:20px auto;background:#fff;
+    padding:18mm 16mm 14mm;
+    box-shadow:0 6px 28px rgba(0,0,0,.14);
+  }
+
+  /* ── ترويسة ── */
+  .doc-header{
+    display:flex;justify-content:space-between;align-items:flex-start;
+    border-bottom:3px solid #0f172a;padding-bottom:14px;margin-bottom:22px;
+  }
+  .doc-title  {font-size:20px;font-weight:800;line-height:1.2;}
+  .doc-sub    {font-size:11.5px;color:#64748b;margin-top:3px;}
+  .doc-acct   {font-size:10.5px;color:#94a3b8;margin-top:2px;}
+  .doc-meta   {text-align:left;}
+  .doc-logo   {height:52px;object-fit:contain;display:block;margin-bottom:6px;margin-inline-start:auto;}
+  .doc-period {font-size:13px;font-weight:700;}
+  .doc-user   {font-size:11px;color:#64748b;margin-top:3px;}
+
+  /* ── الجدول الاحترافي ── */
+  table{
+    width:100%;border-collapse:collapse;
+    font-size:11.5px;margin-bottom:0;
+    border:1.5px solid #94a3b8;
+    border-radius:2px;
+  }
+  thead{
+    background:#0f172a;color:#fff;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    display:table-header-group;
+  }
+  th{
+    padding:10px 9px;text-align:center;
+    font-weight:700;font-size:10.5px;letter-spacing:0.4px;
+    border-left:1px solid rgba(255,255,255,0.18);
+  }
+  th:last-child{border-left:none;}
+  td{
+    padding:8px 9px;text-align:center;
+    vertical-align:middle;
+    border-bottom:1px solid #dde3ea;
+    border-left:1px solid #e8ecf0;
+  }
+  td:last-child{border-left:none;}
+  tbody tr:last-child td{border-bottom:none;}
+  tr.even td{background:#f7f9fc;}
+  tbody tr:hover td{background:#eff6ff;transition:background .12s;}
+
+  /* ألوان أعمدة لكم / عليكم */
+  .cl{color:#059669;font-weight:700;}
+  .cd{color:#dc2626;font-weight:700;}
+
+  /* ── غلاف الجدول (حد خارجي موحّد) ── */
+  .table-wrap{border:1.5px solid #94a3b8;border-radius:6px;overflow:hidden;margin-bottom:14px;}
+
+  /* ── شريط الإجماليات ── */
+  .totals{
+    display:flex;gap:0;flex-wrap:wrap;justify-content:flex-end;
+    background:#f1f5f9;border:1.5px solid #94a3b8;border-top:none;
+    font-size:12.5px;font-weight:700;
+  }
+  .totals span{
+    padding:10px 16px;
+    border-right:1px solid #cbd5e1;
+  }
+  .totals span:last-child{border-right:none;}
+
+  /* ── تذييل ── */
+  .doc-footer{
+    margin-top:18px;border-top:1px solid #e2e8f0;padding-top:10px;
+    display:flex;justify-content:space-between;
+    font-size:9.5px;color:#94a3b8;
+  }
   .doc-footer b{color:#64748b;}
-  @page{size:A4;margin:16mm;}
+
+  /* ── طباعة ── */
   @media print{
-    body{background:#fff;} .toolbar{display:none!important;}
-    .page{width:auto;min-height:auto;margin:0;padding:0;box-shadow:none;}
+    body{background:#fff;}
+    .toolbar{display:none !important;}
+    #pdf-tip{display:none !important;}
+    .page{
+      width:auto;min-height:auto;margin:0;
+      padding:8mm 10mm 8mm;box-shadow:none;
+    }
+    tr{page-break-inside:avoid;}
+    table{border:1.5px solid #aab0bb;}
+    th{border-left:1px solid rgba(255,255,255,0.2);}
+    td{border-bottom:1px solid #cdd3da;border-left:1px solid #dde1e6;}
+    tr.even td{background:#f7f9fc !important;}
+    .cl{color:#059669 !important;}
+    .cd{color:#dc2626 !important;}
+    .totals{border:1.5px solid #aab0bb;border-top:none;}
+    .totals span{border-right:1px solid #c8cfd8;}
+  }
+  @page{
+    size:A4;margin:12mm 10mm;
+    @bottom-center{
+      content:"صفحة " counter(page) " من " counter(pages);
+      font-size:8pt;color:#94a3b8;
+    }
   }
 </style></head>
 <body>
   <div class="toolbar">
     <button class="tb-back"  onclick="window.close()">⬅ رجوع</button>
     <button class="tb-print" onclick="window.print()">🖨️ طباعة</button>
-    <button class="tb-pdf"   onclick="window.print()">📄 حفظ PDF</button>
+    <button class="tb-pdf"   onclick="doPdf()">📄 حفظ PDF</button>
     <button class="tb-share" id="tb-share">📲 مشاركة</button>
+    <div id="pdf-tip">في نافذة الطباعة اختر<br><b>«حفظ كـ PDF»</b> كطابعة</div>
   </div>
   <div class="page">
     <div class="doc-header">
       <div>
         <div class="doc-title">${title}</div>
-        ${subtitle ? `<div class="doc-subtitle">${subtitle}</div>` : ''}
-        ${accountId ? `<div class="doc-subtitle">معرف الحساب: ${accountId}</div>` : ''}
+        ${subtitle  ? `<div class="doc-sub">${subtitle}</div>`   : ''}
+        ${accountId ? `<div class="doc-acct">معرف الحساب: ${accountId}</div>` : ''}
       </div>
       <div class="doc-meta">
-        ${logo ? `<img class="doc-logo" src="${logo}" alt="شعار">` : ''}
-        ${periodText ? `<div class="doc-period">${periodText}</div>` : ''}
-        ${userName ? `<div class="doc-user">${userName}</div>` : ''}
+        ${logo       ? `<img class="doc-logo" src="${logo}" alt="شعار">` : ''}
+        ${periodText ? `<div class="doc-period">${periodText}</div>`      : ''}
+        ${userName   ? `<div class="doc-user">${userName}</div>`          : ''}
       </div>
     </div>
-    <table><thead>${theadHTML}</thead><tbody>${tbodyHTML}</tbody></table>
-    ${totalsLine ? `<div class="totals">${totalsLine}</div>` : ''}
+
+    <div class="table-wrap">
+      <table>
+        <thead>${theadHTML}</thead>
+        <tbody>${tbodyHTML}</tbody>
+      </table>
+      ${totalsLine ? `<div class="totals">${totalsLine}</div>` : ''}
+    </div>
+
     <div class="doc-footer">
       <span><b>نظام أبو حذيفة للصرافة والتحويلات</b></span>
       <span>طُبع: ${ts}</span>
     </div>
   </div>
+
   <script>
+    function doPdf(){
+      var tip=document.getElementById('pdf-tip');
+      tip.style.display = tip.style.display==='block' ? 'none' : 'block';
+      window.print();
+    }
     (function(){
-      var shareText = ${JSON.stringify(shareText || `${title}\n${periodText}`)};
-      var btn = document.getElementById('tb-share');
-      if (btn) btn.addEventListener('click', function(){
-        if (navigator.share) { navigator.share({ title: ${JSON.stringify(title)}, text: shareText }).catch(function(){}); }
-        else { window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText), '_blank'); }
+      var txt=${JSON.stringify(shareText || title+'\n'+periodText)};
+      var btn=document.getElementById('tb-share');
+      if(btn) btn.addEventListener('click',function(){
+        if(navigator.share){navigator.share({title:${JSON.stringify(title)},text:txt}).catch(function(){});}
+        else{window.open('https://api.whatsapp.com/send?text='+encodeURIComponent(txt),'_blank');}
       });
     })();
   <\/script>
 </body></html>`;
 
-    const w = window.open('', '_blank', 'width=920,height=760');
+    const w = window.open('', '_blank', 'width=960,height=780');
     if (!w) {
       if (window.showToast) showToast('يرجى السماح بالنوافذ المنبثقة لتفعيل الطباعة', 'warning');
       return;

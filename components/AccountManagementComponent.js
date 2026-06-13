@@ -1100,7 +1100,13 @@ const AccountManagementComponent = {
         columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
         rows: rows.map(r => [formatDateArabic(r.date), r.time, r.label,
           r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']),
-        totalsLine: totalsText.split(' | ').map(t => `<span>${t}</span>`).join(''),
+        totalsLine: isExpense
+          ? `<span>إجمالي المصروفات: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`
+          : [
+              `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
+              `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
+              `<span>${netLabelWord}: <b style="color:${net<=0?'#059669':'#dc2626'}">${fmt(Math.abs(net))} ${netNature} ر.س</b></span>`,
+            ].join(''),
         totalsText,
       };
 

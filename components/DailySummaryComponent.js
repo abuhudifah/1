@@ -585,16 +585,16 @@ const DailySummaryComponent = {
         time,
         TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
         tx.customer_name || tx.details || '—',
-        isLakum  ? amt.toLocaleString('en-US') : '—',
-        !isLakum ? amt.toLocaleString('en-US') : '—',
+        isLakum  ? amt.toLocaleString('en-US') : '0',
+        !isLakum ? amt.toLocaleString('en-US') : '0',
       ];
     });
 
     const totalsLine = [
-      `إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)}</b> ر.س`,
-      `إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)}</b> ر.س`,
-      `الصافي: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(net)} ${netSign}</b> ر.س`,
-    ].join(' &nbsp;|&nbsp; ');
+      `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
+      `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
+      `<span>الصافي: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(net)} ${netSign} ر.س</b></span>`,
+    ].join('');
 
     const shareText = [
       `📊 الملخص اليومي — ${formatDateArabic(date)}`,
