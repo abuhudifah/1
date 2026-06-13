@@ -76,11 +76,6 @@ const SyncEngine = {
         await _sleep(SYNC_CONFIG.CHUNK_DELAY_MS);
       }
 
-      // معالجة طابور المزامنة الرئيسي بعد الانتهاء
-      if (typeof SyncQueue !== 'undefined') {
-        await SyncQueue.processQueue();
-      }
-
       console.log(`✅ SyncEngine.syncAll: ${synced} ناجحة, ${failed} فاشلة من ${sorted.length}`);
       return ok({ synced, failed, total: sorted.length });
 
@@ -242,6 +237,8 @@ const SyncEngine = {
     delete cleaned.error_message;
     delete cleaned._local_only;
     delete cleaned._preEditUpdatedAt;
+    delete cleaned.local_timestamp;   // حقل محلي — غير موجود في Supabase
+    delete cleaned.device_id;         // حقل محلي — غير موجود في Supabase
     return cleaned;
   },
 

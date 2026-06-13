@@ -86,8 +86,9 @@ async function _syncPendingRecords() {
       .where('sync_status').anyOf(['pending', 'processing']).toArray();
     const queuedTables = new Set(activeQueueItems.map(item => item.table_name));
 
+    // TRANSACTIONS محذوفة — SyncEngine يملك مسار db.transactions → Supabase عبر INSERT+idempotency_key
+    // SyncService هنا يعالج فقط الجداول الأخرى عبر UPSERT
     const tablesToSync = [
-      TABLES.TRANSACTIONS,
       TABLES.FAILED_DEPOSITS,
       TABLES.DEBTORS,
       TABLES.NOTIFICATIONS,
