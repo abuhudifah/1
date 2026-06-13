@@ -41,36 +41,37 @@ BEGIN
   -- الجداول الفرعية أولاً ثم الرئيسية
   -- ─────────────────────────────────────────────────────────
 
+  -- WHERE true يتجاوز pg_safeupdate (امتداد Supabase الذي يمنع DELETE بدون WHERE)
   -- 1. دفتر الأستاذ (يشير إلى transactions)
-  DELETE FROM public.account_ledger;
+  DELETE FROM public.account_ledger              WHERE true;
 
   -- 2. الأرصدة التراكمية — PK = account_id (ليس id)
-  DELETE FROM public.account_balances;
+  DELETE FROM public.account_balances            WHERE true;
 
   -- 3. الإقفالات اليومية
-  DELETE FROM public.daily_closings;
+  DELETE FROM public.daily_closings              WHERE true;
 
   -- 4. الإيداعات الفاشلة
-  DELETE FROM public.failed_deposits;
+  DELETE FROM public.failed_deposits             WHERE true;
 
   -- 5. الإشعارات
-  DELETE FROM public.notifications;
+  DELETE FROM public.notifications               WHERE true;
 
   -- 6. سجل التدقيق
-  DELETE FROM public.audit_logs;
+  DELETE FROM public.audit_logs                  WHERE true;
 
   -- 7. طابور المزامنة — id عدد صحيح (ليس UUID)
-  DELETE FROM public.sync_queue;
+  DELETE FROM public.sync_queue                  WHERE true;
 
   -- 8. كلمات المرور المؤقتة للدخول السريع
-  DELETE FROM public.quick_login_temp_passwords;
+  DELETE FROM public.quick_login_temp_passwords  WHERE true;
 
   -- 9. المعاملات الرئيسية (آخراً لأن account_ledger يشير إليها)
-  DELETE FROM public.transactions;
+  DELETE FROM public.transactions                WHERE true;
 
   -- 10. طلبات التحويل — قد لا توجد في جميع البيئات
   BEGIN
-    DELETE FROM public.transfer_requests;
+    DELETE FROM public.transfer_requests WHERE true;
   EXCEPTION WHEN undefined_table THEN
     NULL;
   END;
