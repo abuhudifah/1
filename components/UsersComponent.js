@@ -105,7 +105,7 @@ const UsersComponent = {
       if (isOnline()) {
         const { data, error } = await supabaseClient
           .from(TABLES.USERS)
-          .select('id, username, display_name, role, is_active, allowed_tabs, last_login, created_at')
+          .select('id, username, display_name, role, is_active, allowed_tabs, last_login, created_at, allowed_companies, allowed_banks, allowed_users')
           .order('display_name', { ascending: true });
 
         if (!error && data) {
