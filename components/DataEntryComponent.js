@@ -1332,15 +1332,19 @@ const DataEntryComponent = {
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
       const colBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      const companyRecord = companyId ? (AppStore.getState('companies') || []).find(c => c.id === companyId) : null;
       await this._showResultModal({
-        title        : '✅ تم تسجيل تحصيل جديد',
-        type         : 'تحصيل',
-        amount       : rounded,
-        customer     : customer || null,
-        newDebt      : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
+        title          : '✅ تم تسجيل تحصيل جديد',
+        type           : 'تحصيل',
+        amount         : rounded,
+        customer       : customer || null,
+        newDebt        : customerId && debtorRecord ? Math.max(0, parseFloat(debtorRecord.debt_amount||0) - rounded) : null,
+        companyName    : companyRecord?.name || null,
+        companyAccount : companyRecord?.account_number || null,
+        notes          : notes || null,
         agentId,
-        date         : txData.date,
-        agentBalance : isOk(colBalRes) ? colBalRes.data : null,
+        date           : txData.date,
+        agentBalance   : isOk(colBalRes) ? colBalRes.data : null,
       });
     } else {
       showToast(`❌ ${result.error}`, 'error');
@@ -1429,7 +1433,16 @@ const DataEntryComponent = {
     if (!expenseType) { showToast('اختر نوع المصروف', 'error'); return; }
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
+    const EXPENSE_LABELS = {
+      GENERAL    : 'عام',
+      TRANSPORT  : 'مواصلات',
+      MAINTENANCE: 'صيانة',
+      SUPPLIES   : 'قرطاسية',
+    };
+    const expenseLabel = EXPENSE_LABELS[expenseType] || expenseType;
+
     const rounded = roundAmount(amount);
+    const txDate  = AppStore.getState('selectedDate') || getCurrentSaudiDate();
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     const btn     = document.getElementById('exp-save-btn');
     const restore = setButtonLoading(btn);
@@ -1438,7 +1451,7 @@ const DataEntryComponent = {
     const result  = await AccountingService.createTransactionWithEntries({
       type        : 'expense',
       amount      : rounded,
-      date        : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      date        : txDate,
       agent_id    : agentId,
       expense_type: expenseType,
       details     : details ? `${details} (نوع: ${expenseType})` : `مصروف من نوع ${expenseType}`,
@@ -1447,6 +1460,17 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ المصروف', 'success');
       this._resetForm('exp');
+      const expBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({
+        title        : '✅ تم تسجيل مصروف',
+        type         : 'مصروف',
+        amount       : rounded,
+        expenseLabel,
+        notes        : details || null,
+        agentId,
+        date         : txDate,
+        agentBalance : isOk(expBalRes) ? expBalRes.data : null,
+      });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1463,10 +1487,15 @@ const DataEntryComponent = {
       const recipientName = recipient?.display_name || 'المستخدم الآخر';
 
       if (saveBeneficiary && mode === 'transfer') {
-        const addResult = await AppStore.addBeneficiary(myUserId, recipientId);
-        if (isOk(addResult)) {
+        try {
+          await repo.create(TABLES.USER_BENEFICIARIES, {
+            user_id          : myUserId,
+            beneficiary_id   : recipientId,
+            beneficiary_type : 'user',
+            beneficiary_name : recipientName,
+          });
           console.log('تم حفظ المستفيد بنجاح');
-        }
+        } catch (_e) { /* حفظ المستفيد غير حرج — لا يوقف العملية */ }
       }
 
       const txDate = AppStore.getState('selectedDate') || getCurrentSaudiDate();
@@ -1478,31 +1507,38 @@ const DataEntryComponent = {
       if (!confirmed) return;
 
       if (mode === 'transfer') {
+        // تحويل مباشر: خصم فوري من المرسل وإيداع فوري للمستقبل — بلا موافقة إدارية
         const txData = {
-          type: 'receipt',
-          amount: amount,
-          date: txDate,
-          agent_id: myUserId,
-          from_agent_id: myUserId,
-          to_agent_id: recipientId,
-          details: `تحويل مباشر من ${myName} إلى ${recipientName}`,
-          approval_status: 'pending',
+          type           : TRANSACTION_TYPES.DELIVERY,
+          amount         : amount,
+          date           : txDate,
+          agent_id       : myUserId,        // المرسل — ينقص رصيده
+          to_agent_id    : recipientId,     // المستقبل — يزيد رصيده
+          from_agent_id  : myUserId,
+          details        : reason || null,
+          _sender_name   : myName,
+          _receiver_name : recipientName,
+          approval_status: APPROVAL_STATUS.APPROVED,
         };
         const result = await AccountingService.createTransactionWithEntries(txData);
         if (!isOk(result)) throw new Error(result.error);
 
+        const txStatus = result.data.pending ? 'بانتظار المزامنة' : 'مكتملة';
+        console.log(`[Transfer] تحويل مباشر | المرسل: ${myName} → المستقبل: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: ${txStatus}`);
+
+        // إشعار معلوماتي للمستقبل (بلا أزرار موافقة — العملية فورية)
         const notifData = {
-          title: '💰 طلب تحويل وارد',
-          body: `${myName} قام بتحويل ${formatCurrency(amount)} إليك. اضغط قبول لإضافتها إلى رصيدك.`,
-          type: 'info',
-          target: JSON.stringify([recipientId]),
-          metadata: { transaction_id: result.data.transaction.id, type: 'transfer_approval', amount: amount },
+          title    : '💰 تحويل مباشر وارد',
+          body     : `قام ${myName} بتحويل ${formatCurrency(amount)} إلى حسابك مباشرةً. العملية ${txStatus}.`,
+          type     : 'success',
+          target   : JSON.stringify([recipientId]),
+          metadata : { transaction_id: result.data.transaction.id, type: 'direct_transfer', amount },
           sender_id: myUserId,
-          read_by: '[]',
+          read_by  : '[]',
           hidden_by: '[]',
         };
         await repo.create(TABLES.NOTIFICATIONS, notifData);
-        showToast(`✅ تم إرسال طلب التحويل إلى ${recipientName}. بانتظار الموافقة.`, 'success');
+        showToast(`✅ تم التحويل المباشر إلى ${recipientName}. العملية ${txStatus}.`, 'success');
       } 
       else {
         const requestData = {
@@ -1528,6 +1564,7 @@ const DataEntryComponent = {
           hidden_by: '[]',
         };
         await repo.create(TABLES.NOTIFICATIONS, notifData);
+        console.log(`[Transfer] طلب أموال | الطالب: ${myName} → المطلوب منه: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: بانتظار الموافقة`);
         showToast(`✅ تم إرسال طلب الأموال إلى ${recipientName}. بانتظار الموافقة.`, 'success');
       }
 
@@ -1599,8 +1636,12 @@ const DataEntryComponent = {
     lines.push(`💰 المبلغ: ${formatCurrency(data.amount)}`);
     if (data.customer) lines.push(`👤 العميل: ${data.customer}`);
     if (data.newDebt !== null && data.newDebt !== undefined) lines.push(`💰 الرصيد المتبقي عند العميل: ${formatCurrency(data.newDebt)}`);
+    if (data.companyName) lines.push(`🏢 الشركة: ${data.companyName}`);
+    if (data.companyAccount) lines.push(`🔢 رقم الحساب: ${data.companyAccount}`);
+    if (data.expenseLabel) lines.push(`🗂️ فئة المصروف: ${data.expenseLabel}`);
     if (data.bankName) lines.push(`🏦 الحساب البنكي: ${data.bankName}`);
     if (data.ceilingRemain !== undefined && data.ceilingRemain !== null) lines.push(`🏦 المتبقي من السقف المالي: ${formatCurrency(data.ceilingRemain)}`);
+    if (data.notes) lines.push(`📝 الملاحظات: ${data.notes}`);
     lines.push(`📅 التاريخ: ${data.date}`);
     lines.push(`⏰ الوقت: ${timeStr}`);
     lines.push(`👤 المندوب: ${agentNm}`);

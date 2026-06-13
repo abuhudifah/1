@@ -75,17 +75,39 @@ const NotificationsComponent = {
       const text     = n.message || n.body || '';
       const isShare  = n.type === 'account_share';
 
+      // استخراج metadata للإشعارات التفاعلية
+      let meta = {};
+      try { meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {}); } catch { meta = {}; }
+      const isTransferApproval = meta.type === 'transfer_approval';
+      const isTransferRequest  = meta.type === 'transfer_request';
+      const isActionPending    = (isTransferApproval || isTransferRequest) && !isRead;
+
       const card = document.createElement('div');
       card.className = 'glass-card';
-      card.style.cssText = `padding:14px 16px;border-right:4px solid var(--${color});opacity:${isRead ? '0.7' : '1'};`;
+      card.style.cssText = `padding:14px 16px;border-right:4px solid var(--${isActionPending ? 'warning' : color});opacity:${isRead ? '0.7' : '1'};`;
 
       card.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:10px;">
-          <span style="font-size:1.2rem;flex-shrink:0;">${typeIcons[n.type] || 'ℹ️'}</span>
+          <span style="font-size:1.2rem;flex-shrink:0;">${isTransferApproval ? '💸' : isTransferRequest ? '📨' : (typeIcons[n.type] || 'ℹ️')}</span>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:${isRead ? '500' : '700'};margin-bottom:4px;">${escapeHtml(n.title)}</div>
             <div style="font-size:0.88rem;color:var(--text-secondary);white-space:pre-line;">${escapeHtml(text)}</div>
             ${isShare ? `<button class="notif-open-deposit-btn btn btn-primary btn-sm" data-notif-id="${escapeHtml(n.id)}" style="margin-top:8px;">📋 فتح نموذج الإيداع</button>` : ''}
+            ${isActionPending ? `
+              <div class="notif-action-row" style="display:flex;gap:8px;margin-top:10px;" data-notif-id="${escapeHtml(n.id)}">
+                <button class="btn btn-primary btn-sm notif-accept-btn" style="flex:1;"
+                  data-meta-type="${escapeHtml(meta.type || '')}"
+                  data-transaction-id="${escapeHtml(meta.transaction_id || '')}"
+                  data-request-id="${escapeHtml(meta.request_id || '')}">
+                  ✅ قبول
+                </button>
+                <button class="btn btn-secondary btn-sm notif-reject-btn" style="flex:1;color:var(--danger);"
+                  data-meta-type="${escapeHtml(meta.type || '')}"
+                  data-transaction-id="${escapeHtml(meta.transaction_id || '')}"
+                  data-request-id="${escapeHtml(meta.request_id || '')}">
+                  ❌ رفض
+                </button>
+              </div>` : ''}
             <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;">${timeAgo(n.created_at)}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0;">
@@ -115,6 +137,20 @@ const NotificationsComponent = {
       btn.addEventListener('click', () => {
         const notif = notifs.find(n => n.id === btn.dataset.notifId);
         if (notif) this._handleNotificationClick(notif);
+      });
+    });
+    listEl.querySelectorAll('.notif-accept-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const row    = btn.closest('.notif-action-row');
+        const notifId = row?.dataset.notifId;
+        await this._handleTransferAction('accept', btn.dataset, notifId);
+      });
+    });
+    listEl.querySelectorAll('.notif-reject-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const row    = btn.closest('.notif-action-row');
+        const notifId = row?.dataset.notifId;
+        await this._handleTransferAction('reject', btn.dataset, notifId);
       });
     });
 
@@ -371,6 +407,49 @@ const NotificationsComponent = {
       await this._load();
     } else {
       errEl.textContent = result.error;
+    }
+  },
+
+  /* ── معالجة أزرار قبول/رفض طلبات التحويل ── */
+  async _handleTransferAction(action, btnData, notifId) {
+    const { metaType, transactionId, requestId } = btnData;
+
+    const label = action === 'accept' ? 'قبول' : 'رفض';
+    const confirmed = await confirmDialog(
+      `هل أنت متأكد من ${label} هذا الطلب؟`,
+      label, 'إلغاء', 'warning'
+    );
+    if (!confirmed) return;
+
+    let result;
+
+    if (metaType === 'transfer_request' && requestId) {
+      // طلب أموال: الطرف المطلوب منه يوافق أو يرفض
+      if (action === 'accept') {
+        result = await AccountingService.createTransferFromRequest(requestId);
+      } else {
+        result = await repo.update(TABLES.TRANSFER_REQUESTS, requestId, {
+          status    : 'rejected',
+          updated_at: new Date().toISOString(),
+        });
+      }
+    } else if (metaType === 'transfer_approval' && transactionId) {
+      // تحويل قديم بانتظار موافقة (backward compat)
+      result = action === 'accept'
+        ? await AccountingService.approveTransaction(transactionId)
+        : await AccountingService.rejectTransaction(transactionId);
+    } else {
+      showToast('لا يمكن تحديد نوع الطلب', 'error');
+      return;
+    }
+
+    if (isOk(result)) {
+      showToast(action === 'accept' ? '✅ تم القبول بنجاح' : '✅ تم الرفض', 'success');
+      if (notifId) await this._markRead(notifId);
+      await AppStore.refreshData();
+      await this._load();
+    } else {
+      showToast(`❌ ${result.error}`, 'error');
     }
   },
 };

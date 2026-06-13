@@ -180,21 +180,30 @@ const DailySummaryComponent = {
 
     await AppStore.refreshTransactions(date, agentId);
 
-    let opening = 0;
+    // الرصيد الفعلي الحالي (يشمل عمليات اليوم — يُستخدم كـ closing)
+    let currentBalance = 0;
     if (agentId) {
       const bal = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      if (isOk(bal)) opening = bal.data;
+      if (isOk(bal)) currentBalance = bal.data;
+    } else if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
+      // إجمالي المناديب: جمع أرصدة جميع المناديب النشطين
+      const allAgents = AppStore.getState('users').filter(u => u.role === ROLES.AGENT && u.is_active);
+      if (allAgents.length) {
+        const results = await Promise.all(
+          allAgents.map(a => AccountingService.getAccountBalance(AccountingService.AccountId.agent(a.id)))
+        );
+        currentBalance = results.reduce((sum, r) => sum + (isOk(r) ? r.data : 0), 0);
+      }
     }
 
-    this._renderStats(opening, agentId);
+    this._renderStats(currentBalance, agentId);
     this._renderTransactionsList();
   },
 
-  _renderStats(opening = 0, agentId = null) {
+  _renderStats(currentBalance = 0, agentId = null) {
     const el = document.getElementById('summary-stats');
     if (!el) return;
 
-    // إخفاء عنصر الرصيد الافتتاحي المنفصل (مدمج الآن في الشبكة)
     const openingEl = document.getElementById('summary-opening');
     if (openingEl) openingEl.style.display = 'none';
 
@@ -208,16 +217,21 @@ const DailySummaryComponent = {
       }
     });
 
-    // الرصيد المتبقي الفعلي = السابق + واردات − صادرات
-    const closing = opening + s.collection + s.receipt + s.bank_withdrawal
-                            - s.deposit  - s.expense  - s.delivery;
+    // صافي حركة اليوم
+    const todayNet = s.collection + s.receipt + s.bank_withdrawal
+                   - s.deposit   - s.expense  - s.delivery;
+
+    // الرصيد الفعلي في الصندوق = currentBalance (يشمل اليوم بالفعل)
+    const closing = currentBalance;
+    // رصيد بداية اليوم = الرصيد الحالي − صافي اليوم
+    const opening = currentBalance - todayNet;
 
     const agentName = agentId
       ? (AppStore.getState('users').find(u => u.id === agentId)?.display_name || '')
       : null;
 
     const kpis = [
-      // البطاقة الأولى: الرصيد السابق
+      // البطاقة الأولى: الرصيد السابق (بداية اليوم)
       { label:'الرصيد السابق',                value:opening,           icon:'🏦', cls:'kpi-accent',
         subtitle: agentName || 'إجمالي المناديب', count:null, highlight:'var(--accent)' },
       // أنواع العمليات
@@ -419,19 +433,34 @@ const DailySummaryComponent = {
   },
 
   async _exportDailyExcel() {
-    const txs  = AppStore.getState('transactions');
-    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const txs      = AppStore.getState('transactions').filter(t => !t.is_reversed);
+    const date     = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const agentId  = AuthService.isAgent()
+      ? AuthService.getCurrentUserId()
+      : (AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId());
+    const user     = AppStore.getState('users').find(u => u.id === agentId) || AuthService.getCurrentUser();
 
-    const headers = ['#', 'التاريخ', 'الوقت', 'النوع', 'المبلغ (ر.س)', 'العميل / التفاصيل', 'الحالة'];
-    const rows = txs.map((tx, i) => [
-      i + 1,
-      tx.date || '—',
-      tx.time ? tx.time.substring(0, 5) : '—',
-      TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
-      Math.round(parseFloat(tx.amount || 0)),
-      tx.customer_name || tx.details || '—',
-      tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن'),
-    ]);
+    // نفس الدالة المشتركة المستخدمة في طباعة PDF
+    const pd = PrintService.buildStatementPrintData(txs, {
+      date      : formatDateArabic(date),
+      userName  : user?.display_name || '',
+      companies : AppStore.getState('companies')    || [],
+      banks     : AppStore.getState('bankAccounts') || [],
+      users     : AppStore.getState('users')        || [],
+    });
+
+    // إضافة عمود الحالة (للـ Excel فقط) وصف الإجماليات
+    const headers = [...pd.columns, 'الحالة'];
+    const allTxs  = AppStore.getState('transactions');
+    const rows    = allTxs.map((tx, i) => {
+      const base = pd.rows[i] || ['—','—','—','—','—','—'];
+      const status = tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن');
+      return [...base, status];
+    });
+    const fmt = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+    rows.push(['الإجمالي', '', `${txs.length} عملية`,
+      `لكم: ${fmt(pd.totalLakum)}`, `عليكم: ${fmt(pd.totalAlaykum)}`,
+      `الصافي: ${fmt(pd.net)} ${pd.netSign}`, '']);
 
     const btn = document.querySelector('[data-lucide="table-2"]')?.closest('button');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
@@ -547,46 +576,34 @@ const DailySummaryComponent = {
   },
 
   _printSummary() {
-    const txs  = AppStore.getState('transactions').filter(t => !t.is_reversed);
-    const date = AppStore.getState('selectedDate') || getCurrentSaudiDate();
-    const user = AuthService.getCurrentUser();
-    const logo = AppStore.getState('logoUrl') || '';
-    const s    = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
-    txs.forEach(tx => { if (s.hasOwnProperty(tx.type)) s[tx.type] += Math.round(parseFloat(tx.amount || 0)); });
-    const net   = s.collection + s.receipt + s.bank_withdrawal - s.deposit - s.expense - s.delivery;
-    const total = Math.round(txs.reduce((acc, t) => acc + parseFloat(t.amount || 0), 0));
+    const txs      = AppStore.getState('transactions').filter(t => !t.is_reversed);
+    const date     = AppStore.getState('selectedDate') || getCurrentSaudiDate();
+    const logo     = AppStore.getState('logoUrl') || '';
+    const agentId  = AuthService.isAgent()
+      ? AuthService.getCurrentUserId()
+      : (AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId());
+    const user     = AppStore.getState('users').find(u => u.id === agentId) || AuthService.getCurrentUser();
+    const userName = user?.display_name || '';
 
-    const tableHTML = PrintService.buildTable(
-      ['#', 'النوع', 'المبلغ (ر.س)', 'التفاصيل', 'الوقت'],
-      txs.map((tx, i) => [
-        i + 1,
-        TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
-        Math.round(parseFloat(tx.amount || 0)).toLocaleString('en-US'),
-        tx.customer_name || tx.details || '—',
-        tx.created_at
-          ? new Date(tx.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' })
-          : '—',
-      ]),
-      [`الإجمالي (${txs.length} عملية)`, '', total.toLocaleString('en-US'), '', ''],
-    );
+    // الدالة المشتركة مع كشف الحساب — نفس الأعمدة والترتيب والمنطق
+    const pd = PrintService.buildStatementPrintData(txs, {
+      date      : formatDateArabic(date),
+      userName,
+      companies : AppStore.getState('companies')    || [],
+      banks     : AppStore.getState('bankAccounts') || [],
+      users     : AppStore.getState('users')        || [],
+    });
 
-    PrintService.print({
-      title    : 'الملخص اليومي',
-      subtitle : 'نظام أبو حذيفة للصرافة والتحويلات',
-      date     : formatDateArabic(date),
-      userName : user?.display_name || '',
+    PrintService.printStatementAdvanced({
+      title      : `الملخص اليومي — ${userName}`,
+      subtitle   : 'نظام أبو حذيفة للصرافة والتحويلات',
+      periodText : formatDateArabic(date),
+      userName,
       logo,
-      statsCards: [
-        { label:'📥 التحصيلات',  value:`+${s.collection.toLocaleString('en-US')} ر.س`, color:'#059669' },
-        { label:'🏦 الإيداعات',   value:`−${s.deposit.toLocaleString('en-US')} ر.س`,   color:'#0284c7' },
-        { label:'💳 السحب البنكي', value:`+${s.bank_withdrawal.toLocaleString('en-US')} ر.س`, color:'#0284c7' },
-        { label:'💸 المصروفات',   value:`−${s.expense.toLocaleString('en-US')} ر.س`,   color:'#dc2626' },
-        { label:'📥 الحوالات الواردة',  value:`+${s.receipt.toLocaleString('en-US')} ر.س`,  color:'#0284c7' },
-        { label:'📤 الحوالات الصادرة', value:`−${s.delivery.toLocaleString('en-US')} ر.س`, color:'#dc2626' },
-        { label:'💰 الرصيد الفعلي',    value:`${net>=0?'+':'−'}${Math.abs(net).toLocaleString('en-US')} ر.س`, color: net>=0?'#059669':'#dc2626' },
-      ],
-      tableHTML,
-      footerExtra: user?.display_name || '',
+      columns    : pd.columns,
+      rows       : pd.rows,
+      totalsLine : pd.totalsLine,
+      shareText  : pd.shareText,
     });
   },
 
