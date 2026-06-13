@@ -58,6 +58,9 @@ const ProfileSettingsComponent = {
     // ── بطاقة الدخول السريع ──
     wrap.appendChild(this._buildQuickLoginCard(user));
 
+    // ── بطاقة المصادقة بدون إنترنت ──
+    wrap.appendChild(this._buildOfflineAuthCard(user));
+
     // ── بطاقة الأجهزة النشطة ──
     wrap.appendChild(this._buildActiveDevicesCard(user));
 
@@ -65,6 +68,7 @@ const ProfileSettingsComponent = {
 
     this._bindEvents(user);
     this._bindDeviceEvents(user);
+    this._bindOfflineAuthEvents(user);
     if (window.lucide) lucide.createIcons();
   },
 
@@ -555,6 +559,175 @@ const ProfileSettingsComponent = {
     } else {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="zap-off" style="width:13px;height:13px;"></i> إزالة الدخول السريع'; }
       showToast(`فشل الإزالة: ${result.error}`, 'error');
+      if (window.lucide) lucide.createIcons();
+    }
+  },
+
+  // ────────────────────────────────────────────────────────
+  // بطاقة المصادقة بدون إنترنت (PIN + البصمة أو Face ID)
+  // ────────────────────────────────────────────────────────
+  _buildOfflineAuthCard(user) {
+    const session    = OfflineAuthService.getOfflineSession(user.id);
+    const hasPin     = !!session?.hasPin;
+    const hasWebAuthn= !!session?.hasWebAuthn;
+    const supportsWA = !!window.PublicKeyCredential;
+
+    const card = this._card('🔒 الدخول بدون إنترنت');
+    card.setAttribute('data-psc-offline-card', '');
+
+    card.innerHTML += `
+      <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
+        أدخل بدون اتصال بالإنترنت عبر PIN أو البصمة أو Face ID.
+      </p>
+
+      <!-- PIN -->
+      <div style="padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);
+        border-radius:10px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;">
+            <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">PIN الدخول بدون إنترنت</div>
+            <div style="font-size:.76rem;margin-top:2px;color:${hasPin ? '#16a34a' : 'var(--text-muted)'};">
+              ${hasPin ? '✅ مفعّل على هذا الجهاز' : 'غير مفعّل'}
+            </div>
+          </div>
+          ${!hasPin ? `
+          <button id="psc-pin-enable" class="btn btn-primary btn-sm" style="white-space:nowrap;">
+            تفعيل PIN الدخول بدون إنترنت
+          </button>` : `
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="psc-pin-change" class="btn btn-sm"
+              style="background:rgba(99,102,241,.1);color:#6366f1;border:1px solid rgba(99,102,241,.3);">
+              تغيير PIN
+            </button>
+            <button id="psc-pin-delete" class="btn btn-sm"
+              style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);">
+              حذف PIN
+            </button>
+          </div>`}
+        </div>
+      </div>
+
+      <!-- البصمة أو Face ID -->
+      <div style="padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);
+        border-radius:10px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;">
+            <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">البصمة أو Face ID</div>
+            <div style="font-size:.76rem;margin-top:2px;color:${hasWebAuthn ? '#16a34a' : 'var(--text-muted)'};">
+              ${hasWebAuthn ? '✅ مفعّل على هذا الجهاز' : 'غير مفعّل'}
+            </div>
+          </div>
+          ${!hasWebAuthn && supportsWA ? `
+          <button id="psc-webauthn-enable" class="btn btn-primary btn-sm" style="white-space:nowrap;">
+            تفعيل البصمة أو Face ID
+          </button>` : ''}
+          ${hasWebAuthn ? `
+          <button id="psc-webauthn-disable" class="btn btn-sm"
+            style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);white-space:nowrap;">
+            إلغاء البصمة أو Face ID
+          </button>` : ''}
+          ${!hasWebAuthn && !supportsWA ? `
+          <span style="font-size:.75rem;color:var(--text-muted);">غير مدعوم في هذا المتصفح</span>` : ''}
+        </div>
+      </div>`;
+
+    return card;
+  },
+
+  // ────────────────────────────────────────────────────────
+  // _bindOfflineAuthEvents
+  // ────────────────────────────────────────────────────────
+  _bindOfflineAuthEvents(user) {
+    // تفعيل PIN
+    document.getElementById('psc-pin-enable')?.addEventListener('click', async () => {
+      const pin = await PinDialog.showCreate({ minLength: 6, maxLength: 6, userId: user.id });
+      if (!pin) return;
+      const res = await OfflineAuthService.createOfflineSession(user.id, pin);
+      if (isOk(res)) {
+        showToast('✅ تم تفعيل PIN الدخول بدون إنترنت', 'success');
+      } else {
+        showToast(res.error || 'فشل تفعيل PIN', 'error');
+      }
+      this._rerenderOfflineCard(user);
+    });
+
+    // تغيير PIN
+    document.getElementById('psc-pin-change')?.addEventListener('click', async () => {
+      const oldPin = await PinDialog.show({ title: 'أدخل PIN الحالي', minLength: 6, maxLength: 6, userId: user.id });
+      if (!oldPin) return;
+      const verify = await OfflineAuthService.verifyOfflineSession(user.id, oldPin);
+      if (!isOk(verify)) {
+        showToast(verify.error || 'PIN غير صحيح', 'error');
+        return;
+      }
+      const newPin = await PinDialog.showCreate({ minLength: 6, maxLength: 6, userId: user.id });
+      if (!newPin) return;
+      const res = await OfflineAuthService.createOfflineSession(user.id, newPin);
+      if (isOk(res)) {
+        showToast('✅ تم تغيير PIN بنجاح', 'success');
+      } else {
+        showToast(res.error || 'فشل تغيير PIN', 'error');
+      }
+      this._rerenderOfflineCard(user);
+    });
+
+    // حذف PIN
+    document.getElementById('psc-pin-delete')?.addEventListener('click', async () => {
+      const confirmed = await confirmDialog(
+        'حذف PIN الدخول بدون إنترنت؟\n\nلن تتمكن من الدخول بدون إنترنت حتى تُفعّله مجدداً.',
+        'حذف', 'إلغاء', 'danger'
+      );
+      if (!confirmed) return;
+      const res = await OfflineAuthService.endOfflineSession(user.id);
+      if (isOk(res)) {
+        showToast('✅ تم حذف PIN الدخول بدون إنترنت', 'success');
+      } else {
+        showToast(res.error || 'فشل حذف PIN', 'error');
+      }
+      this._rerenderOfflineCard(user);
+    });
+
+    // تفعيل البصمة أو Face ID
+    document.getElementById('psc-webauthn-enable')?.addEventListener('click', async () => {
+      const res = await OfflineAuthService.enableWebAuthn(user.id);
+      if (isOk(res)) {
+        showToast('✅ تم تفعيل البصمة أو Face ID', 'success');
+      } else {
+        showToast(res.error || 'فشل تفعيل البصمة أو Face ID', 'error');
+      }
+      this._rerenderOfflineCard(user);
+    });
+
+    // إلغاء البصمة أو Face ID
+    document.getElementById('psc-webauthn-disable')?.addEventListener('click', async () => {
+      const confirmed = await confirmDialog(
+        'إلغاء البصمة أو Face ID؟\n\nيمكنك إعادة تفعيلها لاحقاً.',
+        'إلغاء التفعيل', 'رجوع', 'danger'
+      );
+      if (!confirmed) return;
+      try {
+        const raw = localStorage.getItem(`ahu_offline_session_${user.id}`);
+        if (raw) {
+          const session = JSON.parse(raw);
+          session.hasWebAuthn = false;
+          localStorage.setItem(`ahu_offline_session_${user.id}`, JSON.stringify(session));
+        }
+      } catch { /* تجاهل */ }
+      showToast('✅ تم إلغاء البصمة أو Face ID', 'success');
+      this._rerenderOfflineCard(user);
+    });
+  },
+
+  // ────────────────────────────────────────────────────────
+  // _rerenderOfflineCard — إعادة رسم بطاقة المصادقة بدون إنترنت
+  // ────────────────────────────────────────────────────────
+  _rerenderOfflineCard(user) {
+    const card = document.querySelector('[data-psc-offline-card]');
+    if (card) {
+      const newCard = this._buildOfflineAuthCard(user);
+      newCard.setAttribute('data-psc-offline-card', '');
+      card.replaceWith(newCard);
+      this._bindOfflineAuthEvents(user);
       if (window.lucide) lucide.createIcons();
     }
   },

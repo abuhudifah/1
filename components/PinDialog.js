@@ -292,6 +292,11 @@ function _pinRender() {
       <div class="pin-dots" id="pin-dots-row" aria-live="polite" aria-label="خانات PIN">
         ${_renderDots()}
       </div>
+      ${_pinMode === 'create' ? `
+      <div id="pin-strength-bar" style="width:100%;display:none;">
+        <div id="pin-strength-fill" style="height:4px;border-radius:2px;transition:all 0.2s;"></div>
+        <div id="pin-strength-label" style="font-size:11px;text-align:center;margin-top:4px;"></div>
+      </div>` : ''}
       <div class="pin-error"    id="pin-error-msg" role="alert" aria-live="assertive"></div>
       <div class="pin-attempts" id="pin-attempts-msg"></div>
       <div class="pin-keypad"   id="pin-keypad"></div>
@@ -348,6 +353,76 @@ function _buildKeypad(container) {
 }
 
 // ============================================================
+// PIN Strength
+// ============================================================
+
+function _pinStrength(pin) {
+  const digits = String(pin);
+  const unique = new Set(digits.split('')).size;
+
+  // مستوى 0: ضعيف جداً — أرقام متماثلة، تسلسل تصاعدي أو تنازلي
+  if (unique === 1) {
+    return { level: 0, label: 'ضعيف جداً', color: '#ef4444', weak: true };
+  }
+  const ascending  = '0123456789';
+  const descending = '9876543210';
+  if (ascending.includes(digits) || descending.includes(digits)) {
+    return { level: 0, label: 'ضعيف جداً', color: '#ef4444', weak: true };
+  }
+
+  // مستوى 1: ضعيف — نمط متكرر (النصف الأول = النصف الثاني) أو رقمان فقط
+  if (digits.length % 2 === 0) {
+    const half = digits.length / 2;
+    if (digits.slice(0, half) === digits.slice(half)) {
+      return { level: 1, label: 'ضعيف', color: '#f97316', weak: true };
+    }
+  }
+  if (unique <= 2) {
+    return { level: 1, label: 'ضعيف', color: '#f97316', weak: true };
+  }
+
+  // مستوى 2: متوسط — 3-4 أرقام مميزة
+  if (unique <= 4) {
+    return { level: 2, label: 'متوسط', color: '#3b82f6', weak: false };
+  }
+
+  // مستوى 3: قوي — 5+ أرقام مميزة
+  return { level: 3, label: 'قوي', color: '#22c55e', weak: false };
+}
+
+function _pinUpdateStrength() {
+  const bar = document.getElementById('pin-strength-bar');
+  if (!bar) return;
+
+  // إخفاء في وضع التحقق أو في خطوة التأكيد
+  if (_pinMode !== 'create' || _pinFirst !== null) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  bar.style.display = 'block';
+  const fill  = document.getElementById('pin-strength-fill');
+  const label = document.getElementById('pin-strength-label');
+
+  if (!_pinValue) {
+    if (fill)  { fill.style.width = '0%'; fill.style.background = 'transparent'; }
+    if (label) label.textContent = '';
+    return;
+  }
+
+  const s = _pinStrength(_pinValue);
+  const widths = ['25%', '50%', '75%', '100%'];
+  if (fill) {
+    fill.style.width      = widths[s.level] || '0%';
+    fill.style.background = s.color;
+  }
+  if (label) {
+    label.style.color   = s.color;
+    label.textContent   = s.label;
+  }
+}
+
+// ============================================================
 // دوال التحديث الديناميكي
 // ============================================================
 
@@ -357,6 +432,7 @@ function _pinUpdateDots() {
     if (!dot) continue;
     dot.classList.toggle('filled', i < _pinValue.length);
   }
+  if (_pinMode === 'create') _pinUpdateStrength();
 }
 
 function _pinShowError(msg) {
@@ -459,7 +535,7 @@ const PinDialog = {
       _pinMode     = 'create';
       _pinFirst    = null;
       _pinValue    = '';
-      _pinMin      = opts.minLength || 4;
+      _pinMin      = opts.minLength || 6;
       _pinMax      = opts.maxLength || 6;
       _pinUserId   = opts.userId   || null;
       _pinTitle    = 'إنشاء PIN جديد';
@@ -498,6 +574,12 @@ const PinDialog = {
 
     if (_pinMode === 'create') {
       if (_pinFirst === null) {
+        // فحص قوة PIN قبل المتابعة
+        const strength = _pinStrength(_pinValue);
+        if (strength.weak) {
+          _pinShowError('اختر PIN أصعب: تجنّب الأرقام المتشابهة والتسلسلات البسيطة');
+          return;
+        }
         // الخطوة الأولى: حفظ PIN والطلب بالتأكيد
         _pinFirst    = _pinValue;
         _pinValue    = '';

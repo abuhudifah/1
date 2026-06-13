@@ -34,13 +34,41 @@ function _pinBfWrite(userId, data) {
   } catch { /* sessionStorage ممتلئة: نتجاهل بأمان */ }
 }
 
+// ============================================================
+// Brute Force Protection — PIN (localStorage — permanent lock)
+// ============================================================
+
+const _PIN_LS_BF_PREFIX = 'ahu_pin_lsbf_';
+
+function _pinLsBfRead(userId) {
+  try { return JSON.parse(localStorage.getItem(_PIN_LS_BF_PREFIX + userId) || 'null'); }
+  catch { return null; }
+}
+
+function _pinLsBfWrite(userId, data) {
+  try { localStorage.setItem(_PIN_LS_BF_PREFIX + userId, JSON.stringify(data)); }
+  catch { }
+}
+
+function _resetPinLsAttempts(userId) {
+  try { localStorage.removeItem(_PIN_LS_BF_PREFIX + userId); }
+  catch { }
+}
+
 function _resetPinAttempts(userId) {
   try {
     sessionStorage.removeItem(_PIN_BF_PREFIX + userId);
   } catch { /* تجاهل */ }
+  _resetPinLsAttempts(userId);
 }
 
 function _checkPinBruteForce(userId) {
+  // فحص القفل الدائم في localStorage أولاً
+  const ls = _pinLsBfRead(userId);
+  if (ls && ls.lockedUntil && ls.lockedUntil > Date.now()) {
+    return err('تم قفل الدخول نهائياً بعد 10 محاولات فاشلة. تواصل مع المسؤول.');
+  }
+
   const r = _pinBfRead(userId);
   if (!r) return ok(true);
 
@@ -63,8 +91,15 @@ function _recordPinFailure(userId) {
   r.count++;
   r.lastAttempt = now;
 
-  if (r.count >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS) {
-    r.lockedUntil = now + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
+  if (r.count >= 10) {
+    // قفل دائم في localStorage
+    _pinLsBfWrite(userId, { lockedUntil: Date.now() + 100 * 365 * 24 * 60 * 60 * 1000 });
+    console.warn(`[OfflineAuth] قُفل الدخول نهائياً للمستخدم ${userId} بعد ${r.count} محاولات فاشلة`);
+  } else if (r.count >= 5) {
+    r.lockedUntil = now + 15 * 60 * 1000;
+    console.warn(`[OfflineAuth] قُفل الدخول للمستخدم ${userId} بعد ${r.count} محاولات فاشلة`);
+  } else if (r.count >= 3) {
+    r.lockedUntil = now + 5 * 60 * 1000;
     console.warn(`[OfflineAuth] قُفل الدخول للمستخدم ${userId} بعد ${r.count} محاولات فاشلة`);
   }
 
@@ -74,8 +109,8 @@ function _recordPinFailure(userId) {
 /** يُعيد عدد المحاولات المتبقية قبل القفل (للعرض في UI) */
 function _remainingPinAttempts(userId) {
   const r = _pinBfRead(userId);
-  if (!r) return SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS;
-  return Math.max(0, SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS - (r.count || 0));
+  if (!r) return 10;
+  return Math.max(0, 10 - (r.count || 0));
 }
 
 // ============================================================
@@ -331,10 +366,10 @@ const OfflineAuthService = {
    */
   async enableWebAuthn(userId) {
     if (!window.PublicKeyCredential) {
-      return err('المتصفح لا يدعم WebAuthn / Passkeys');
+      return err('المتصفح لا يدعم البصمة أو Face ID');
     }
     if (!isOnline() || !window.AuthState?.authUser) {
-      return err('تفعيل WebAuthn يتطلب اتصالاً بالإنترنت وجلسة نشطة');
+      return err('تفعيل البصمة أو Face ID يتطلب اتصالاً بالإنترنت وجلسة نشطة');
     }
 
     try {
@@ -375,7 +410,7 @@ const OfflineAuthService = {
         p_credential_id : credId,
       });
 
-      if (saveError) return err('فشل حفظ بيانات WebAuthn: ' + saveError.message);
+      if (saveError) return err('فشل حفظ بيانات البصمة أو Face ID: ' + saveError.message);
 
       // تحديث Dexie
       if (typeof db !== 'undefined' && db.isOpen()) {
@@ -403,7 +438,7 @@ const OfflineAuthService = {
       if (e.name === 'NotAllowedError') {
         return err('تم رفض طلب التحقق بالبصمة');
       }
-      return err('خطأ في تفعيل WebAuthn: ' + e.message);
+      return err('خطأ في تفعيل البصمة أو Face ID: ' + e.message);
     }
   },
 
@@ -420,7 +455,7 @@ const OfflineAuthService = {
    */
   async verifyWithWebAuthn(userId) {
     if (!window.PublicKeyCredential) {
-      return err('المتصفح لا يدعم WebAuthn / Passkeys');
+      return err('المتصفح لا يدعم البصمة أو Face ID');
     }
 
     // فحص Brute Force
@@ -440,7 +475,7 @@ const OfflineAuthService = {
     }
 
     if (!credentialId) {
-      return err('لم يتم تفعيل WebAuthn على هذا الجهاز. استخدم PIN بدلاً من ذلك.');
+      return err('لم يتم تفعيل البصمة أو Face ID على هذا الجهاز. استخدم PIN بدلاً من ذلك.');
     }
 
     try {
@@ -470,7 +505,7 @@ const OfflineAuthService = {
         _recordPinFailure(userId);
         return err('تم رفض طلب التحقق بالبصمة أو انتهت المهلة');
       }
-      return err('خطأ في WebAuthn: ' + e.message);
+      return err('خطأ في البصمة أو Face ID: ' + e.message);
     }
   },
 
