@@ -225,11 +225,10 @@ async function enableQuickLogin(equation) {
     if (!password) return err('تم إلغاء تفعيل الدخول السريع');
 
     const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
-      email   : AuthState.currentUser.username,
+      email   : AuthState.authUser?.email || AuthState.currentUser.username,
       password,
     });
     if (verifyError) {
-      PasswordDialog.showError('كلمة المرور غير صحيحة');
       return err('كلمة المرور غير صحيحة. فشل تفعيل الدخول السريع');
     }
 
@@ -423,7 +422,8 @@ async function quickLogin(equation) {
 
     if (!offlineProfile.is_active) return err('تم تعطيل هذا الحساب.');
 
-    AuthState.currentUser = offlineProfile;
+    AuthState.currentUser   = offlineProfile;
+    AuthState.isOffline     = true;
     AuthState.isInitialized = true;
     _resetAttempts('quick_login');
     _resetAttempts(`quick_login_${offlineProfile.id}`);
@@ -938,4 +938,5 @@ const AuthService = {
 };
 
 window.AuthService = AuthService;
+window.AuthState   = AuthState;   // مطلوب لـ LoginComponent._offlineLogin و OfflineAuthService
 console.log('✅ AuthService.js v5.3 — createBankAccount: توليد internal_account_number تلقائياً عند الإنشاء');
