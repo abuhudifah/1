@@ -1463,10 +1463,15 @@ const DataEntryComponent = {
       const recipientName = recipient?.display_name || 'المستخدم الآخر';
 
       if (saveBeneficiary && mode === 'transfer') {
-        const addResult = await AppStore.addBeneficiary(myUserId, recipientId);
-        if (isOk(addResult)) {
+        try {
+          await repo.create(TABLES.USER_BENEFICIARIES, {
+            user_id          : myUserId,
+            beneficiary_id   : recipientId,
+            beneficiary_type : 'user',
+            beneficiary_name : recipientName,
+          });
           console.log('تم حفظ المستفيد بنجاح');
-        }
+        } catch (_e) { /* حفظ المستفيد غير حرج — لا يوقف العملية */ }
       }
 
       const txDate = AppStore.getState('selectedDate') || getCurrentSaudiDate();
