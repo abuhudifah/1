@@ -35,6 +35,15 @@ const GENERAL_ACCOUNT_ID = 'GENERAL_FUND';
 const DEBTOR_SETTLEMENT_ID = 'DEBTOR_SETTLEMENT';            // تسويات العملاء المديونين — حساب موحّد مستقل
 const EXPENSE_ACCOUNT_ID   = `${ACCOUNT_PREFIXES.EXPENSE}GENERAL`; // EXP_GENERAL — المصروفات العامة
 
+// يحذف الحقول التي تبدأ بـ _ (حقول مؤقتة لا تُحفظ في DB)
+function _stripEphemeral(obj) {
+  const clean = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!k.startsWith('_')) clean[k] = v;
+  }
+  return clean;
+}
+
 // ============================================================
 // مولّد أرقام القيود
 // ============================================================
@@ -153,14 +162,19 @@ function _buildReceiptEntries(tx, voucher) {
 
 function _buildDeliveryEntries(tx, voucher) {
   const date = tx.date || getCurrentSaudiDate();
-
-  // تحويل بين مندوبين (مرسِل): AGT_(المستلم) مدين ← AGT_(المرسِل) دائن — بلا حساب وسيط
   if (!tx.to_agent_id) return err('التسليم يتطلب تحديد المندوب المستلم');
+
+  const senderName   = tx._sender_name   || 'المرسِل';
+  const receiverName = tx._receiver_name || 'المستلم';
+  const notesStr     = tx.details ? ` (${tx.details})` : '';
+
   return [
+    // حساب المستلم: مدين (يزيد رصيده)
     { voucher_number: voucher, date, account_id: AccountId.agent(tx.to_agent_id), debit: tx.amount, credit: 0,
-      description: 'استلام حوالة من مندوب' },
-    { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id),    debit: 0, credit: tx.amount,
-      description: 'تسليم حوالة إلى مندوب آخر' },
+      description: `عليكم حوالة نقدية واردة نقل عهدة من حساب ${senderName} إلى حسابكم${notesStr}` },
+    // حساب المرسل: دائن (ينقص رصيده)
+    { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id), debit: 0, credit: tx.amount,
+      description: `لكم حوالة نقدية نقل عهدة من حسابكم إلى حساب ${receiverName} تحويل مباشر${notesStr}` },
   ];
 }
 
@@ -309,6 +323,8 @@ async function createTransactionWithEntries(txData) {
       approval_status : txData.approval_status
         || (isReceiptByAgent ? APPROVAL_STATUS.PENDING : APPROVAL_STATUS.APPROVED),
     };
+    // نسخة نظيفة بدون الحقول الوقتية (تُستخدم للحفظ في DB وإرسال للـ RPC)
+    const cleanTransaction = _stripEphemeral(transaction);
 
     const entriesResult = await buildEntries(transaction);
     if (!isOk(entriesResult)) return entriesResult;
@@ -322,7 +338,7 @@ async function createTransactionWithEntries(txData) {
 
     if (isOnline()) {
       const rpcResult = await callRPC(RPC.CREATE_TRANSACTION_WITH_ENTRIES, {
-        p_transaction : transaction,
+        p_transaction : cleanTransaction,
         p_entries     : enrichedEntries,
       });
 
@@ -331,7 +347,7 @@ async function createTransactionWithEntries(txData) {
 
         if (typeof db !== 'undefined' && db.isOpen()) {
           await db.transactions.put({
-            ...transaction,
+            ...cleanTransaction,
             id          : realTxId || transaction.id,
             sync_status : SYNC_STATUS.SYNCED,
           });
@@ -367,7 +383,7 @@ async function createTransactionWithEntries(txData) {
       console.warn('⚠️ RPC فشل، الحفظ في الطابور:', rpcResult.error);
     }
 
-    const pendingTransaction = { ...transaction, sync_status: SYNC_STATUS.PENDING };
+    const pendingTransaction = { ...cleanTransaction, sync_status: SYNC_STATUS.PENDING };
 
     if (typeof db !== 'undefined' && db.isOpen()) {
       await db.transactions.put(pendingTransaction);
@@ -384,7 +400,7 @@ async function createTransactionWithEntries(txData) {
 
     await SyncQueue.add(SYNC_ACTIONS.BATCH, 'batch', transaction.id, {
       operations: [
-        { action: SYNC_ACTIONS.CREATE, table: TABLES.TRANSACTIONS,   data: transaction },
+        { action: SYNC_ACTIONS.CREATE, table: TABLES.TRANSACTIONS,   data: cleanTransaction },
         ...enrichedEntries.map(e => ({
           action: SYNC_ACTIONS.CREATE,
           table : TABLES.ACCOUNT_LEDGER,
@@ -731,9 +747,6 @@ async function getAgentDailyLedgerNet(agentId, date) {
 
 async function approveTransaction(transactionId) {
   try {
-    if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
-      return err('الموافقة مسموحة للمدير والمساعد الإداري فقط');
-    }
     if (!isOnline()) return err('يجب الاتصال بالإنترنت للموافقة على المعاملات');
 
     const result = await callRPC(RPC.APPROVE_TRANSACTION, { p_transaction_id: transactionId });
@@ -752,9 +765,6 @@ async function approveTransaction(transactionId) {
 
 async function rejectTransaction(transactionId, reason = '') {
   try {
-    if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
-      return err('الرفض مسموح للمدير والمساعد الإداري فقط');
-    }
     if (!isOnline()) return err('يجب الاتصال بالإنترنت لرفض المعاملات');
 
     const result = await callRPC(RPC.REJECT_TRANSACTION, {
@@ -812,19 +822,25 @@ async function createTransferFromRequest(requestId) {
       return err('ليس لديك صلاحية لقبول هذا الطلب');
     }
 
-    const txType = TRANSACTION_TYPES.RECEIPT;
     const date = getCurrentSaudiDate();
-    const agentId = currentUserId;
+
+    // B = الدافع (to_user_id = currentUserId) يدفع → A = الطالب (from_user_id) يستلم
+    const senderName   = AuthService.getCurrentUser()?.display_name || 'المدفوع';
+    const receiverUser = (typeof AppStore !== 'undefined')
+      ? AppStore.getState('users')?.find(u => u.id === request.from_user_id)
+      : null;
+    const receiverName = receiverUser?.display_name || 'الطالب';
 
     const txData = {
-      type: txType,
-      amount: parseFloat(request.amount),
-      date: date,
-      agent_id: agentId,
-      from_agent_id: request.from_user_id,
-      to_agent_id: request.to_user_id,
-      company_id: request.company_id || null,
-      details: request.reason || `قبول طلب تحويل #${requestId.slice(0,8)}`,
+      type           : TRANSACTION_TYPES.DELIVERY,   // B يدفع → A يستلم (مباشر)
+      amount         : parseFloat(request.amount),
+      date           : date,
+      agent_id       : currentUserId,                // B = الدافع (ينقص رصيده)
+      to_agent_id    : request.from_user_id,         // A = المستلم (يزيد رصيده)
+      from_agent_id  : currentUserId,
+      details        : request.reason || `قبول طلب أموال`,
+      _sender_name   : senderName,
+      _receiver_name : receiverName,
       approval_status: APPROVAL_STATUS.APPROVED,
     };
 

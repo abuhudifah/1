@@ -423,19 +423,21 @@ const NotificationsComponent = {
 
     let result;
 
-    if (metaType === 'transfer_approval' && transactionId) {
-      result = action === 'accept'
-        ? await AccountingService.approveTransaction(transactionId)
-        : await AccountingService.rejectTransaction(transactionId);
-    } else if (metaType === 'transfer_request' && requestId) {
+    if (metaType === 'transfer_request' && requestId) {
+      // طلب أموال: الطرف المطلوب منه يوافق أو يرفض
       if (action === 'accept') {
         result = await AccountingService.createTransferFromRequest(requestId);
       } else {
         result = await repo.update(TABLES.TRANSFER_REQUESTS, requestId, {
-          status: 'rejected',
+          status    : 'rejected',
           updated_at: new Date().toISOString(),
         });
       }
+    } else if (metaType === 'transfer_approval' && transactionId) {
+      // تحويل قديم بانتظار موافقة (backward compat)
+      result = action === 'accept'
+        ? await AccountingService.approveTransaction(transactionId)
+        : await AccountingService.rejectTransaction(transactionId);
     } else {
       showToast('لا يمكن تحديد نوع الطلب', 'error');
       return;

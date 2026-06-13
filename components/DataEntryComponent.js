@@ -1483,31 +1483,38 @@ const DataEntryComponent = {
       if (!confirmed) return;
 
       if (mode === 'transfer') {
+        // تحويل مباشر: خصم فوري من المرسل وإيداع فوري للمستقبل — بلا موافقة إدارية
         const txData = {
-          type: 'receipt',
-          amount: amount,
-          date: txDate,
-          agent_id: myUserId,
-          from_agent_id: myUserId,
-          to_agent_id: recipientId,
-          details: `تحويل مباشر من ${myName} إلى ${recipientName}`,
-          approval_status: 'pending',
+          type           : TRANSACTION_TYPES.DELIVERY,
+          amount         : amount,
+          date           : txDate,
+          agent_id       : myUserId,        // المرسل — ينقص رصيده
+          to_agent_id    : recipientId,     // المستقبل — يزيد رصيده
+          from_agent_id  : myUserId,
+          details        : reason || null,
+          _sender_name   : myName,
+          _receiver_name : recipientName,
+          approval_status: APPROVAL_STATUS.APPROVED,
         };
         const result = await AccountingService.createTransactionWithEntries(txData);
         if (!isOk(result)) throw new Error(result.error);
 
+        const txStatus = result.data.pending ? 'بانتظار المزامنة' : 'مكتملة';
+        console.log(`[Transfer] تحويل مباشر | المرسل: ${myName} → المستقبل: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: ${txStatus}`);
+
+        // إشعار معلوماتي للمستقبل (بلا أزرار موافقة — العملية فورية)
         const notifData = {
-          title: '💰 طلب تحويل وارد',
-          body: `${myName} قام بتحويل ${formatCurrency(amount)} إليك. اضغط قبول لإضافتها إلى رصيدك.`,
-          type: 'info',
-          target: JSON.stringify([recipientId]),
-          metadata: { transaction_id: result.data.transaction.id, type: 'transfer_approval', amount: amount },
+          title    : '💰 تحويل مباشر وارد',
+          body     : `قام ${myName} بتحويل ${formatCurrency(amount)} إلى حسابك مباشرةً. العملية ${txStatus}.`,
+          type     : 'success',
+          target   : JSON.stringify([recipientId]),
+          metadata : { transaction_id: result.data.transaction.id, type: 'direct_transfer', amount },
           sender_id: myUserId,
-          read_by: '[]',
+          read_by  : '[]',
           hidden_by: '[]',
         };
         await repo.create(TABLES.NOTIFICATIONS, notifData);
-        showToast(`✅ تم إرسال طلب التحويل إلى ${recipientName}. بانتظار الموافقة.`, 'success');
+        showToast(`✅ تم التحويل المباشر إلى ${recipientName}. العملية ${txStatus}.`, 'success');
       } 
       else {
         const requestData = {
@@ -1533,6 +1540,7 @@ const DataEntryComponent = {
           hidden_by: '[]',
         };
         await repo.create(TABLES.NOTIFICATIONS, notifData);
+        console.log(`[Transfer] طلب أموال | الطالب: ${myName} → المطلوب منه: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: بانتظار الموافقة`);
         showToast(`✅ تم إرسال طلب الأموال إلى ${recipientName}. بانتظار الموافقة.`, 'success');
       }
 
