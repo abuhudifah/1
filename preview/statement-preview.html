@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>معاينة التقارير — بيئة الاختبار</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700;800&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;background:#f1f5f9;color:#0f172a;direction:rtl;padding:24px;}
+
+  h1{font-size:1.3rem;font-weight:800;margin-bottom:6px;}
+  .subtitle{font-size:0.85rem;color:#64748b;margin-bottom:24px;}
+
+  /* ── أزرار الاختبار ── */
+  .demo-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px;}
+  .demo-bar button{
+    padding:10px 20px;border:none;border-radius:10px;
+    font-family:inherit;font-size:0.88rem;font-weight:700;
+    cursor:pointer;transition:.15s;
+  }
+  .btn-daily  {background:#2563eb;color:#fff;}
+  .btn-stmt   {background:#0f172a;color:#fff;}
+  .btn-bank   {background:#0284c7;color:#fff;}
+  .btn-expense{background:#dc2626;color:#fff;}
+  .demo-bar button:hover{opacity:.88;transform:translateY(-1px);}
+
+  /* ── نافذة المعاينة (Modal) ── */
+  .preview-overlay{
+    display:none;position:fixed;inset:0;
+    background:rgba(15,23,42,.65);backdrop-filter:blur(4px);
+    z-index:9999;overflow-y:auto;padding:16px;
+  }
+  .preview-overlay.open{display:flex;flex-direction:column;align-items:center;}
+
+  /* شريط الأدوات */
+  .preview-toolbar{
+    width:100%;max-width:870px;
+    display:flex;gap:8px;flex-wrap:wrap;justify-content:center;
+    padding:10px 16px;background:#0f172a;border-radius:14px 14px 0 0;
+    box-shadow:0 4px 16px rgba(0,0,0,.3);
+  }
+  .preview-toolbar button{
+    display:inline-flex;align-items:center;gap:6px;
+    border:none;border-radius:10px;padding:9px 18px;
+    font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:.15s;
+  }
+  .tb-print {background:#2563eb;color:#fff;}
+  .tb-pdf   {background:#059669;color:#fff;}
+  .tb-share {background:#25d366;color:#fff;}
+  .tb-close {background:#334155;color:#e2e8f0;}
+  .preview-toolbar button:hover{opacity:.88;transform:translateY(-1px);}
+  #pdf-tip{font-size:11px;color:#94a3b8;align-self:center;display:none;
+    background:#1e293b;border:1px solid #334155;border-radius:8px;
+    padding:5px 10px;line-height:1.5;text-align:center;}
+
+  /* ── ورقة A4 ── */
+  .a4-page{
+    width:210mm;background:#fff;
+    padding:18mm 16mm 14mm;
+    box-shadow:0 8px 32px rgba(0,0,0,.18);
+    border-radius:0 0 8px 8px;
+  }
+
+  /* ── ترويسة ── */
+  .doc-header{
+    display:flex;justify-content:space-between;align-items:flex-start;
+    border-bottom:3px solid #0f172a;padding-bottom:14px;margin-bottom:22px;
+  }
+  .doc-title {font-size:20px;font-weight:800;line-height:1.2;}
+  .doc-sub   {font-size:11.5px;color:#64748b;margin-top:3px;}
+  .doc-acct  {font-size:10.5px;color:#94a3b8;margin-top:2px;}
+  .doc-meta  {text-align:left;}
+  .doc-period{font-size:13px;font-weight:700;}
+  .doc-user  {font-size:11px;color:#64748b;margin-top:3px;}
+
+  /* ── الجدول الاحترافي ── */
+  .table-wrap{border:1.5px solid #94a3b8;border-radius:6px;overflow:hidden;margin-bottom:14px;}
+  table{width:100%;border-collapse:collapse;font-size:11.5px;}
+  thead{background:#0f172a;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  th{padding:10px 9px;text-align:center;font-weight:700;font-size:10.5px;
+    letter-spacing:.4px;border-left:1px solid rgba(255,255,255,.18);}
+  th:last-child{border-left:none;}
+  td{padding:8px 9px;text-align:center;vertical-align:middle;
+    border-bottom:1px solid #dde3ea;border-left:1px solid #e8ecf0;}
+  td:last-child{border-left:none;}
+  tbody tr:last-child td{border-bottom:none;}
+  tr.even td{background:#f7f9fc;}
+  tbody tr:hover td{background:#eff6ff;transition:background .12s;}
+
+  /* ألوان لكم / عليكم */
+  .cl{color:#059669;font-weight:700;}
+  .cd{color:#dc2626;font-weight:700;}
+
+  /* ── شريط الإجماليات ── */
+  .totals{
+    display:flex;gap:0;flex-wrap:wrap;justify-content:flex-end;
+    background:#f1f5f9;border:1.5px solid #94a3b8;border-top:none;
+    font-size:12.5px;font-weight:700;
+  }
+  .totals span{padding:10px 16px;border-right:1px solid #cbd5e1;}
+  .totals span:last-child{border-right:none;}
+
+  /* ── تذييل ── */
+  .doc-footer{
+    margin-top:18px;border-top:1px solid #e2e8f0;padding-top:10px;
+    display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;
+  }
+  .doc-footer b{color:#64748b;}
+
+  /* ── طباعة ── */
+  @media print{
+    body{background:#fff;padding:0;}
+    .demo-bar,.preview-overlay,.preview-toolbar,.demo-note{display:none!important;}
+    .a4-page{width:auto;min-height:auto;margin:0;padding:8mm 10mm;box-shadow:none;border-radius:0;}
+    tr{page-break-inside:avoid;}
+    tr.even td{background:#f7f9fc!important;}
+    .cl{color:#059669!important;} .cd{color:#dc2626!important;}
+    .totals{border:1.5px solid #aab0bb;border-top:none;}
+    table{border:1.5px solid #aab0bb;}
+    td{border-bottom:1px solid #cdd3da;border-left:1px solid #dde1e6;}
+    @page{size:A4;margin:12mm 10mm;}
+  }
+</style>
+</head>
+<body>
+
+<h1>🧪 بيئة اختبار — معاينة التقارير</h1>
+<p class="subtitle">اضغط على أي زر لمعاينة التقرير المقابل قبل تطبيق أي تعديل على الكود الأصلي.</p>
+
+<div class="demo-bar">
+  <button class="btn-daily"   onclick="previewDaily()">📊 الملخص اليومي</button>
+  <button class="btn-stmt"    onclick="previewStatement()">📋 كشف الحساب (مندوب)</button>
+  <button class="btn-bank"    onclick="previewBank()">🏦 كشف حركة البنك</button>
+  <button class="btn-expense" onclick="previewExpense()">💸 كشف المصروفات</button>
+</div>
+
+<!-- نافذة المعاينة -->
+<div class="preview-overlay" id="preview-overlay">
+  <div class="preview-toolbar">
+    <button class="tb-close"  onclick="closePreview()">✕ إغلاق</button>
+    <button class="tb-print"  onclick="doPrint()">🖨️ طباعة مباشرة</button>
+    <button class="tb-pdf"    onclick="doPdf()">📄 حفظ PDF</button>
+    <button class="tb-share"  onclick="doShare()">📲 مشاركة</button>
+    <div id="pdf-tip">في نافذة الطباعة اختر<br><b>«حفظ كـ PDF»</b> كطابعة</div>
+  </div>
+  <div class="a4-page" id="a4-page">
+    <!-- يُحقن الكود هنا ديناميكياً -->
+  </div>
+</div>
+
+<p class="demo-note" style="font-size:0.82rem;color:#94a3b8;margin-top:12px;">
+  ⓘ البيانات أدناه تجريبية فقط — لا تؤثر على قاعدة البيانات.
+</p>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   بيانات تجريبية
+══════════════════════════════════════════════════════ */
+const TODAY  = '2026-06-13';
+const AGENT  = 'أبو حذيفة';
+const SYSTEM = 'نظام أبو حذيفة للصرافة والتحويلات';
+const LOGO   = '';
+
+// معاملات يومية مختلطة
+const DAILY_TXS = [
+  { type:'collection',      amount:3500,  date:TODAY, time:'08:15', created_at:null, customer_name:'شركة الوفاء للمقاولات', details:null },
+  { type:'collection',      amount:1200,  date:TODAY, time:'09:30', created_at:null, customer_name:'محمد العمري', details:null },
+  { type:'deposit',         amount:2000,  date:TODAY, time:'10:00', created_at:null, customer_name:null, details:'إيداع بنكي - مصرف الراجحي' },
+  { type:'bank_withdrawal', amount:800,   date:TODAY, time:'10:45', created_at:null, customer_name:null, details:'سحب نقدي' },
+  { type:'expense',         amount:150,   date:TODAY, time:'11:20', created_at:null, customer_name:null, details:'مصروف نقل ومواصلات' },
+  { type:'collection',      amount:4200,  date:TODAY, time:'12:00', created_at:null, customer_name:'شركة الأمانة التجارية', details:null },
+  { type:'receipt',         amount:900,   date:TODAY, time:'13:15', created_at:null, customer_name:null, details:'حوالة واردة من فرع الرياض' },
+  { type:'delivery',        amount:600,   date:TODAY, time:'14:30', created_at:null, customer_name:null, details:'حوالة صادرة - خالد السالم' },
+  { type:'expense',         amount:75,    date:TODAY, time:'15:00', created_at:null, customer_name:null, details:'قرطاسية ومستلزمات' },
+  { type:'collection',      amount:2800,  date:TODAY, time:'16:10', created_at:null, customer_name:'مؤسسة النور التجارية', details:null },
+];
+
+// قيود كشف حساب مندوب (تحاكي account_ledger)
+const STMT_ROWS = [
+  { date:TODAY, time:'08:15 ص', label:'تحصيل نقدي', details:'شركة الوفاء للمقاولات', credit:3500, debit:0 },
+  { date:TODAY, time:'09:30 ص', label:'تحصيل نقدي', details:'محمد العمري', credit:1200, debit:0 },
+  { date:TODAY, time:'10:00 ص', label:'إيداع بنكي', details:'مصرف الراجحي — إخلاء عهدة', credit:0, debit:2000 },
+  { date:TODAY, time:'10:45 ص', label:'سحب بنكي', details:'استلام نقدي من المصرف', credit:800, debit:0 },
+  { date:TODAY, time:'11:20 ص', label:'مصروف عام', details:'مواصلات', credit:0, debit:150 },
+  { date:TODAY, time:'12:00 م', label:'تحصيل نقدي', details:'شركة الأمانة التجارية', credit:4200, debit:0 },
+  { date:TODAY, time:'01:15 م', label:'حوالة واردة', details:'من فرع الرياض', credit:900, debit:0 },
+  { date:TODAY, time:'02:30 م', label:'حوالة صادرة', details:'خالد السالم', credit:0, debit:600 },
+  { date:TODAY, time:'03:00 م', label:'مصروف قرطاسية', details:'مستلزمات مكتبية', credit:0, debit:75 },
+  { date:TODAY, time:'04:10 م', label:'تحصيل نقدي', details:'مؤسسة النور التجارية', credit:2800, debit:0 },
+];
+
+// حركة البنك
+const BANK_ROWS = [
+  { date:'2026-06-11', time:'09:10 ص', type:'deposit', agentName:'أبو حذيفة', amount:5000 },
+  { date:'2026-06-11', time:'11:30 ص', type:'deposit', agentName:'خالد محمد', amount:3200 },
+  { date:'2026-06-12', time:'08:45 ص', type:'bank_withdrawal', agentName:'أبو حذيفة', amount:1500 },
+  { date:'2026-06-12', time:'02:00 م', type:'deposit', agentName:'سعد العمري', amount:7800 },
+  { date:TODAY,        time:'10:00 ص', type:'deposit', agentName:'أبو حذيفة', amount:2000 },
+];
+
+// مصروفات
+const EXPENSE_ROWS = [
+  { date:'2026-06-10', time:'08:00 ص', label:'مصروف مواصلات', details:'تنقل ميداني', credit:0, debit:200 },
+  { date:'2026-06-10', time:'11:00 ص', label:'مصروف صيانة',   details:'صيانة جهاز طابعة', credit:0, debit:450 },
+  { date:'2026-06-11', time:'09:30 ص', label:'مصروف قرطاسية', details:'أقلام ودفاتر', credit:0, debit:85 },
+  { date:'2026-06-12', time:'01:15 م', label:'مصروف عام',     details:'مستلزمات متنوعة', credit:0, debit:120 },
+  { date:TODAY,        time:'11:20 ص', label:'مصروف مواصلات', details:'نقل ومواصلات', credit:0, debit:150 },
+  { date:TODAY,        time:'03:00 م', label:'مصروف قرطاسية', details:'مستلزمات مكتبية', credit:0, debit:75 },
+];
+
+const TYPE_LABELS = {
+  collection:'تحصيل نقدي', deposit:'إيداع بنكي',
+  bank_withdrawal:'سحب بنكي', expense:'مصروف',
+  receipt:'حوالة واردة', delivery:'حوالة صادرة',
+};
+
+/* ══════════════════════════════════════════════════════
+   buildStatementPrintData — الدالة المشتركة الجديدة
+══════════════════════════════════════════════════════ */
+function buildStatementPrintData(transactions, { date, userName } = {}) {
+  const LAKUM = new Set(['collection','receipt','bank_withdrawal']);
+  const fmt   = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+  const fmtT  = tx => tx.time ? String(tx.time).substring(0,5) : '—';
+
+  let totalLakum = 0, totalAlaykum = 0;
+
+  const rows = transactions.map(tx => {
+    const amt     = Math.round(parseFloat(tx.amount || 0));
+    const isLakum = LAKUM.has(tx.type);
+    if (isLakum) totalLakum += amt; else totalAlaykum += amt;
+    return [
+      tx.date || date || '—',
+      fmtT(tx),
+      TYPE_LABELS[tx.type] || tx.type,
+      tx.customer_name || tx.details || '—',
+      isLakum  ? amt.toLocaleString('en-US') : '0',
+      !isLakum ? amt.toLocaleString('en-US') : '0',
+    ];
+  });
+
+  const net     = totalLakum - totalAlaykum;
+  const netSign = net >= 0 ? 'لكم' : 'عليكم';
+
+  const totalsLine = [
+    `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
+    `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
+    `<span>الصافي: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(net)} ${netSign} ر.س</b></span>`,
+  ].join('');
+
+  const shareText = [
+    date     ? `📅 ${date}` : '',
+    userName ? `👤 ${userName}` : '',
+    `────────────────`,
+    `✅ لكم:    ${fmt(totalLakum)} ر.س`,
+    `❌ عليكم:  ${fmt(totalAlaykum)} ر.س`,
+    `💰 الصافي: ${fmt(net)} ${netSign} ر.س`,
+    `📋 عدد العمليات: ${transactions.length}`,
+  ].filter(Boolean).join('\n');
+
+  return {
+    columns: ['التاريخ','الوقت','نوع العملية','التفاصيل','لكم (ر.س)','عليكم (ر.س)'],
+    rows, totalsLine, shareText,
+    totalLakum, totalAlaykum, net, netSign,
+  };
+}
+
+/* ══════════════════════════════════════════════════════
+   renderA4 — يبني محتوى A4 داخل الـ modal
+══════════════════════════════════════════════════════ */
+function renderA4({ title, subtitle, periodText, userName, accountId, columns, rows, totalsLine }) {
+  const ts = new Date().toLocaleString('ar-SA', {
+    year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+
+  // كشف أعمدة لكم/عليكم
+  const lakumIdx   = columns.findIndex(c => c.includes('لكم')  && !c.includes('عليكم'));
+  const alaykumIdx = columns.findIndex(c => c.includes('عليكم'));
+  const isNum      = v => /^[\d,\-]/.test(String(v ?? '').trim());
+
+  const getCellAttr = (ci, v) => {
+    const s = String(v ?? '');
+    const ltr = isNum(s) ? 'direction:ltr;' : '';
+    if (ci === lakumIdx   && s !== '0' && s !== '—' && s !== '')
+      return ltr ? ` class="cl" style="${ltr}"` : ' class="cl"';
+    if (ci === alaykumIdx && s !== '0' && s !== '—' && s !== '')
+      return ltr ? ` class="cd" style="${ltr}"` : ' class="cd"';
+    return ltr ? ` style="${ltr}"` : '';
+  };
+
+  const thead = `<tr>${columns.map(h=>`<th>${h}</th>`).join('')}</tr>`;
+  const tbody = rows.map((r,ri)=>
+    `<tr class="${ri%2===1?'even':''}">${r.map((c,ci)=>
+      `<td${getCellAttr(ci,c)}>${c??'—'}</td>`
+    ).join('')}</tr>`
+  ).join('');
+
+  return `
+    <div class="doc-header">
+      <div>
+        <div class="doc-title">${title}</div>
+        ${subtitle   ? `<div class="doc-sub">${subtitle}</div>`              : ''}
+        ${accountId  ? `<div class="doc-acct">معرف الحساب: ${accountId}</div>` : ''}
+      </div>
+      <div class="doc-meta">
+        ${LOGO       ? `<img style="height:52px;object-fit:contain;display:block;margin-bottom:6px;" src="${LOGO}" alt="شعار">` : ''}
+        ${periodText ? `<div class="doc-period">${periodText}</div>`         : ''}
+        ${userName   ? `<div class="doc-user">${userName}</div>`             : ''}
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>${thead}</thead>
+        <tbody>${tbody}</tbody>
+      </table>
+      ${totalsLine ? `<div class="totals">${totalsLine}</div>` : ''}
+    </div>
+    <div class="doc-footer">
+      <span><b>${SYSTEM}</b></span>
+      <span>طُبع: ${ts}</span>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   دوال المعاينة لكل نوع تقرير
+══════════════════════════════════════════════════════ */
+let _currentShareText = '';
+
+function previewDaily() {
+  const pd = buildStatementPrintData(DAILY_TXS, {
+    date: 'الجمعة، 13 يونيو 2026', userName: AGENT,
+  });
+  _currentShareText = pd.shareText;
+  document.getElementById('a4-page').innerHTML = renderA4({
+    title      : 'الملخص اليومي',
+    subtitle   : SYSTEM,
+    periodText : 'الجمعة، 13 يونيو 2026',
+    userName   : AGENT,
+    columns    : pd.columns,
+    rows       : pd.rows,
+    totalsLine : pd.totalsLine,
+  });
+  openPreview();
+}
+
+function previewStatement() {
+  const fmt = n => Math.round(n).toLocaleString('en-US');
+  const totalLakum   = STMT_ROWS.reduce((s,r)=>s+r.credit,0);
+  const totalAlaykum = STMT_ROWS.reduce((s,r)=>s+r.debit,0);
+  const net          = totalLakum - totalAlaykum;
+  const netSign      = net >= 0 ? 'لكم' : 'عليكم';
+
+  const rows = STMT_ROWS.map(r => [
+    r.date, r.time, r.label, r.details,
+    r.credit > 0 ? fmt(r.credit) : '0',
+    r.debit  > 0 ? fmt(r.debit)  : '0',
+  ]);
+
+  const totalsLine = [
+    `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
+    `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
+    `<span>صافي الحركة: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(Math.abs(net))} ${netSign} ر.س</b></span>`,
+  ].join('');
+
+  _currentShareText = `كشف حساب: ${AGENT}\nالفترة: ${TODAY}\nلكم: ${fmt(totalLakum)} | عليكم: ${fmt(totalAlaykum)}`;
+
+  document.getElementById('a4-page').innerHTML = renderA4({
+    title      : `كشف حساب: ${AGENT}`,
+    subtitle   : SYSTEM,
+    periodText : `الفترة: ${TODAY} ← ${TODAY}`,
+    userName   : 'المدير',
+    accountId  : `AGT_demo-001`,
+    columns    : ['التاريخ','الوقت','نوع العملية','التفاصيل','لكم (ر.س)','عليكم (ر.س)'],
+    rows,
+    totalsLine,
+  });
+  openPreview();
+}
+
+function previewBank() {
+  const fmt = n => Math.round(n).toLocaleString('en-US');
+  let totalDep = 0, totalWd = 0;
+  const rows = BANK_ROWS.map((r,i) => {
+    const isDep = r.type === 'deposit';
+    const amt   = Math.round(r.amount);
+    if (isDep) totalDep += amt; else totalWd += amt;
+    return [r.date, r.time, isDep?'إيداع نقدي':'سحب نقدي', r.agentName, fmt(amt)];
+  });
+  const net    = totalDep - totalWd;
+  const nature = net >= 0 ? 'مدين' : 'دائن';
+
+  const totalsLine = [
+    `<span>إجمالي الإيداعات: <b style="color:#059669">${fmt(totalDep)} ر.س</b></span>`,
+    `<span>إجمالي السحوبات: <b style="color:#dc2626">${fmt(totalWd)} ر.س</b></span>`,
+    `<span>صافي الحركة: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(Math.abs(net))} ${nature} ر.س</b></span>`,
+  ].join('');
+
+  _currentShareText = `كشف بنك: مصرف الراجحي\nالإيداعات: ${fmt(totalDep)} | السحوبات: ${fmt(totalWd)}`;
+
+  document.getElementById('a4-page').innerHTML = renderA4({
+    title      : 'كشف حركة بنك: مصرف الراجحي',
+    subtitle   : SYSTEM,
+    periodText : '2026-06-11 ← 2026-06-13',
+    userName   : 'المدير',
+    accountId  : 'BNK_demo-bank',
+    columns    : ['التاريخ','الوقت','نوع العملية','المندوب','المبلغ (ر.س)'],
+    rows,
+    totalsLine,
+  });
+  openPreview();
+}
+
+function previewExpense() {
+  const fmt = n => Math.round(n).toLocaleString('en-US');
+  const total = EXPENSE_ROWS.reduce((s,r)=>s+r.debit,0);
+  const rows  = EXPENSE_ROWS.map(r => [r.date, r.time, r.label, r.details, '0', fmt(r.debit)]);
+
+  const totalsLine = [
+    `<span>إجمالي المصروفات: <b style="color:#dc2626">${fmt(total)} ر.س</b></span>`,
+  ].join('');
+
+  _currentShareText = `كشف مصروفات\nالإجمالي: ${fmt(total)} ر.س`;
+
+  document.getElementById('a4-page').innerHTML = renderA4({
+    title      : 'كشف المصروفات',
+    subtitle   : SYSTEM,
+    periodText : '2026-06-10 ← 2026-06-13',
+    userName   : AGENT,
+    columns    : ['التاريخ','الوقت','نوع المصروف','التفاصيل','لكم (ر.س)','عليكم (ر.س)'],
+    rows,
+    totalsLine,
+  });
+  openPreview();
+}
+
+/* ══════════════════════════════════════════════════════
+   أزرار شريط الأدوات
+══════════════════════════════════════════════════════ */
+function openPreview()  { document.getElementById('preview-overlay').classList.add('open'); }
+function closePreview() {
+  document.getElementById('preview-overlay').classList.remove('open');
+  document.getElementById('pdf-tip').style.display='none';
+}
+function doPrint() { window.print(); }
+function doPdf() {
+  const tip = document.getElementById('pdf-tip');
+  tip.style.display = tip.style.display==='block' ? 'none' : 'block';
+  window.print();
+}
+function doShare() {
+  if (navigator.share) {
+    navigator.share({ title: 'تقرير مالي', text: _currentShareText }).catch(()=>{});
+  } else {
+    window.open('https://api.whatsapp.com/send?text='+encodeURIComponent(_currentShareText),'_blank');
+  }
+}
+
+// إغلاق بالضغط خارج الورقة
+document.getElementById('preview-overlay').addEventListener('click', function(e){
+  if(e.target===this) closePreview();
+});
+</script>
+</body>
+</html>
