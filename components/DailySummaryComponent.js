@@ -181,21 +181,30 @@ const DailySummaryComponent = {
 
     await AppStore.refreshTransactions(date, agentId);
 
-    let opening = 0;
+    // الرصيد الفعلي الحالي (يشمل عمليات اليوم — يُستخدم كـ closing)
+    let currentBalance = 0;
     if (agentId) {
       const bal = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      if (isOk(bal)) opening = bal.data;
+      if (isOk(bal)) currentBalance = bal.data;
+    } else if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
+      // إجمالي المناديب: جمع أرصدة جميع المناديب النشطين
+      const allAgents = AppStore.getState('users').filter(u => u.role === ROLES.AGENT && u.is_active);
+      if (allAgents.length) {
+        const results = await Promise.all(
+          allAgents.map(a => AccountingService.getAccountBalance(AccountingService.AccountId.agent(a.id)))
+        );
+        currentBalance = results.reduce((sum, r) => sum + (isOk(r) ? r.data : 0), 0);
+      }
     }
 
-    this._renderStats(opening, agentId);
+    this._renderStats(currentBalance, agentId);
     this._renderTransactionsList();
   },
 
-  _renderStats(opening = 0, agentId = null) {
+  _renderStats(currentBalance = 0, agentId = null) {
     const el = document.getElementById('summary-stats');
     if (!el) return;
 
-    // إخفاء عنصر الرصيد الافتتاحي المنفصل (مدمج الآن في الشبكة)
     const openingEl = document.getElementById('summary-opening');
     if (openingEl) openingEl.style.display = 'none';
 
@@ -209,16 +218,21 @@ const DailySummaryComponent = {
       }
     });
 
-    // الرصيد المتبقي الفعلي = السابق + واردات − صادرات
-    const closing = opening + s.collection + s.receipt + s.bank_withdrawal
-                            - s.deposit  - s.expense  - s.delivery;
+    // صافي حركة اليوم
+    const todayNet = s.collection + s.receipt + s.bank_withdrawal
+                   - s.deposit   - s.expense  - s.delivery;
+
+    // الرصيد الفعلي في الصندوق = currentBalance (يشمل اليوم بالفعل)
+    const closing = currentBalance;
+    // رصيد بداية اليوم = الرصيد الحالي − صافي اليوم
+    const opening = currentBalance - todayNet;
 
     const agentName = agentId
       ? (AppStore.getState('users').find(u => u.id === agentId)?.display_name || '')
       : null;
 
     const kpis = [
-      // البطاقة الأولى: الرصيد السابق
+      // البطاقة الأولى: الرصيد السابق (بداية اليوم)
       { label:'الرصيد السابق',                value:opening,           icon:'🏦', cls:'kpi-accent',
         subtitle: agentName || 'إجمالي المناديب', count:null, highlight:'var(--accent)' },
       // أنواع العمليات
@@ -248,24 +262,6 @@ const DailySummaryComponent = {
         </div>
         ${k.count !== null ? `<div style="font-size:0.68rem;color:var(--text-muted);text-align:right;margin-top:3px;">${k.count} عملية</div>` : ''}
       </div>`).join('');
-  },
-
-  async _renderOpeningBalance(date, agentId) {
-    const el = document.getElementById('summary-opening');
-    if (!el) return;
-    let opening = 0;
-    if (agentId) {
-      const bal = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      if (isOk(bal)) opening = bal.data;
-    }
-    const agentName = agentId ? (AppStore.getState('users').find(u=>u.id===agentId)?.display_name||'') : 'إجمالي المناديب';
-    el.innerHTML = `
-      <span style="font-size:0.85rem;color:var(--text-secondary);">
-        ${agentId?`رصيد صندوق ${escapeHtml(agentName)}`:'الرصيد الإجمالي'}
-      </span>
-      <span style="font-size:1rem;font-weight:700;color:${opening>=0?'var(--success)':'var(--danger)'};">
-        ${formatCurrency(opening)}
-      </span>`;
   },
 
   _renderTransactionsList() {
