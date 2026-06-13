@@ -262,6 +262,15 @@ async function enableQuickLogin(equation) {
 
     AuthState.currentUser.quick_equation_hash = hash;
 
+    // حفظ في Supabase حتى يظهر الوضع الصحيح بعد checkSession
+    try {
+      await supabaseClient.from(TABLES.USERS)
+        .update({ quick_equation_hash: hash })
+        .eq('id', uid);
+    } catch (e) {
+      console.warn('[enableQuickLogin] تحديث Supabase فشل:', e.message);
+    }
+
     try {
       if (typeof db !== 'undefined' && db.isOpen())
         await db.users.update(uid, { quick_equation_hash: hash });
@@ -310,6 +319,13 @@ async function quickLogin(equation) {
       if (!quickData) {
         _recordFailedAttempt('quick_login');
         return err('لم يتم تفعيل الدخول السريع على هذا الجهاز، أو المعادلة غير صحيحة');
+      }
+
+      // التحقق من صيغة Token: يجب UUID (صيغة xxxxxxxx-xxxx-...) وليس hex قديم
+      const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!_uuidRe.test(quickData.token || '')) {
+        localStorage.removeItem(`ahu_quick_${quickData.userId}`);
+        return err('انتهت صلاحية الدخول السريع (صيغة قديمة). يُرجى إعادة التفعيل من الإعدادات.');
       }
 
       const { userId } = quickData;

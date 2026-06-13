@@ -123,6 +123,7 @@ const ProfileSettingsComponent = {
   _buildQuickLoginCard(user) {
     const hasQuick = !!user.quick_equation_hash;
     const card = this._card('⚡ الدخول السريع');
+    card.setAttribute('data-psc-quick-card', '');
 
     card.innerHTML += `
       <div style="padding:12px 14px;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);
@@ -346,11 +347,6 @@ const ProfileSettingsComponent = {
     if (window.lucide) lucide.createIcons();
 
     if (isOk(result)) {
-      const uid = AuthService.getCurrentUserId();
-      if (!sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)) {
-        sessionStorage.setItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY, `quick_${uid}_${Date.now()}`);
-      }
-
       showToast('⚡ تم تفعيل الدخول السريع بنجاح! احتفظ بمعادلتك.', 'success', 5000);
       input.value = '';
       this._previewEquation('');
