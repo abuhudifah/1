@@ -168,11 +168,17 @@ const PrintService = (() => {
     const lakumIdx   = columns.findIndex(c => String(c).includes('لكم')  && !String(c).includes('عليكم'));
     const alaykumIdx = columns.findIndex(c => String(c).includes('عليكم'));
 
+    // هل القيمة رقم أو تبدأ برقم؟ → direction:ltr لعرض صحيح
+    const _isNum = (v) => /^[\d,\-−]/.test(String(v ?? '').trim());
+
     const getCellAttr = (ci, value) => {
-      const v = String(value ?? '');
-      if (ci === lakumIdx   && v !== '0' && v !== '—' && v !== '') return ' class="cl"';
-      if (ci === alaykumIdx && v !== '0' && v !== '—' && v !== '') return ' class="cd"';
-      return '';
+      const v   = String(value ?? '');
+      const ltr = _isNum(v) ? 'direction:ltr;' : '';
+      if (ci === lakumIdx   && v !== '0' && v !== '—' && v !== '')
+        return ltr ? ` class="cl" style="${ltr}"` : ' class="cl"';
+      if (ci === alaykumIdx && v !== '0' && v !== '—' && v !== '')
+        return ltr ? ` class="cd" style="${ltr}"` : ' class="cd"';
+      return ltr ? ` style="${ltr}"` : '';
     };
 
     const theadHTML = `<tr>${columns.map(h => `<th>${h}</th>`).join('')}</tr>`;

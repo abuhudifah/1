@@ -1177,7 +1177,7 @@ const AccountManagementComponent = {
         if (isDep) totalDep += amt; else totalWd += amt;
         const time = this._formatTime12(t.time || t.created_at);
         const typeLbl = isDep ? 'إيداع نقدي' : 'سحب نقدي';
-        printRows.push([i + 1, time, typeLbl, t.agentName || '—', `${fmt(amt)} ر.س`]);
+        printRows.push([i + 1, time, typeLbl, t.agentName || '—', fmt(amt)]);
         html += `<tr>
           <td>${i + 1}</td>
           <td style="white-space:nowrap;">${escapeHtml(time)}</td>
@@ -1196,14 +1196,20 @@ const AccountManagementComponent = {
           <span>صافي الحركة: <b>${fmt(Math.abs(net))} ${nature}</b></span>
         </div>`;
 
+      const bankTotalsLine = [
+        `<span>إجمالي الإيداعات: <b style="color:#059669">${fmt(totalDep)} ر.س</b></span>`,
+        `<span>إجمالي السحوبات: <b style="color:#dc2626">${fmt(totalWd)} ر.س</b></span>`,
+        `<span>صافي الحركة: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(Math.abs(net))} ${nature} ر.س</b></span>`,
+      ].join('');
+
       this._lastStatement = {
         kind: 'bank',
         title: `كشف حركة بنك: ${this._selectedAccountName || ('BNK_' + bankId)}`,
         accountId: 'BNK_' + bankId,
         periodText: this._buildPeriodText(from, to),
-        columns: ['#', 'الوقت', 'نوع العملية', 'المندوب', 'المبلغ'],
+        columns: ['#', 'الوقت', 'نوع العملية', 'المندوب', 'المبلغ (ر.س)'],
         rows: printRows,
-        totalsLine: bankTotalsText.split(' | ').map(t => `<span>${t}</span>`).join(''),
+        totalsLine: bankTotalsLine,
         totalsText: bankTotalsText,
       };
 
