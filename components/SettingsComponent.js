@@ -413,39 +413,46 @@ const SettingsComponent = {
 
   /* ══════════════════════════════════════════
      إعادة ضبط جميع البيانات التشغيلية
-     (تسلسل أمان مزدوج: تأكيد نصي + RPC + system_commands)
+     (تسلسل أمان مزدوج: تأكيد نصي + RPC + system_commands + إعادة تحميل)
   ══════════════════════════════════════════ */
   async _resetAllData() {
-    // الخطوة 1: تأكيد أول
+    // خطوة 1: تأكيد أول
     const first = await confirmDialog(
-      '⚠️ تحذير: سيتم حذف جميع البيانات التشغيلية (معاملات، دفتر الأستاذ، أرصدة الحسابات، إقفالات يومية، ودائع فاشلة، طلبات تحويل، إشعارات، سجل التدقيق، طابور المزامنة) من Supabase وجميع الأجهزة. المستخدمون وإعدادات النظام والشركات والحسابات البنكية والمديونيات لن تُمس. لا يمكن التراجع عن هذه العملية.',
+      '⚠️ سيتم حذف جميع البيانات التشغيلية (معاملات، دفتر الأستاذ، أرصدة الحسابات، إقفالات، ودائع فاشلة، إشعارات، سجل التدقيق، طابور المزامنة) من Supabase وجميع الأجهزة. المستخدمون وإعدادات النظام والشركات والحسابات البنكية والمديونيات لن تُمس. لا يمكن التراجع عن هذا.',
       'تأكيد أول — متابعة', 'إلغاء', 'warning'
     );
     if (!first) return;
 
-    // الخطوة 2: تأكيد ثانٍ بكتابة نص تحقق
-    const code = 'إعادة الضبط';
+    // خطوة 2: تأكيد ثانٍ بنص صريح
+    const code  = 'إعادة الضبط';
     const typed = window.prompt(`⚠️ تأكيد نهائي: اكتب "${code}" بالضبط للمتابعة:`);
     if (typed !== code) {
       showToast('تم الإلغاء — النص غير مطابق', 'info');
       return;
     }
 
-    const btn     = document.getElementById('set-reset-data-btn');
-    const restore = setButtonLoading(btn, 'جاري إعادة الضبط...');
+    const btn = document.getElementById('set-reset-data-btn');
+    setButtonLoading(btn, 'جاري إعادة الضبط...');
 
     try {
       const userId = AppStore.getState('currentUser')?.id;
 
-      // الخطوة 3: استدعاء RPC لحذف البيانات من Supabase (SECURITY DEFINER)
+      // خطوة 3: حذف البيانات التشغيلية من Supabase عبر RPC (SECURITY DEFINER)
       showToast('جاري حذف البيانات من السحابة...', 'info');
       const { error: rpcError } = await supabaseClient.rpc(RPC.RESET_ALL_OPERATIONAL_DATA);
       if (rpcError) {
         showToast(`فشل حذف البيانات: ${rpcError.message}`, 'error');
+        if (btn) btn.disabled = false;
         return;
       }
 
-      // الخطوة 4: نشر أمر system_commands لإعلام الأجهزة الأخرى
+      // خطوة 4: إيقاف خدمات المزامنة قبل مسح Dexie
+      try {
+        if (typeof SyncQueue   !== 'undefined') SyncQueue.clearRetryTimers();
+        if (typeof SyncService !== 'undefined') SyncService.stop();
+      } catch (_e) { /* non-critical */ }
+
+      // خطوة 5: نشر أمر RESET لباقي الأجهزة
       const { error: cmdError } = await supabaseClient
         .from(TABLES.SYSTEM_COMMANDS)
         .insert({
@@ -454,32 +461,56 @@ const SettingsComponent = {
           note      : `إعادة ضبط يدوية بواسطة المدير — ${new Date().toLocaleString('ar-SA')}`,
         });
       if (cmdError) {
-        // تحذير فقط — البيانات حُذفت بالفعل
         console.warn('⚠️ SettingsComponent: فشل إدراج system_commands:', cmdError.message);
       }
 
-      // الخطوة 5: مسح Dexie المحلي على هذا الجهاز
+      // خطوة 6: مسح قاعدة البيانات المحلية (Dexie) بالكامل
       showToast('جاري مسح قاعدة البيانات المحلية...', 'info');
       if (window.db) {
         try {
           await db.delete();
           await db.open();
-          console.log('✅ Dexie: أُعيد تهيئتها بعد إعادة الضبط');
+          console.log('✅ Dexie: أُعيدت تهيئتها بعد إعادة الضبط');
         } catch (dexieErr) {
           console.warn('⚠️ Dexie delete/reopen:', dexieErr.message);
         }
       }
 
-      // الخطوة 6: تحديث الـ store (ستكون البيانات فارغة)
-      await AppStore.refreshData();
+      // خطوة 7: مسح كاش localStorage التشغيلي (تفضيلات العرض المرتبطة بالبيانات المحذوفة)
+      this._clearLocalCaches();
 
-      showToast('✅ تمت إعادة الضبط بنجاح — جميع البيانات التشغيلية حُذفت', 'success');
+      showToast('✅ تمت إعادة الضبط بنجاح — سيُعاد تحميل النظام...', 'success', 3000);
+
+      // خطوة 8: إعادة تحميل الصفحة لضمان حالة نظيفة تماماً
+      setTimeout(() => window.location.reload(), 2500);
 
     } catch (e) {
       showToast(`خطأ غير متوقع: ${e.message}`, 'error');
       console.error('❌ _resetAllData:', e);
-    } finally {
-      restore();
+      if (btn) btn.disabled = false;
+    }
+  },
+
+  /* ══════════════════════════════════════════
+     مسح كاش localStorage التشغيلي
+     يُحافظ على: الثيم، بيانات المصادقة (quick_login، device_id، offline_session)
+  ══════════════════════════════════════════ */
+  _clearLocalCaches() {
+    try {
+      // تفضيل فلتر كشف الحساب (يشير إلى فترات زمنية لبيانات محذوفة)
+      localStorage.removeItem('ahu_stmt_filter_pref');
+      // بانر الدخول السريع — إعادة الظهور بعد الضبط
+      localStorage.removeItem('ahu_quick_banner_dismissed');
+      // البنوك المفضلة لجميع المستخدمين (favBanks_<userId>)
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('favBanks_')) toRemove.push(k);
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+      console.log('🧹 SettingsComponent: تم مسح كاش localStorage التشغيلي');
+    } catch (e) {
+      console.warn('⚠️ _clearLocalCaches:', e.message);
     }
   },
 

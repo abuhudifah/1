@@ -959,7 +959,13 @@ async function _checkSystemCommands() {
 
     for (const cmd of commands) {
       if (cmd.command === 'RESET_ALL_DATA') {
-        console.log('📢 App.js: استُلم أمر RESET_ALL_DATA — مسح Dexie...');
+        console.log('📢 App.js: استُلم أمر RESET_ALL_DATA — جاري تنظيف هذا الجهاز...');
+
+        // إيقاف خدمات المزامنة أولاً
+        try {
+          if (typeof SyncQueue   !== 'undefined') SyncQueue.clearRetryTimers();
+          if (typeof SyncService !== 'undefined') SyncService.stop();
+        } catch (_e) { /* non-critical */ }
 
         // مسح Dexie المحلي
         if (window.db) {
@@ -972,18 +978,29 @@ async function _checkSystemCommands() {
           }
         }
 
-        // تحديث executed_at لمنع إعادة التنفيذ من هذا الجهاز
-        // (سيبقى executed_at لو جهاز آخر سبق — الشرط IS NULL يمنع التكرار)
+        // مسح كاش localStorage التشغيلي
+        try {
+          localStorage.removeItem('ahu_stmt_filter_pref');
+          localStorage.removeItem('ahu_quick_banner_dismissed');
+          const toRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('favBanks_')) toRemove.push(k);
+          }
+          toRemove.forEach(k => localStorage.removeItem(k));
+        } catch (_e) { /* non-critical */ }
+
+        // تحديث executed_at لمنع إعادة التنفيذ من هذا الجهاز (atomic)
         await supabaseClient
           .from('system_commands')
           .update({ executed_at: new Date().toISOString() })
           .eq('id', cmd.id)
-          .is('executed_at', null); // atomic: فقط إذا لم يُنفَّذ بعد
+          .is('executed_at', null);
 
-        // تحديث الـ store (البيانات فارغة الآن)
-        try { await AppStore.refreshData(); } catch (_e) { /* non-critical */ }
+        showToast('📢 تمت إعادة ضبط البيانات من المدير — سيُعاد تحميل النظام...', 'info', 3000);
 
-        showToast('📢 تم مسح البيانات المحلية بناءً على أمر المدير', 'info');
+        // إعادة تحميل الصفحة للحالة النظيفة
+        setTimeout(() => window.location.reload(), 2500);
       }
     }
   } catch (err) {

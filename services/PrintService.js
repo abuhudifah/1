@@ -293,3 +293,5 @@ const PrintService = (() => {
 
   return { print, share, copyText, buildTable, printStatementAdvanced, exportToExcel };
 })();
+
+window.PrintService = PrintService;

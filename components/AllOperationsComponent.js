@@ -26,7 +26,7 @@ const AllOperationsComponent = {
     title.textContent = '📋 جميع العمليات';
     wrap.appendChild(title);
 
-    const users  = AppStore.getState('users');
+    const users  = AppStore.getState('users') || [];
     const agents = users.filter(u=>u.role==='agent'&&u.is_active);
 
     // لوحة الفلاتر

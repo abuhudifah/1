@@ -153,6 +153,13 @@ const SyncQueue = {
    * @returns {Promise<{ok: boolean, processed: number, failed: number}>}
    */
   async processQueue() {
+    // تنظيف العمليات العالقة في 'processing' من تعطّل أو إعادة تشغيل سابقة
+    try {
+      await db.sync_queue
+        .where('sync_status').equals('processing')
+        .modify({ sync_status: 'pending' });
+    } catch { /* تجاهل — لا نوقف المعالجة بسببه */ }
+
     if (_queueState.isProcessing) {
       console.log('ℹ️  SyncQueue: المعالجة جارية بالفعل');
       return ok({ processed: 0, failed: 0, reason: 'already_processing' });
@@ -452,11 +459,11 @@ const SyncQueue = {
         return;
       }
 
-      // تحديث عدد المحاولات وإعادة الحالة لـ pending
+      // تحديث عدد المحاولات وتعيين الحالة 'failed' لمنع إعادة الجلب الفوري
       await db.sync_queue.update(item.id, {
         retries       : newRetries,
         last_retry_at : new Date().toISOString(),
-        sync_status   : 'pending',
+        sync_status   : 'failed',   // ليس 'pending' — يمنع الحلقة اللانهائية
         error_message : errorMsg,
       });
 
@@ -464,10 +471,13 @@ const SyncQueue = {
       const delay = calcBackoffDelay(newRetries);
       console.log(`🔄 SyncQueue: إعادة جدولة عملية ${item.id} بعد ${delay}ms (محاولة ${newRetries})`);
 
+      const savedItemId = item.id;
       const timer = setTimeout(async () => {
-        _queueState.retryTimers.delete(item.id);
+        _queueState.retryTimers.delete(savedItemId);
+        // إعادة تفعيل العنصر إلى 'pending' قبل استئناف المعالجة
+        await db.sync_queue.update(savedItemId, { sync_status: 'pending' }).catch(() => {});
         if (isOnline() && !_queueState.isProcessing) {
-          await this.processQueue();
+          await SyncQueue.processQueue();
         }
       }, delay);
 
@@ -772,8 +782,11 @@ const SyncQueue = {
 
       const resolvedSet = new Set(resolvedKeys);
 
-      const all = await db.sync_conflicts.limit(QUERY_LIMITS.CONFLICTS).toArray();
-      return all.filter(c => !resolvedSet.has(c.id));
+      // filter قبل limit لضمان جلب أول CONFLICTS غير محلولة وليس أول CONFLICTS إجمالاً
+      return await db.sync_conflicts
+        .filter(c => !resolvedSet.has(c.id))
+        .limit(QUERY_LIMITS.CONFLICTS)
+        .toArray();
     } catch {
       return [];
     }

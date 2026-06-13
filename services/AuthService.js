@@ -225,11 +225,10 @@ async function enableQuickLogin(equation) {
     if (!password) return err('تم إلغاء تفعيل الدخول السريع');
 
     const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
-      email   : AuthState.currentUser.username,
+      email   : AuthState.authUser?.email || AuthState.currentUser.username,
       password,
     });
     if (verifyError) {
-      PasswordDialog.showError('كلمة المرور غير صحيحة');
       return err('كلمة المرور غير صحيحة. فشل تفعيل الدخول السريع');
     }
 
@@ -262,6 +261,15 @@ async function enableQuickLogin(equation) {
     localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify(quickData));
 
     AuthState.currentUser.quick_equation_hash = hash;
+
+    // حفظ في Supabase حتى يظهر الوضع الصحيح بعد checkSession
+    try {
+      await supabaseClient.from(TABLES.USERS)
+        .update({ quick_equation_hash: hash })
+        .eq('id', uid);
+    } catch (e) {
+      console.warn('[enableQuickLogin] تحديث Supabase فشل:', e.message);
+    }
 
     try {
       if (typeof db !== 'undefined' && db.isOpen())
@@ -311,6 +319,13 @@ async function quickLogin(equation) {
       if (!quickData) {
         _recordFailedAttempt('quick_login');
         return err('لم يتم تفعيل الدخول السريع على هذا الجهاز، أو المعادلة غير صحيحة');
+      }
+
+      // التحقق من صيغة Token: يجب UUID (صيغة xxxxxxxx-xxxx-...) وليس hex قديم
+      const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!_uuidRe.test(quickData.token || '')) {
+        localStorage.removeItem(`ahu_quick_${quickData.userId}`);
+        return err('انتهت صلاحية الدخول السريع (صيغة قديمة). يُرجى إعادة التفعيل من الإعدادات.');
       }
 
       const { userId } = quickData;
@@ -423,7 +438,8 @@ async function quickLogin(equation) {
 
     if (!offlineProfile.is_active) return err('تم تعطيل هذا الحساب.');
 
-    AuthState.currentUser = offlineProfile;
+    AuthState.currentUser   = offlineProfile;
+    AuthState.isOffline     = true;
     AuthState.isInitialized = true;
     _resetAttempts('quick_login');
     _resetAttempts(`quick_login_${offlineProfile.id}`);
@@ -712,7 +728,7 @@ async function _fetchUserProfile(userId) {
     try {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)
-        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors, account_number')
+        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors, account_number, allowed_companies, allowed_banks, allowed_users')
         .eq('id', userId).single();
       if (!error && data) return ok(data);
       console.warn('⚠️ _fetchUserProfile Supabase فشل:', error?.message);
@@ -938,4 +954,5 @@ const AuthService = {
 };
 
 window.AuthService = AuthService;
+window.AuthState   = AuthState;   // مطلوب لـ LoginComponent._offlineLogin و OfflineAuthService
 console.log('✅ AuthService.js v5.3 — createBankAccount: توليد internal_account_number تلقائياً عند الإنشاء');

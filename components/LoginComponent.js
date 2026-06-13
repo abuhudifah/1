@@ -1083,8 +1083,9 @@ const LoginComponent = {
     // 2. البحث في Dexie
     let user = null;
     try {
-      user = await db.users.where('username').equalsIgnoreCase(username.trim()).first()
-          || await db.users.where('account_number').equals(username.trim()).first();
+      const q = username.trim();
+      user = await db.users.where('username').equalsIgnoreCase(q).first()
+          || await db.users.filter(u => u.account_number === q).first();
     } catch (e) {
       showToast('خطأ في البحث عن المستخدم: ' + e.message, 'error');
       return;

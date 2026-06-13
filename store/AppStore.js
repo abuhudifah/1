@@ -208,6 +208,7 @@ async function refreshData() {
     } else if (user.role === ROLES.AGENT) {
       tasks.push(_loadAgentBankAccounts(user.id));
       tasks.push(_loadAgentDebtors(user.id));
+      tasks.push(_loadUsers()); // المندوب يحتاج قائمة المستخدمين لقائمة المستلمين
     }
 
     await Promise.allSettled(tasks);
