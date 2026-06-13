@@ -389,16 +389,52 @@ const PrintService = (() => {
      إلى صفوف بنفس تنسيق كشف الحساب في إدارة الحسابات
      الأعمدة: التاريخ | الوقت | نوع العملية | لكم (ر.س) | عليكم (ر.س) | التفاصيل
   ══════════════════════════════════════════════════════ */
-  function buildStatementPrintData(transactions, { date, userName } = {}) {
-    const LAKUM_TYPES = new Set(['collection', 'receipt', 'bank_withdrawal']);
-    const TYPE_LABELS = window.TRANSACTION_TYPE_LABELS || {};
-    const fmt         = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+  function buildStatementPrintData(transactions, { date, userName, companies, banks, users } = {}) {
+    // إيداع وحوالة واردة → لكم (دائن). الباقي → عليكم (مدين)
+    const LAKUM_TYPES  = new Set(['deposit', 'delivery']);
+    const TYPE_LABELS  = window.TRANSACTION_TYPE_LABELS || {};
+    const fmt          = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+
+    const companiesMap = new Map((Array.isArray(companies) ? companies : []).map(c => [c.id, c.name]));
+    const banksMap     = new Map((Array.isArray(banks)     ? banks     : []).map(b => [b.id, b.name]));
+    const usersMap     = new Map((Array.isArray(users)     ? users     : []).map(u => [u.id, u.display_name]));
 
     const fmtTime = (tx) => {
       if (tx.created_at) {
         return new Date(tx.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' });
       }
       return tx.time ? String(tx.time).substring(0, 5) : '—';
+    };
+
+    const _describe = (tx) => {
+      const extra = tx.details ? ` ${tx.details}` : '';
+      switch (tx.type) {
+        case 'collection': {
+          const cn = tx.company_id ? (companiesMap.get(tx.company_id) || '—') : null;
+          if (cn) return `عليكم تحصيل نقدي لصالح ${cn}${extra}`;
+          return `عليكم تحصيل نقدي إلى حساب تسوية العملاء من ${tx.customer_name || '—'}${extra}`;
+        }
+        case 'deposit': {
+          const bn = tx.bank_account_id ? (banksMap.get(tx.bank_account_id) || '—') : '—';
+          return `لكم إيداع نقدي إلى حساب ${bn}${extra}`;
+        }
+        case 'bank_withdrawal': {
+          const bn = tx.bank_account_id ? (banksMap.get(tx.bank_account_id) || '—') : '—';
+          return `عليكم سحب نقدي من حساب ${bn}${extra}`;
+        }
+        case 'expense':
+          return `مصروف ${tx.expense_type || 'عام'}${extra}`;
+        case 'delivery': {
+          const otherName = usersMap.get(tx.to_agent_id) || usersMap.get(tx.agent_id) || tx.customer_name || '—';
+          return `لكم حوالة نقدية واردة من حساب ${otherName}${extra}`;
+        }
+        case 'receipt': {
+          const otherName = usersMap.get(tx.from_agent_id) || usersMap.get(tx.to_agent_id) || tx.customer_name || '—';
+          return `عليكم حوالة نقدية من حسابكم إلى حساب ${otherName}${extra}`;
+        }
+        default:
+          return tx.customer_name || tx.details || 'قيد';
+      }
     };
 
     let totalLakum = 0, totalAlaykum = 0;
@@ -413,17 +449,19 @@ const PrintService = (() => {
         TYPE_LABELS[tx.type] || tx.type,
         isLakum  ? amt.toLocaleString('en-US') : '0',   // لكم
         !isLakum ? amt.toLocaleString('en-US') : '0',   // عليكم
-        tx.customer_name || tx.details || '—',           // التفاصيل — آخراً ككشف الحساب
+        _describe(tx),                                    // التفاصيل — آخراً ككشف الحساب
       ];
     });
 
-    const net     = totalLakum - totalAlaykum;
-    const netSign = net >= 0 ? 'لكم' : 'عليكم';
+    // الصافي = عليكم − لكم: موجب → المندوب مدين (عليكم)، سالب → له رصيد (لكم)
+    const net      = totalAlaykum - totalLakum;
+    const netSign  = net >= 0 ? 'عليكم' : 'لكم';
+    const netColor = net >= 0 ? '#dc2626' : '#059669';
 
     const totalsLine = [
       `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
       `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
-      `<span>الصافي: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(net)} ${netSign} ر.س</b></span>`,
+      `<span>صافي الحركة: <b style="color:${netColor}">${fmt(net)} ${netSign} ر.س</b></span>`,
     ].join('');
 
     const totalsText = `لكم: ${fmt(totalLakum)} | عليكم: ${fmt(totalAlaykum)} | الصافي: ${fmt(net)} ${netSign}`;

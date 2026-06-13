@@ -421,7 +421,11 @@ const DailySummaryComponent = {
 
     // نفس الدالة المشتركة المستخدمة في طباعة PDF
     const pd = PrintService.buildStatementPrintData(txs, {
-      date: formatDateArabic(date), userName: user?.display_name || '',
+      date      : formatDateArabic(date),
+      userName  : user?.display_name || '',
+      companies : AppStore.getState('companies')    || [],
+      banks     : AppStore.getState('bankAccounts') || [],
+      users     : AppStore.getState('users')        || [],
     });
 
     // إضافة عمود الحالة (للـ Excel فقط) وصف الإجماليات
@@ -562,7 +566,11 @@ const DailySummaryComponent = {
 
     // الدالة المشتركة مع كشف الحساب — نفس الأعمدة والترتيب والمنطق
     const pd = PrintService.buildStatementPrintData(txs, {
-      date: formatDateArabic(date), userName,
+      date      : formatDateArabic(date),
+      userName,
+      companies : AppStore.getState('companies')    || [],
+      banks     : AppStore.getState('bankAccounts') || [],
+      users     : AppStore.getState('users')        || [],
     });
 
     PrintService.printStatementAdvanced({
