@@ -442,98 +442,101 @@ const BankAccountsComponent = {
   _printStatement(bank, deposits, ceiling) {
     const users   = AppStore.getState('users');
     const logoUrl = AppStore.getState('logoUrl') || '';
-    const total = deposits.reduce((s,d)=>s+Math.round(parseFloat(d.amount)||0),0);
-    const pct   = ceiling>0?Math.round(total/ceiling*100):0;
+    const total   = deposits.reduce((s, d) => s + Math.round(parseFloat(d.amount) || 0), 0);
+    const pct     = ceiling > 0 ? Math.round(total / ceiling * 100) : 0;
+    const remain  = Math.max(0, ceiling - total);
+    const fillColor = pct >= 80 ? '#dc2626' : pct >= 50 ? '#d97706' : '#059669';
+    const dateStr = typeof formatDateArabic === 'function' ? formatDateArabic(this._selectedDate) : new Date().toLocaleDateString('ar-SA');
 
-    const w = window.open('','_blank','width=800,height=600');
-    w.document.write(`<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <title>كشف حساب بنكي — ${bank.name}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700;800&display=swap');
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:'IBM Plex Sans Arabic',sans-serif;padding:30px;color:#0f172a;direction:rtl;}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;
-      border-bottom:3px solid #0f172a;padding-bottom:16px;margin-bottom:20px;}
-    .header h1{font-size:18pt;font-weight:800;}
-    .header p{font-size:9pt;color:#64748b;margin-top:4px;}
-    .card-info{background:#f8fafc;border-radius:12px;padding:16px;
-      display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;}
-    .info-item label{font-size:8pt;color:#64748b;display:block;}
-    .info-item value{font-size:10pt;font-weight:700;}
-    .progress-wrap{margin-bottom:20px;}
-    .progress-bar{height:8px;background:#e2e8f0;border-radius:4px;margin-top:4px;}
-    .progress-fill{height:100%;border-radius:4px;
-      background:${pct>=80?'#dc2626':pct>=50?'#d97706':'#059669'};}
-    table{width:100%;border-collapse:collapse;font-size:10pt;}
-    thead{background:#0f172a;color:#fff;}
-    th{padding:9px 12px;font-size:10pt;font-weight:700;text-align:right;}
-    td{padding:8px 12px;border-bottom:1px solid #e2e8f0;}
-    tfoot td{font-weight:800;background:#f1f5f9;}
-    .footer{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;
-      display:flex;justify-content:space-between;font-size:8pt;color:#64748b;}
-    @media print{body{padding:15px;}}
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <h1>كشف حساب بنكي</h1>
-      <p>نظام أبو حذيفة المتكامل للصرافة والتحويلات</p>
-    </div>
-    <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-      ${logoUrl ? `<img src="${logoUrl}" alt="شعار" style="height:48px;object-fit:contain;display:block;margin-bottom:4px;">` : ''}
-      <p style="font-size:9pt;color:#64748b;">تاريخ الطباعة</p>
-      <p style="font-size:10pt;font-weight:700;">${new Date().toLocaleDateString('ar-SA')}</p>
-    </div>
-  </div>
+    const rowsHTML = deposits.map((d, i) => {
+      const agent = users.find(u => u.id === d.agent_id);
+      const t = d.created_at
+        ? new Date(d.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
+        : '—';
+      return `<tr class="${i % 2 === 1 ? 'ps-even' : ''}">
+        <td style="direction:ltr">${i + 1}</td>
+        <td>${agent?.display_name || '—'}</td>
+        <td style="direction:ltr;font-weight:700">${Math.round(parseFloat(d.amount) || 0).toLocaleString('en-US')}</td>
+        <td>${t}</td>
+      </tr>`;
+    }).join('');
 
-  <div class="card-info">
-    <div class="info-item"><label>اسم الحساب</label><br><strong>${bank.name}</strong></div>
-    <div class="info-item"><label>رقم الحساب</label><br><strong dir="ltr">${bank.account_number||'—'}</strong></div>
-    <div class="info-item"><label>حامل البطاقة</label><br><strong>${bank.card_holder||'—'}</strong></div>
-    <div class="info-item"><label>رقم البطاقة</label><br><strong dir="ltr">${bank.card_number||'—'}</strong></div>
-    <div class="info-item"><label>السقف المالي اليومي</label><br><strong dir="ltr">${ceiling.toLocaleString('en-US')} ر.س</strong></div>
-    <div class="info-item"><label>تاريخ الكشف</label><br><strong>${formatDateArabic(this._selectedDate)}</strong></div>
-  </div>
+    const shareText = [
+      `🏦 كشف حساب بنكي — ${bank.name}`,
+      `📅 ${dateStr}`,
+      '─────────────────',
+      `💰 إجمالي الإيداعات: ${total.toLocaleString('en-US')} ر.س`,
+      `📊 السقف اليومي: ${ceiling.toLocaleString('en-US')} ر.س`,
+      `✅ نسبة الاستخدام: ${pct}%`,
+      `🔹 المتبقي: ${remain.toLocaleString('en-US')} ر.س`,
+      'نظام أبو حذيفة 🔐',
+    ].join('\n');
 
-  <div class="progress-wrap">
-    <div style="display:flex;justify-content:space-between;font-size:9pt;margin-bottom:4px;">
-      <span>نسبة استخدام السقف: <strong>${pct}%</strong></span>
-      <span>المتبقي: <strong dir="ltr">${Math.max(0,ceiling-total).toLocaleString('en-US')} ر.س</strong></span>
-    </div>
-    <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;"></div></div>
-  </div>
+    const ts = new Date().toLocaleString('ar-SA', {
+      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
 
-  <table>
-    <thead><tr><th>#</th><th>المندوب</th><th>المبلغ (ر.س)</th><th>وقت الإيداع</th></tr></thead>
-    <tbody>
-      ${deposits.map((d,i)=>{
-        const agent = users.find(u=>u.id===d.agent_id);
-        const t = d.created_at?new Date(d.created_at).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}):'—';
-        return `<tr>
-          <td>${i+1}</td>
-          <td>${agent?.display_name||'—'}</td>
-          <td dir="ltr">${Math.round(parseFloat(d.amount)||0).toLocaleString('en-US')}</td>
-          <td>${t}</td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-    <tfoot>
-      <tr><td colspan="2"><strong>إجمالي الإيداعات</strong></td>
-        <td dir="ltr"><strong>${total.toLocaleString('en-US')}</strong></td><td></td></tr>
-    </tfoot>
-  </table>
+    const contentHTML = `
+      <div class="doc-header">
+        <div>
+          <div class="doc-title">كشف حساب بنكي</div>
+          <div class="doc-sub">نظام أبو حذيفة المتكامل للصرافة والتحويلات</div>
+        </div>
+        <div class="doc-meta">
+          ${logoUrl ? `<img class="doc-logo" src="${logoUrl}" alt="شعار">` : ''}
+          <div class="doc-period">${dateStr}</div>
+        </div>
+      </div>
 
-  <div class="footer">
-    <span>نظام أبو حذيفة — ${bank.name}</span>
-    <span>طُبع بتاريخ: ${new Date().toLocaleDateString('ar-SA')}</span>
-  </div>
-  <script>window.onload=()=>window.print();<\/script>
-</body></html>`);
-    w.document.close();
+      <div class="bank-card-info">
+        <div><span class="bank-info-label">اسم الحساب</span><span class="bank-info-val">${bank.name}</span></div>
+        <div><span class="bank-info-label">رقم الحساب</span><span class="bank-info-val" dir="ltr">${bank.account_number || '—'}</span></div>
+        <div><span class="bank-info-label">حامل البطاقة</span><span class="bank-info-val">${bank.card_holder || '—'}</span></div>
+        <div><span class="bank-info-label">رقم البطاقة</span><span class="bank-info-val" dir="ltr">${bank.card_number || '—'}</span></div>
+        <div><span class="bank-info-label">السقف اليومي</span><span class="bank-info-val" dir="ltr">${ceiling.toLocaleString('en-US')} ر.س</span></div>
+        <div><span class="bank-info-label">تاريخ الكشف</span><span class="bank-info-val">${dateStr}</span></div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px;">
+          <span>نسبة استخدام السقف: <strong>${pct}%</strong></span>
+          <span>المتبقي: <strong dir="ltr">${remain.toLocaleString('en-US')} ر.س</strong></span>
+        </div>
+        <div class="bank-progress-bar">
+          <div style="height:100%;width:${pct}%;background:${fillColor};border-radius:4px;
+            -webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>المندوب</th><th>المبلغ (ر.س)</th><th>وقت الإيداع</th></tr></thead>
+          <tbody>${rowsHTML}</tbody>
+          <tfoot>
+            <tr class="totals" style="display:table-row;">
+              <td colspan="2"><strong>إجمالي الإيداعات</strong></td>
+              <td style="direction:ltr;font-weight:800;color:#059669">${total.toLocaleString('en-US')}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="doc-footer">
+        <span><b>نظام أبو حذيفة — ${bank.name}</b></span>
+        <span>طُبع: ${ts}</span>
+      </div>`;
+
+    if (typeof PrintService !== 'undefined' && PrintService.printHTML) {
+      PrintService.printHTML(contentHTML, {
+        title     : `كشف حساب بنكي — ${bank.name}`,
+        logo      : logoUrl,
+        shareText,
+        periodText: dateStr,
+      });
+    } else if (window.showToast) {
+      showToast('خدمة الطباعة غير متوفرة', 'error');
+    }
   },
 
   // ─────────────────────────────────────────────
