@@ -653,6 +653,17 @@ async function disableQuickLogin() {
         await db.users.update(uid, { quick_equation_hash: null });
     } catch (e) { console.warn('⚠️ [disableQuickLogin] Dexie تحديث فشل:', e.message); }
 
+    // تحديث Supabase لضمان ثبات الحالة بعد إعادة تحميل الصفحة
+    if (isOnline()) {
+      try {
+        await supabaseClient.from(TABLES.USERS)
+          .update({ quick_equation_hash: null })
+          .eq('id', uid);
+      } catch (e) {
+        console.warn('⚠️ [disableQuickLogin] Supabase تحديث فشل:', e.message);
+      }
+    }
+
     return ok(true);
   } catch (e) { return err(formatErrorMessage(e)); }
 }
