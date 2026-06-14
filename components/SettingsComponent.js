@@ -178,11 +178,46 @@ const SettingsComponent = {
       </p>`;
     adminWrap.appendChild(dsCard);
 
+    /* ═══ 6. تعارضات المزامنة (للمدير فقط) ═══ */
+    const conflictsCard = document.createElement('div');
+    conflictsCard.className = 'glass-card';
+    conflictsCard.style.marginBottom = '0';
+    conflictsCard.setAttribute('data-sc-conflicts-card', '');
+    conflictsCard.innerHTML = `
+      <h3 style="font-size:.95rem;font-weight:700;margin-bottom:14px;
+        display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <span>⚠️ تعارضات المزامنة</span>
+        <span id="sc-conflicts-badge" style="display:none;
+          padding:2px 10px;border-radius:20px;font-size:.73rem;font-weight:700;
+          background:rgba(220,38,38,.15);color:#dc2626;border:1px solid rgba(220,38,38,.3);">
+        </span>
+      </h3>
+      <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
+        عمليات فشلت بعد عدة محاولات وتحتاج تدخلاً يدوياً — قبول نسخة الخادم أو فرض نسخة العميل.
+      </p>
+      <div id="sc-conflicts-list">
+        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:.83rem;">
+          ⏳ جاري التحميل...
+        </div>
+      </div>
+      <div id="sc-conflicts-actions" style="display:none;margin-top:12px;gap:10px;flex-wrap:wrap;">
+        <button id="sc-conflicts-resolve-all-server" class="btn btn-sm"
+          style="background:rgba(34,197,94,.1);color:#16a34a;border:1px solid rgba(34,197,94,.3);font-size:.78rem;">
+          ✅ قبول الخادم للكل
+        </button>
+        <button id="sc-conflicts-clear-all" class="btn btn-sm"
+          style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);font-size:.78rem;">
+          🗑️ حذف جميع التعارضات
+        </button>
+      </div>`;
+    adminWrap.appendChild(conflictsCard);
+
     wrap.appendChild(adminWrap);
     container.appendChild(wrap);
 
     this._bindAdminEvents();
     if (window.lucide) lucide.createIcons();
+    await this._loadConflicts();
   },
 
   /* ══════════════════════════════════════════
@@ -207,6 +242,8 @@ const SettingsComponent = {
     document.getElementById('set-import-trigger')?.addEventListener('click',  () => document.getElementById('set-import-file')?.click());
     document.getElementById('set-import-file')?.addEventListener('change',    (e) => this._importBackup(e));
     document.getElementById('set-reset-data-btn')?.addEventListener('click',  () => this._resetAllData());
+    document.getElementById('sc-conflicts-resolve-all-server')?.addEventListener('click', () => this._resolveAllConflicts('server'));
+    document.getElementById('sc-conflicts-clear-all')?.addEventListener('click', () => this._clearAllConflicts());
   },
 
   /* ══════════════════════════════════════════
@@ -512,6 +549,295 @@ const SettingsComponent = {
     } catch (e) {
       console.warn('⚠️ _clearLocalCaches:', e.message);
     }
+  },
+
+  /* ══════════════════════════════════════════
+     تحميل التعارضات وعرضها
+  ══════════════════════════════════════════ */
+  async _loadConflicts() {
+    const listEl    = document.getElementById('sc-conflicts-list');
+    const badgeEl   = document.getElementById('sc-conflicts-badge');
+    const actionsEl = document.getElementById('sc-conflicts-actions');
+    if (!listEl) return;
+
+    try {
+      const conflicts = await SyncQueue.getUnresolvedConflicts();
+
+      if (badgeEl) {
+        badgeEl.textContent   = conflicts.length > 0 ? `${conflicts.length} تعارض` : '';
+        badgeEl.style.display = conflicts.length > 0 ? '' : 'none';
+      }
+      if (actionsEl) {
+        actionsEl.style.display = conflicts.length > 0 ? 'flex' : 'none';
+      }
+
+      if (conflicts.length === 0) {
+        listEl.innerHTML = `
+          <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:.83rem;">
+            ✅ لا توجد تعارضات معلقة
+          </div>`;
+        return;
+      }
+
+      const TABLE_LABELS = {
+        transactions    : 'معاملات',
+        failed_deposits : 'إيداعات فاشلة',
+        debtors         : 'مديونيات',
+        notifications   : 'إشعارات',
+      };
+
+      listEl.innerHTML = '';
+      conflicts.forEach(c => {
+        const row = document.createElement('div');
+        row.style.cssText = `display:flex;align-items:center;gap:8px;padding:10px 12px;
+          border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;
+          background:var(--bg-secondary);flex-wrap:wrap;`;
+
+        const tLabel  = TABLE_LABELS[c.table_name] || escapeHtml(c.table_name || '');
+        const dateStr = c.created_at
+          ? new Date(c.created_at).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' })
+          : '';
+
+        row.innerHTML = `
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:.82rem;font-weight:600;color:var(--text-primary);
+              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${escapeHtml(tLabel)} — ${escapeHtml(String(c.record_id || c.operation_id || c.id))}
+            </div>
+            <div style="font-size:.75rem;color:var(--text-muted);margin-top:2px;">
+              ${escapeHtml(c.reason || '')}${dateStr ? ` · ${dateStr}` : ''}
+            </div>
+          </div>
+          <button class="btn btn-sm" data-cid="${c.id}" data-action="view"
+            style="font-size:.73rem;padding:3px 9px;background:var(--bg-hover);
+              border:1px solid var(--border-color);color:var(--text-secondary);">
+            عرض
+          </button>
+          <button class="btn btn-sm" data-cid="${c.id}" data-action="server"
+            style="font-size:.73rem;padding:3px 9px;
+              background:rgba(34,197,94,.1);color:#16a34a;border:1px solid rgba(34,197,94,.3);">
+            ✅ خادم
+          </button>
+          <button class="btn btn-sm" data-cid="${c.id}" data-action="client"
+            style="font-size:.73rem;padding:3px 9px;
+              background:rgba(59,130,246,.1);color:#2563eb;border:1px solid rgba(59,130,246,.3);">
+            📱 عميل
+          </button>
+          <button class="btn btn-sm" data-cid="${c.id}" data-action="delete"
+            style="font-size:.73rem;padding:3px 9px;
+              background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);">
+            🗑️
+          </button>`;
+        listEl.appendChild(row);
+      });
+
+      this._conflictsCache = conflicts;
+
+      if (this._conflictsClickHandler) {
+        listEl.removeEventListener('click', this._conflictsClickHandler);
+      }
+      this._conflictsClickHandler = (e) => {
+        const btn = e.target.closest('[data-cid]');
+        if (!btn) return;
+        const cid    = parseInt(btn.dataset.cid, 10);
+        const action = btn.dataset.action;
+        if (action === 'view') {
+          const conflict = this._conflictsCache?.find(x => x.id === cid);
+          if (conflict) this._showConflictModal(conflict);
+        } else if (action === 'server') {
+          this._resolveConflict(cid, 'server');
+        } else if (action === 'client') {
+          this._resolveConflict(cid, 'client');
+        } else if (action === 'delete') {
+          this._deleteConflict(cid);
+        }
+      };
+      listEl.addEventListener('click', this._conflictsClickHandler);
+
+    } catch (e) {
+      listEl.innerHTML = `
+        <div style="text-align:center;padding:14px;color:var(--danger);font-size:.82rem;">
+          ⚠️ خطأ في تحميل التعارضات: ${escapeHtml(e.message)}
+        </div>`;
+    }
+  },
+
+  /* ══════════════════════════════════════════
+     مودال تفاصيل التعارض
+  ══════════════════════════════════════════ */
+  _showConflictModal(conflict) {
+    document.getElementById('sc-conflict-modal')?.remove();
+
+    const TABLE_LABELS = {
+      transactions    : 'معاملات',
+      failed_deposits : 'إيداعات فاشلة',
+      debtors         : 'مديونيات',
+      notifications   : 'إشعارات',
+    };
+
+    const tLabel = TABLE_LABELS[conflict.table_name] || conflict.table_name || '';
+    const fmt = (obj) => {
+      if (obj === null || obj === undefined) return '—';
+      try {
+        const parsed = typeof obj === 'string' ? JSON.parse(obj) : obj;
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        return String(obj);
+      }
+    };
+
+    const overlay = document.createElement('div');
+    overlay.id = 'sc-conflict-modal';
+    overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.55);
+      display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;`;
+
+    const modal = document.createElement('div');
+    modal.style.cssText = `background:var(--bg-secondary);border:1px solid var(--border-color);
+      border-radius:14px;padding:20px;width:100%;max-width:520px;max-height:80vh;
+      overflow-y:auto;display:flex;flex-direction:column;gap:14px;`;
+
+    modal.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <h4 style="font-size:.92rem;font-weight:700;margin:0;">
+          تعارض: ${escapeHtml(tLabel)} — ${escapeHtml(String(conflict.record_id || conflict.operation_id || conflict.id))}
+        </h4>
+        <button id="sc-modal-close"
+          style="background:none;border:none;cursor:pointer;font-size:1.2rem;
+            color:var(--text-muted);padding:4px 8px;line-height:1;">✕</button>
+      </div>
+      ${conflict.reason ? `<p style="font-size:.78rem;color:var(--text-muted);margin:0;">${escapeHtml(conflict.reason)}</p>` : ''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px;">
+            📱 بيانات العميل (المحلية)
+          </div>
+          <pre style="font-size:.70rem;background:rgba(59,130,246,.06);
+            border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:10px;
+            overflow-x:auto;white-space:pre-wrap;word-break:break-all;
+            max-height:200px;overflow-y:auto;color:var(--text-primary);margin:0;">${escapeHtml(fmt(conflict.client_data))}</pre>
+        </div>
+        <div>
+          <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px;">
+            ☁️ بيانات الخادم
+          </div>
+          <pre style="font-size:.70rem;background:rgba(34,197,94,.05);
+            border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:10px;
+            overflow-x:auto;white-space:pre-wrap;word-break:break-all;
+            max-height:200px;overflow-y:auto;color:var(--text-primary);margin:0;">${escapeHtml(fmt(conflict.server_data))}</pre>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+        <button id="sc-modal-server" class="btn btn-sm"
+          style="background:rgba(34,197,94,.1);color:#16a34a;border:1px solid rgba(34,197,94,.3);">
+          ✅ قبول الخادم
+        </button>
+        <button id="sc-modal-client" class="btn btn-sm"
+          style="background:rgba(59,130,246,.1);color:#2563eb;border:1px solid rgba(59,130,246,.3);">
+          📱 فرض العميل
+        </button>
+        <button id="sc-modal-cancel" class="btn btn-secondary btn-sm">إغلاق</button>
+      </div>`;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    document.getElementById('sc-modal-close')?.addEventListener('click', close);
+    document.getElementById('sc-modal-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    document.getElementById('sc-modal-server')?.addEventListener('click', () => {
+      close();
+      this._resolveConflict(conflict.id, 'server');
+    });
+    document.getElementById('sc-modal-client')?.addEventListener('click', () => {
+      close();
+      this._resolveConflict(conflict.id, 'client');
+    });
+  },
+
+  /* ══════════════════════════════════════════
+     حل تعارض واحد
+  ══════════════════════════════════════════ */
+  async _resolveConflict(id, resolution) {
+    const result = await SyncQueue.resolveConflict(id, resolution);
+    if (isOk(result)) {
+      showToast(resolution === 'server' ? 'تم قبول نسخة الخادم' : 'تم فرض نسخة العميل', 'success');
+    } else {
+      showToast(`فشل حل التعارض: ${result.error}`, 'error');
+    }
+    await this._loadConflicts();
+  },
+
+  /* ══════════════════════════════════════════
+     حذف تعارض واحد بدون حل
+  ══════════════════════════════════════════ */
+  async _deleteConflict(id) {
+    const confirmed = await confirmDialog(
+      'حذف هذا التعارض من القائمة بدون حل؟',
+      'حذف', 'إلغاء', 'warning'
+    );
+    if (!confirmed) return;
+    try {
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        await db.sync_conflicts.delete(id);
+      }
+      showToast('تم حذف التعارض', 'success');
+    } catch (e) {
+      showToast(`فشل الحذف: ${e.message}`, 'error');
+    }
+    await this._loadConflicts();
+  },
+
+  /* ══════════════════════════════════════════
+     حل جميع التعارضات بنفس القرار
+  ══════════════════════════════════════════ */
+  async _resolveAllConflicts(resolution) {
+    const label     = resolution === 'server' ? 'نسخة الخادم' : 'نسخة العميل';
+    const confirmed = await confirmDialog(
+      `قبول ${label} لجميع التعارضات المعلقة؟ لا يمكن التراجع عن هذا.`,
+      'تأكيد', 'إلغاء', 'warning'
+    );
+    if (!confirmed) return;
+
+    try {
+      const conflicts = await SyncQueue.getUnresolvedConflicts();
+      if (!conflicts.length) { showToast('لا توجد تعارضات معلقة', 'info'); return; }
+
+      let done = 0;
+      let fail = 0;
+      for (const c of conflicts) {
+        const r = await SyncQueue.resolveConflict(c.id, resolution);
+        isOk(r) ? done++ : fail++;
+      }
+      showToast(
+        `تم حل ${done} تعارض` + (fail > 0 ? ` (${fail} فاشل)` : ''),
+        fail > 0 ? 'warning' : 'success'
+      );
+    } catch (e) {
+      showToast(`خطأ: ${e.message}`, 'error');
+    }
+    await this._loadConflicts();
+  },
+
+  /* ══════════════════════════════════════════
+     حذف جميع التعارضات بدون حل
+  ══════════════════════════════════════════ */
+  async _clearAllConflicts() {
+    const confirmed = await confirmDialog(
+      'حذف جميع التعارضات من القائمة بدون حل؟ لا يمكن التراجع عن هذا.',
+      'حذف الكل', 'إلغاء', 'danger'
+    );
+    if (!confirmed) return;
+    try {
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        await db.sync_conflicts.clear();
+      }
+      showToast('تم حذف جميع التعارضات', 'success');
+    } catch (e) {
+      showToast(`فشل الحذف: ${e.message}`, 'error');
+    }
+    await this._loadConflicts();
   },
 
 };
