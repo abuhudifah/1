@@ -883,6 +883,49 @@ const _CSS = `
   body.dark-mode .ql-skip-btn { border-color: rgba(255,255,255,0.12); }
   body.dark-mode .ql-skip-btn:hover { background: rgba(255,255,255,0.05); }
 
+  /* ── قائمة اختيار الحساب (Offline Account Selector) ── */
+  .offline-account-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 16px;
+    background: rgba(15,23,42,0.04);
+    border: 1.5px solid rgba(15,23,42,0.10);
+    border-radius: 12px;
+    color: var(--text-primary, #0f172a);
+    cursor: pointer;
+    text-align: right;
+    width: 100%;
+    transition: background 150ms, transform 120ms, border-color 150ms;
+    margin-bottom: 8px;
+  }
+  .offline-account-item:last-child { margin-bottom: 0; }
+  .offline-account-item:hover {
+    background: rgba(15,23,42,0.08);
+    border-color: rgba(15,23,42,0.20);
+    transform: translateX(-3px);
+  }
+  body.dark-mode .offline-account-item {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.10);
+    color: #f1f5f9;
+  }
+  body.dark-mode .offline-account-item:hover {
+    background: rgba(255,255,255,0.10);
+    border-color: rgba(255,255,255,0.20);
+  }
+  .offline-account-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+  }
+  .offline-account-info { flex: 1; text-align: right; }
+  .offline-account-name { font-weight: 600; font-size: 0.90rem; margin-bottom: 2px; }
+  .offline-account-num  { font-size: 0.76rem; color: var(--text-muted, #64748b); }
+
   /* ── أزرار الدخول الثلاثة (أيقونات فقط) ── */
   .calc-auth-row {
     display: flex;
@@ -950,14 +993,17 @@ const LoginComponent = {
     result       : '0',
     justEvaluated: false,
     // حالة UI
-    view         : 'login',   // 'calc' | 'login' | 'offline'
+    view         : 'login',   // 'calc' | 'login' | 'offline' | 'account-selector'
     menuOpen     : false,
     isLoading    : false,
     showPassword : false,
     quickEnabled : false,
     quickPending : false,
     // الدخول بدون إنترنت
-    offlineUser  : null,
+    offlineUser            : null,
+    offlineAccounts        : [],   // قائمة الحسابات في account-selector
+    pendingPinUserId       : null, // المستخدم المختار لواجهة PIN
+    pendingPinHasWebAuthn  : false,
   },
   _onSuccess : null,
   _container : null,
@@ -1032,6 +1078,8 @@ const LoginComponent = {
     scene.innerHTML = '';
     if (this._state.view === 'calc') {
       scene.appendChild(this._buildCalcCard());
+    } else if (this._state.view === 'account-selector') {
+      scene.appendChild(this._buildAccountSelectorCard());
     } else if (this._state.view === 'offline') {
       scene.appendChild(this._buildOfflineCard());
     } else {
@@ -1333,18 +1381,142 @@ const LoginComponent = {
   // ─────────────────────────────────────────────────────────
   // الدخول بدون إنترنت — يُبدّل للبطاقة المخصصة
   // ─────────────────────────────────────────────────────────
-  _offlineLogin() {
+  async _offlineLogin() {
     if (typeof OfflineAuthService === 'undefined') {
       showToast('خدمة Offline غير محمَّلة', 'error');
       return;
     }
-    if (typeof db === 'undefined' || !db.isOpen()) {
-      showToast('قاعدة البيانات المحلية غير متاحة', 'error');
+
+    // ── جمع جلسات hasPin=true من localStorage ──
+    const sessions = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_offline_session_')) continue;
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          if (data?.hasPin === true && data?.userId) {
+            sessions.push({
+              userId     : data.userId,
+              hasWebAuthn: data.hasWebAuthn || false,
+            });
+          }
+        } catch { continue; }
+      }
+    } catch { /* localStorage غير متاح */ }
+
+    // لا توجد جلسات مُفعَّلة → إشعار وبقاء في المكان
+    if (sessions.length === 0) {
+      showToast(
+        'سجّل الدخول بالبريد الإلكتروني أولاً ثم فعّل الدخول بدون إنترنت من إعداداتك',
+        'warning',
+        6000
+      );
       return;
     }
-    this._state.view = 'offline';
-    this._state.offlineUser = null;
+
+    // حساب واحد → انتقال مباشر لواجهة PIN
+    if (sessions.length === 1) {
+      this._showPinInterface(sessions[0].userId, sessions[0].hasWebAuthn);
+      return;
+    }
+
+    // متعدد → جلب أسماء من Dexie ثم عرض قائمة الاختيار
+    const accounts = [];
+    for (const s of sessions) {
+      let displayName   = 'مستخدم غير معروف';
+      let accountNumber = '—';
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        try {
+          const user = await db.users.get(s.userId);
+          if (user) {
+            displayName   = user.display_name   || displayName;
+            accountNumber = user.account_number || accountNumber;
+          }
+        } catch { /* Dexie غير متاحة */ }
+      }
+      accounts.push({ ...s, displayName, accountNumber });
+    }
+
+    this._state.offlineAccounts = accounts;
+    this._state.view = 'account-selector';
     this._renderView();
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // placeholder واجهة PIN — يُنفَّذ كاملاً في الخطوة 3
+  // ─────────────────────────────────────────────────────────
+  _showPinInterface(userId, hasWebAuthn = false) {
+    this._state.pendingPinUserId      = userId;
+    this._state.pendingPinHasWebAuthn = hasWebAuthn;
+    showToast('واجهة PIN قيد التطوير (الخطوة 3)', 'info');
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // بطاقة اختيار الحساب (عند وجود أكثر من حساب Offline)
+  // ─────────────────────────────────────────────────────────
+  _buildAccountSelectorCard() {
+    const card = document.createElement('div');
+    card.className = 'lp-card offline-card';
+
+    // رأس البطاقة
+    const header = document.createElement('div');
+    header.className = 'offline-header';
+    header.innerHTML = `
+      <div class="offline-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="1" y1="1" x2="23" y2="23"/>
+          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+          <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+          <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/>
+          <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+          <line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
+      </div>
+      <div class="offline-title-col">
+        <div class="offline-title">الدخول بدون إنترنت</div>
+        <div class="offline-subtitle">اختر حساباً للمتابعة</div>
+      </div>`;
+    card.appendChild(header);
+
+    // قائمة الحسابات
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;margin-bottom:14px;';
+
+    (this._state.offlineAccounts || []).forEach(acc => {
+      const btn = document.createElement('button');
+      btn.type      = 'button';
+      btn.className = 'offline-account-item';
+      // بصمة — SVG مضمّن لأن lucide غير متاح على شاشة الدخول
+      const fpSvg = acc.hasWebAuthn
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" title="بصمة مُفعَّلة"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>`
+        : '';
+      btn.innerHTML = `
+        <div class="offline-account-avatar">${escapeHtml((acc.displayName || '؟').charAt(0))}</div>
+        <div class="offline-account-info">
+          <div class="offline-account-name">${escapeHtml(acc.displayName)}</div>
+          <div class="offline-account-num">${escapeHtml(acc.accountNumber)}</div>
+        </div>
+        ${fpSvg}`;
+      btn.addEventListener('click', () => this._showPinInterface(acc.userId, acc.hasWebAuthn));
+      list.appendChild(btn);
+    });
+    card.appendChild(list);
+
+    // زر الرجوع
+    const backBtn = document.createElement('button');
+    backBtn.type      = 'button';
+    backBtn.className = 'offline-back-btn';
+    backBtn.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      <span>العودة للآلة الحاسبة</span>`;
+    backBtn.addEventListener('click', () => this._switchToCalc());
+    card.appendChild(backBtn);
+
+    return card;
   },
 
   // ─────────────────────────────────────────────────────────
