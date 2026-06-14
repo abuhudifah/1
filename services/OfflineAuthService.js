@@ -159,7 +159,9 @@ const OfflineAuthService = {
     }
 
     const pinHash  = await hashSHA256(pinStr, userId);
-    const deviceId = getDeviceToken();
+    const deviceId = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
+                     || localStorage.getItem(`ahu_device_${userId}`)
+                     || null;
 
     // ── محاولة الإنشاء عبر الخادم أولاً ──────────────────
     if (isOnline() && window.AuthState?.authUser) {
@@ -236,7 +238,9 @@ const OfflineAuthService = {
     if (!isOk(bfCheck)) return bfCheck;
 
     const pinHash  = await hashSHA256(String(pin).trim(), userId);
-    const deviceId = getDeviceToken();
+    const deviceId = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
+                     || localStorage.getItem(`ahu_device_${userId}`)
+                     || null;
 
     // ── محاولة التحقق عبر الخادم (إن كان متصلاً ولديه JWT) ──
     if (isOnline() && window.AuthState?.authUser) {
@@ -465,7 +469,9 @@ const OfflineAuthService = {
     // جلب credential ID من Dexie
     let credentialId = null;
     if (typeof db !== 'undefined' && db.isOpen()) {
-      const deviceId = getDeviceToken();
+      const deviceId = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
+                       || localStorage.getItem(`ahu_device_${userId}`)
+                       || null;
       const session  = await db.offline_sessions
         .where('[user_id+device_id]')
         .equals([userId, deviceId])

@@ -284,6 +284,7 @@ async function checkSession() {
         accountNumber: profile.account_number,
       });
 
+      await _setupDeviceToken(profile.id);
       _saveToDexieBackground(profile);
       _migrateQuickLoginStorage();
       return ok({ user: session.user, profile });
@@ -538,7 +539,9 @@ async function quickLogin(equation) {
         const { data: tokenResult, error: tokenError } =
           await supabaseClient.rpc('quick_login_with_token', {
             p_token    : quickData.token,
-            p_device_id: getDeviceToken(),
+            p_device_id: sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
+                         || localStorage.getItem(`ahu_device_${userId}`)
+                         || null,
           });
 
         if (tokenError) throw tokenError;
