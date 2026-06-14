@@ -498,25 +498,25 @@ const ProfileSettingsComponent = {
     saveBtn.disabled = true;
     saveBtn.innerHTML = '⏳ جاري التفعيل...';
 
-    try {
-      const result = await AuthService.enableQuickLogin(eq);
+    const result = await AuthService.enableQuickLogin(eq);
 
-      if (isOk(result)) {
-        showToast('⚡ تم تفعيل الدخول السريع بنجاح! احتفظ بمعادلتك.', 'success', 5000);
-        input.value = '';
-        this._previewEquation('');
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = origText;
+    if (window.lucide) lucide.createIcons();
 
-        const user = { ...AuthService.getCurrentUser(), quick_equation_hash: 'set' };
-        const qCard = document.querySelector('[data-psc-quick-card]');
-        if (qCard) {
-          const newCard = this._buildQuickLoginCard(user);
-          newCard.setAttribute('data-psc-quick-card', '');
-          qCard.replaceWith(newCard);
-          this._bindEvents(user);
-          if (window.lucide) lucide.createIcons();
-        }
-      } else {
-        this._showErr('psc-eq-err', `فشل التفعيل: ${result.error}`);
+    if (isOk(result)) {
+      showToast('⚡ تم تفعيل الدخول السريع بنجاح! احتفظ بمعادلتك.', 'success', 5000);
+      input.value = '';
+      this._previewEquation('');
+
+      const user = { ...AuthService.getCurrentUser(), quick_equation_hash: 'set' };
+      const qCard = document.querySelector('[data-psc-quick-card]');
+      if (qCard) {
+        const newCard = this._buildQuickLoginCard(user);
+        newCard.setAttribute('data-psc-quick-card', '');
+        qCard.replaceWith(newCard);
+        this._bindEvents(user);
+        if (window.lucide) lucide.createIcons();
       }
     } finally {
       saveBtn.disabled = false;

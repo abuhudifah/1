@@ -1418,12 +1418,9 @@ const LoginComponent = {
 
     let user = null;
     try {
-      const qLow = q.toLowerCase();
-      user = await db.users.filter(u =>
-        (u.username  && u.username.toLowerCase()  === qLow) ||
-        (u.display_name && u.display_name.toLowerCase() === qLow) ||
-        (u.account_number && u.account_number.toLowerCase() === qLow)
-      ).first();
+      const q = username.trim();
+      user = await db.users.where('username').equalsIgnoreCase(q).first()
+          || await db.users.filter(u => u.account_number === q).first();
     } catch (e) {
       errEl.innerHTML = `<span>❌</span><span>خطأ في البحث: ${escapeHtml(e.message)}</span>`;
     } finally {

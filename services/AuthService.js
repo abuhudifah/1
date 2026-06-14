@@ -413,7 +413,6 @@ async function enableQuickLogin(equation) {
       password,
     });
     if (verifyError) {
-      console.error('[enableQuickLogin] فشل: signInWithPassword رفض كلمة المرور:', verifyError.message, '| code:', verifyError.status);
       return err('كلمة المرور غير صحيحة. فشل تفعيل الدخول السريع');
     }
     console.log('[enableQuickLogin] ✅ كلمة المرور صحيحة');
@@ -523,6 +522,13 @@ async function quickLogin(equation) {
         localStorage.setItem(`ahu_quick_${quickData.userId}`, JSON.stringify(rest));
         showToast('تم تحديث معادلة الدخول السريع — أعد التفعيل من إعدادات ملفك الشخصي', 'info', 5000);
         return err('يُرجى إعادة تفعيل الدخول السريع مرة واحدة من الإعدادات');
+      }
+
+      // التحقق من صيغة Token: يجب UUID (صيغة xxxxxxxx-xxxx-...) وليس hex قديم
+      const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!_uuidRe.test(quickData.token || '')) {
+        localStorage.removeItem(`ahu_quick_${quickData.userId}`);
+        return err('انتهت صلاحية الدخول السريع (صيغة قديمة). يُرجى إعادة التفعيل من الإعدادات.');
       }
 
       const { userId } = quickData;
@@ -1209,4 +1215,4 @@ const AuthService = {
 
 window.AuthService = AuthService;
 window.AuthState   = AuthState;   // مطلوب لـ LoginComponent._offlineLogin و OfflineAuthService
-console.log('✅ AuthService.js v6.1 — المرحلة 3: تطبيع المعادلة + رسائل آمنة + Rate Limiting localStorage للدخول السريع + ترقية التوكنات القديمة');
+console.log('✅ AuthService.js v5.3 — createBankAccount: توليد internal_account_number تلقائياً عند الإنشاء');
