@@ -1094,6 +1094,23 @@ const LoginComponent = {
     status.className = 'calc-ql-status';
     card.appendChild(status);
 
+    // زر البصمة (يظهر فقط إذا تم إعداد WebAuthn على هذا الجهاز)
+    if (this._hasWebAuthnSetup()) {
+      const webAuthnBtn = document.createElement('button');
+      webAuthnBtn.id = 'calc-webauthn-btn';
+      webAuthnBtn.className = 'lp-switch-btn';
+      webAuthnBtn.style.cssText = 'margin-bottom:6px;border-color:rgba(99,102,241,.35);color:#818cf8;';
+      webAuthnBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+          <path d="M12 2a5 5 0 0 1 5 5v2H7V7a5 5 0 0 1 5-5z"/>
+          <rect x="3" y="9" width="18" height="13" rx="2"/>
+          <line x1="12" y1="13" x2="12" y2="17"/>
+        </svg>
+        <span>الدخول بالبصمة أو Face ID</span>`;
+      webAuthnBtn.addEventListener('click', () => this._tryWebAuthnLogin());
+      card.appendChild(webAuthnBtn);
+    }
+
     // زر التسجيل التقليدي
     const switchBtn = document.createElement('button');
     switchBtn.className = 'lp-switch-btn';
@@ -1620,6 +1637,102 @@ const LoginComponent = {
       this._state.result = '0';
       this._state.justEvaluated = false;
     }, 1300);
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // WebAuthn Login — helpers
+  // ─────────────────────────────────────────────────────────
+
+  _hasWebAuthnSetup() {
+    if (!window.PublicKeyCredential) return false;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_offline_session_')) continue;
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          if (data?.hasWebAuthn) return true;
+        } catch { continue; }
+      }
+    } catch { /* localStorage غير متاح */ }
+    return false;
+  },
+
+  async _tryWebAuthnLogin() {
+    if (typeof OfflineAuthService === 'undefined') {
+      if (window.showToast) showToast('خدمة Offline غير محمّلة', 'error');
+      return;
+    }
+
+    // البحث عن userId من جلسة offline محلية تحتوي على WebAuthn
+    let userId = null;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_offline_session_')) continue;
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          if (data?.hasWebAuthn && data?.userId) { userId = data.userId; break; }
+        } catch { continue; }
+      }
+    } catch { /* localStorage غير متاح */ }
+
+    if (!userId) {
+      if (window.showToast) showToast('لم يتم العثور على جلسة بصمة', 'error');
+      return;
+    }
+
+    const statusEl = document.getElementById('calc-ql-status');
+    const webAuthnBtn = document.getElementById('calc-webauthn-btn');
+    if (statusEl) statusEl.textContent = '👆 جارٍ التحقق من البصمة...';
+    if (webAuthnBtn) webAuthnBtn.disabled = true;
+
+    try {
+      const result = await OfflineAuthService.verifyWithWebAuthn(userId);
+
+      if (isOk(result)) {
+        if (typeof db === 'undefined' || !db.isOpen()) {
+          if (statusEl) statusEl.textContent = '❌ قاعدة البيانات المحلية غير متاحة';
+          if (webAuthnBtn) webAuthnBtn.disabled = false;
+          return;
+        }
+
+        const profile = await db.users.get(userId);
+        if (!profile || !profile.is_active) {
+          if (statusEl) statusEl.textContent = '❌ المستخدم غير موجود أو تم تعطيله';
+          if (webAuthnBtn) webAuthnBtn.disabled = false;
+          return;
+        }
+
+        AuthState.currentUser   = profile;
+        AuthState.isOffline     = true;
+        AuthState.isInitialized = true;
+        AuthState.authUser      = null;
+
+        saveSession({
+          userId       : profile.id,
+          displayName  : profile.display_name,
+          username     : profile.username,
+          offlineSession: true,
+          webauthnMode : true,
+          accountNumber: profile.account_number,
+        });
+
+        if (statusEl) statusEl.textContent = '✅ تم التحقق — جاري الدخول...';
+        if (window.showToast) showToast(`👆 مرحباً ${profile.display_name}`, 'success');
+        setTimeout(() => this._onSuccess?.(profile), 400);
+      } else {
+        if (statusEl) { statusEl.style.color = '#f87171'; statusEl.textContent = `❌ ${result.error}`; }
+        if (webAuthnBtn) webAuthnBtn.disabled = false;
+        setTimeout(() => {
+          if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
+        }, 2500);
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '';
+      if (webAuthnBtn) webAuthnBtn.disabled = false;
+      if (window.showToast) showToast('خطأ في التحقق بالبصمة: ' + e.message, 'error');
+    }
   },
 
   // ─────────────────────────────────────────────────────────
