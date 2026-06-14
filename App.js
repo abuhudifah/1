@@ -105,6 +105,7 @@ async function _bootApp(profile) {
 
   // بناء الهيكل
   _buildAppShell();
+  _buildOfflineBanner();
 
   // ── تحديث last_login في الخلفية ──
   if (isOnline && isOnline()) {
@@ -717,6 +718,27 @@ function _updateConnStatus(isNowOnline) {
   // إعادة الاتصال أثناء وضع Offline → عرض مودال إعادة تسجيل الدخول
   if (isNowOnline && wasOffline) {
     _showReconnectionModal();
+  }
+}
+
+/** شريط وضع Offline — يظهر أعلى الصفحة عند AuthState.isOffline === true */
+function _buildOfflineBanner() {
+  const old = document.getElementById('offline-banner');
+  if (old) old.remove();
+
+  if (!AuthState.isOffline) return;
+
+  const banner = document.createElement('div');
+  banner.id        = 'offline-banner';
+  banner.className = 'offline-banner';
+  banner.innerHTML = `<span class="offline-banner-icon">🔌</span>
+                      <span class="offline-banner-text">وضع Offline — تعمل بدون اتصال</span>`;
+
+  const root = document.getElementById('app-root');
+  if (root) {
+    root.insertBefore(banner, root.firstChild);
+  } else {
+    document.body.insertBefore(banner, document.body.firstChild);
   }
 }
 
