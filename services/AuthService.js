@@ -359,55 +359,84 @@ async function refreshSession() {
 // 5. الدخول السريع — enableQuickLogin
 // ============================================================
 async function enableQuickLogin(equation) {
+  console.log('[enableQuickLogin] بدء التفعيل — equation:', equation);
   try {
-    if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
+    if (!AuthState.currentUser) {
+      console.error('[enableQuickLogin] فشل: لا يوجد مستخدم في AuthState.currentUser');
+      return err('يجب تسجيل الدخول أولاً');
+    }
 
     // 3.1: تطبيع المعادلة (إزالة المسافات) قبل الهاش
     const normalized = normalizeEquation(equation);
-    if (!normalized) return err('المعادلة فارغة');
+    console.log('[enableQuickLogin] normalized:', normalized);
+    if (!normalized) {
+      console.error('[enableQuickLogin] فشل: المعادلة فارغة بعد التطبيع');
+      return err('المعادلة فارغة');
+    }
 
     try {
       const parser = new window.exprEval.Parser();
       const result = parser.evaluate(normalized);
-      if (typeof result !== 'number' || !isFinite(result))
+      console.log('[enableQuickLogin] نتيجة المعادلة:', result);
+      if (typeof result !== 'number' || !isFinite(result)) {
+        console.error('[enableQuickLogin] فشل: النتيجة ليست رقماً صحيحاً، القيمة:', result);
         return err('المعادلة لا تُنتج رقماً صحيحاً');
+      }
     } catch (e) {
+      console.error('[enableQuickLogin] فشل: خطأ في تقييم المعادلة:', e.message);
       return err('المعادلة غير صالحة رياضياً');
     }
 
     // الهاش مرتبط بـ userId لمنع استخدام نفس المعادلة بين حسابات مختلفة
     const uid  = AuthState.currentUser.id;
     const hash = await hashSHA256(normalized, uid);
+    console.log('[enableQuickLogin] hash:', hash, '| uid:', uid);
 
     // ✅ إنشاء Token من الخادم — لا نخزن كلمة المرور إطلاقاً
-    if (!isOnline()) return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت');
+    if (!isOnline()) {
+      console.error('[enableQuickLogin] فشل: isOnline()=false');
+      return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت');
+    }
 
     // ✅ S6 + UX-4: التحقق من كلمة المرور مع شرح الغرض للمستخدم
     const password = await PasswordDialog.show({
       title   : 'تأكيد هويتك',
       subtitle : 'سيتم استخدام هذه المعادلة للدخول السريع مستقبلاً — حتى بدون إنترنت',
     });
-    if (!password) return err('تم إلغاء تفعيل الدخول السريع');
+    if (!password) {
+      console.error('[enableQuickLogin] فشل: المستخدم ألغى حوار كلمة المرور (password=null/undefined/empty)');
+      return err('تم إلغاء تفعيل الدخول السريع');
+    }
 
     const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
       email   : AuthState.authUser?.email || AuthState.currentUser.username,
       password,
     });
     if (verifyError) {
+      console.error('[enableQuickLogin] فشل: signInWithPassword رفض كلمة المرور:', verifyError.message, '| code:', verifyError.status);
       return err('كلمة المرور غير صحيحة. فشل تفعيل الدخول السريع');
     }
+    console.log('[enableQuickLogin] ✅ كلمة المرور صحيحة');
 
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوماً
+    const expiresAt  = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوماً
+    const deviceId   = getDeviceToken();
+    console.log('[enableQuickLogin] deviceId:', deviceId, '| expiresAt:', expiresAt.toISOString());
+
+    if (!deviceId) {
+      console.error('[enableQuickLogin] فشل: getDeviceToken() أرجع null/undefined');
+      return err('فشل الحصول على معرف الجهاز');
+    }
 
     const { data: token, error: tokenError } = await supabaseClient.rpc(
       'create_quick_login_token',
       {
         p_user_id      : uid,
         p_equation_hash: hash,
-        p_device_id    : getDeviceToken(),
+        p_device_id    : deviceId,
         p_expires_at   : expiresAt.toISOString(),
       }
     );
+    console.log('[enableQuickLogin] RPC create_quick_login_token → token:', token, '| error:', tokenError);
 
     if (tokenError || !token) {
       console.error('[enableQuickLogin] فشل إنشاء Token:', tokenError);
@@ -424,6 +453,7 @@ async function enableQuickLogin(equation) {
       createdAt  : new Date().toISOString(),
     };
     localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify(quickData));
+    console.log('[enableQuickLogin] ✅ تم حفظ quickData في localStorage');
 
     AuthState.currentUser.quick_equation_hash = hash;
 
@@ -444,8 +474,10 @@ async function enableQuickLogin(equation) {
     }
 
     saveSession({ ...getSession(), quickLoginEnabled: true });
+    console.log('[enableQuickLogin] ✅ تم التفعيل بنجاح');
     return ok(true);
   } catch (e) {
+    console.error('[enableQuickLogin] استثناء غير متوقع:', e);
     return err(formatErrorMessage(e));
   }
 }
