@@ -323,13 +323,15 @@ const PasswordDialog = {
       return;
     }
 
+    const resolve = _pwResolve;
     this.close();
-    if (_pwResolve) _pwResolve(value);
+    if (resolve) resolve(value);
   },
 
   _cancel() {
+    const resolve = _pwResolve;
     this.close();
-    if (_pwResolve) _pwResolve(null);
+    if (resolve) resolve(null);
   },
 
   /** يُظهر رسالة خطأ داخل الـ Dialog (للأخطاء التي تعود من الخادم) */

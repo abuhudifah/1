@@ -178,11 +178,46 @@ const SettingsComponent = {
       </p>`;
     adminWrap.appendChild(dsCard);
 
+    /* ═══ 6. تعارضات المزامنة (للمدير فقط) ═══ */
+    const conflictsCard = document.createElement('div');
+    conflictsCard.className = 'glass-card';
+    conflictsCard.style.marginBottom = '0';
+    conflictsCard.setAttribute('data-sc-conflicts-card', '');
+    conflictsCard.innerHTML = `
+      <h3 style="font-size:.95rem;font-weight:700;margin-bottom:14px;
+        display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <span>⚠️ تعارضات المزامنة</span>
+        <span id="sc-conflicts-badge" style="display:none;
+          padding:2px 10px;border-radius:20px;font-size:.73rem;font-weight:700;
+          background:rgba(220,38,38,.15);color:#dc2626;border:1px solid rgba(220,38,38,.3);">
+        </span>
+      </h3>
+      <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
+        عمليات فشلت بعد عدة محاولات وتحتاج تدخلاً يدوياً — قبول نسخة الخادم أو فرض نسخة العميل.
+      </p>
+      <div id="sc-conflicts-list">
+        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:.83rem;">
+          ⏳ جاري التحميل...
+        </div>
+      </div>
+      <div id="sc-conflicts-actions" style="display:none;margin-top:12px;gap:10px;flex-wrap:wrap;">
+        <button id="sc-conflicts-resolve-all-server" class="btn btn-sm"
+          style="background:rgba(34,197,94,.1);color:#16a34a;border:1px solid rgba(34,197,94,.3);font-size:.78rem;">
+          ✅ قبول الخادم للكل
+        </button>
+        <button id="sc-conflicts-clear-all" class="btn btn-sm"
+          style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);font-size:.78rem;">
+          🗑️ حذف جميع التعارضات
+        </button>
+      </div>`;
+    adminWrap.appendChild(conflictsCard);
+
     wrap.appendChild(adminWrap);
     container.appendChild(wrap);
 
     this._bindAdminEvents();
     if (window.lucide) lucide.createIcons();
+    await this._loadConflicts();
   },
 
   /* ══════════════════════════════════════════
@@ -207,6 +242,8 @@ const SettingsComponent = {
     document.getElementById('set-import-trigger')?.addEventListener('click',  () => document.getElementById('set-import-file')?.click());
     document.getElementById('set-import-file')?.addEventListener('change',    (e) => this._importBackup(e));
     document.getElementById('set-reset-data-btn')?.addEventListener('click',  () => this._resetAllData());
+    document.getElementById('sc-conflicts-resolve-all-server')?.addEventListener('click', () => this._resolveAllConflicts('server'));
+    document.getElementById('sc-conflicts-clear-all')?.addEventListener('click', () => this._clearAllConflicts());
   },
 
   /* ══════════════════════════════════════════
@@ -512,6 +549,7 @@ const SettingsComponent = {
     } catch (e) {
       console.warn('⚠️ _clearLocalCaches:', e.message);
     }
+    await this._loadConflicts();
   },
 
 };

@@ -23,20 +23,96 @@ const AuthState = {
   isOffline     : false,   // true أثناء وضع Offline (بدون JWT)
 };
 
+// ── تطبيع المعادلة ─────────────────────────────────────────────────────────
+// 3.1: إزالة المسافات قبل حساب الهاش لضمان "12 + 88" == "12+88"
+function normalizeEquation(eq) {
+  return String(eq).replace(/\s+/g, '');
+}
+
 // ── Brute Force helpers ─────────────────────────────────────────────────────
-// مخزّنة في sessionStorage لتبقى بعد F5 وتُمسح تلقائياً عند إغلاق التبويب.
-// لا تُخزَّن في localStorage لتجنب تسرب بيانات القفل بين جلسات مختلفة.
+// sessionStorage للقفل المؤقت (يُمسح بإغلاق التبويب)
 const _BF_PREFIX = 'ahu_bf_';
 function _bfRead(key) {
   try { return JSON.parse(sessionStorage.getItem(_BF_PREFIX + key) || 'null'); }
   catch (e) { return null; }
 }
 function _bfWrite(key, data) {
-  try { sessionStorage.setItem(_BF_PREFIX + key, JSON.stringify(data)); } catch (e) { /* sessionStorage غير متاح */ }
+  try { sessionStorage.setItem(_BF_PREFIX + key, JSON.stringify(data)); } catch (e) { }
 }
 function _resetAttempts(key) {
-  try { sessionStorage.removeItem(_BF_PREFIX + key); } catch (e) { /* sessionStorage غير متاح */ }
+  try { sessionStorage.removeItem(_BF_PREFIX + key); } catch (e) { }
 }
+
+// localStorage للقفل الدائم (يبقى عبر جلسات المتصفح)
+const _LS_BF_PREFIX = 'ahu_lsbf_';
+function _lsBfRead(key) {
+  try { return JSON.parse(localStorage.getItem(_LS_BF_PREFIX + key) || 'null'); }
+  catch (e) { return null; }
+}
+function _lsBfWrite(key, data) {
+  try { localStorage.setItem(_LS_BF_PREFIX + key, JSON.stringify(data)); } catch (e) { }
+}
+function _lsResetAttempts(key) {
+  try { localStorage.removeItem(_LS_BF_PREFIX + key); } catch (e) { }
+}
+
+// فحص القفل الدائم (localStorage-backed)
+function _checkLsBruteForce(key) {
+  const r = _lsBfRead(key);
+  if (!r) return ok(true);
+  if (r.lockedUntil && Date.now() < r.lockedUntil) {
+    const mins = Math.ceil((r.lockedUntil - Date.now()) / 60000);
+    return err(`تم قفل الحساب. حاول بعد ${mins} دقيقة`);
+  }
+  if (r.lockedUntil && Date.now() >= r.lockedUntil) _lsResetAttempts(key);
+  return ok(true);
+}
+// ── Quick Login localStorage Rate Limiting (3.3) ────────────────────────────
+// يبقى عبر جلسات المتصفح: 5 محاولات → 10د، 10 محاولات → 1 ساعة
+const _QL_ATTEMPTS_PREFIX = 'ahu_quick_attempts_';
+function _qlBfRead(uid) {
+  try { return JSON.parse(localStorage.getItem(_QL_ATTEMPTS_PREFIX + uid) || 'null'); }
+  catch (e) { return null; }
+}
+function _qlBfWrite(uid, data) {
+  try { localStorage.setItem(_QL_ATTEMPTS_PREFIX + uid, JSON.stringify(data)); } catch (e) { }
+}
+function _qlBfReset(uid) {
+  try { localStorage.removeItem(_QL_ATTEMPTS_PREFIX + uid); } catch (e) { }
+}
+function _checkQlBruteForce(uid) {
+  const r = _qlBfRead(uid);
+  if (!r) return ok(true);
+  if (r.lockedUntil && Date.now() < r.lockedUntil) {
+    const mins = Math.ceil((r.lockedUntil - Date.now()) / 60000);
+    return err(`تم قفل الدخول السريع. حاول بعد ${mins} دقيقة`);
+  }
+  if (r.lockedUntil && Date.now() >= r.lockedUntil) _qlBfReset(uid);
+  return ok(true);
+}
+function _recordQlFailure(uid) {
+  const now = Date.now();
+  const r   = _qlBfRead(uid) || { count: 0, lastAttempt: now };
+  r.count++;
+  r.lastAttempt = now;
+  if      (r.count >= 10) r.lockedUntil = now + 60 * 60 * 1000;   // 1 ساعة
+  else if (r.count >= 5)  r.lockedUntil = now + 10 * 60 * 1000;   // 10 دقائق
+  _qlBfWrite(uid, r);
+}
+// ────────────────────────────────────────────────────────────────────────────
+
+function _recordLsFailedAttempt(key) {
+  const now = Date.now();
+  const r   = _lsBfRead(key) || { count: 0, lastAttempt: now };
+  r.count++;
+  r.lastAttempt = now;
+  // قفل متعدد المراحل
+  if      (r.count >= 20) r.lockedUntil = now + 60 * 60 * 1000;   // 1 ساعة
+  else if (r.count >= 10) r.lockedUntil = now + 15 * 60 * 1000;   // 15 دقيقة
+  else if (r.count >= 5)  r.lockedUntil = now + 5  * 60 * 1000;   // 5 دقائق
+  _lsBfWrite(key, r);
+}
+// ────────────────────────────────────────────────────────────────────────────
 // ────────────────────────────────────────────────────────────────────────────
 
 // ============================================================
@@ -44,8 +120,11 @@ function _resetAttempts(key) {
 // ============================================================
 async function login(email, password) {
   try {
+    // فحص مزدوج: sessionStorage (مؤقت) + localStorage (دائم عبر الجلسات)
     const lockCheck = _checkBruteForce(email);
     if (!isOk(lockCheck)) return lockCheck;
+    const lsLockCheck = _checkLsBruteForce(`login_${email}`);
+    if (!isOk(lsLockCheck)) return lsLockCheck;
 
     if (!email || !password) return err('البريد الإلكتروني وكلمة المرور مطلوبان');
     if (!isValidEmail(email))  return err('البريد الإلكتروني غير صالح');
@@ -56,10 +135,12 @@ async function login(email, password) {
 
     if (authError) {
       _recordFailedAttempt(email);
+      _recordLsFailedAttempt(`login_${email}`);
       return err(_translateAuthError(authError.message));
     }
 
     _resetAttempts(email);
+    _lsResetAttempts(`login_${email}`);
 
     const profileResult = await _fetchUserProfile(authData.user.id);
     if (!isOk(profileResult)) {
@@ -91,6 +172,15 @@ async function login(email, password) {
       accountNumber: profile.account_number,
     });
 
+    // ✅ حفظ وقت انتهاء الجلسة في localStorage للبقاء مسجلاً بعد إغلاق المتصفح
+    // يُحذف لاحقاً إذا اختار المستخدم "جلسة مؤقتة" من مودال تفضيل الجهاز
+    try {
+      const devPref = localStorage.getItem(`ahu_device_pref_${profile.id}`);
+      if (devPref !== 'temporary') {
+        localStorage.setItem(`ahu_sess_exp_${profile.id}`, String(Date.now() + 8 * 60 * 60 * 1000));
+      }
+    } catch { /* localStorage غير متاح */ }
+
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
@@ -109,12 +199,20 @@ async function logout(clearLocalData = false) {
   try {
     if (window.unsubscribeAll) await unsubscribeAll();
     if (window.SyncQueue) SyncQueue.clearRetryTimers();
+
+    // ✅ حذف وقت انتهاء الجلسة الدائمة عند الخروج
+    const uid = AuthState.currentUser?.id;
+    if (uid) {
+      try { localStorage.removeItem(`ahu_sess_exp_${uid}`); } catch { }
+    }
+
     await supabaseClient.auth.signOut();
     clearSession();
 
     AuthState.currentUser   = null;
     AuthState.authUser      = null;
     AuthState.isInitialized = false;
+    AuthState.isOffline     = false;
 
     window.dispatchEvent(new CustomEvent('auth:logout'));
     return ok(true);
@@ -123,6 +221,7 @@ async function logout(clearLocalData = false) {
     clearSession();
     AuthState.currentUser = null;
     AuthState.authUser    = null;
+    AuthState.isOffline   = false;
     return ok(true);
   }
 }
@@ -132,52 +231,117 @@ async function logout(clearLocalData = false) {
 // ============================================================
 async function checkSession() {
   try {
-    // 1. تحقق سريع من الجلسة المحلية — فشل فوري دون استدعاء Supabase
+    // 1. تحقق من sessionStorage (مسار سريع للجلسات القائمة)
     const localSession = getSession();
-    if (!localSession) return err('لا توجد جلسة نشطة');
 
-    // 2. فحص انتهاء الصلاحية المحلية (8 ساعات مطلقة) ✅ S8
-    if (localSession.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
+    // 2. فحص انتهاء الصلاحية المحلية (8 ساعات) — فقط إذا كانت موجودة
+    if (localSession?.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
       await logout();
       return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
     }
 
-    // 3. التحقق من صلاحية JWT مع Supabase
+    // 3. ✅ FIX: التحقق من JWT في Supabase (المصدر الحقيقي — يُخزَّن في localStorage)
     const { data: { session }, error } = await supabaseClient.auth.getSession();
-    if (error || !session) {
-      await logout();
-      return err('الجلسة غير صالحة. يُرجى تسجيل الدخول مجدداً');
+
+    if (!error && session) {
+      // JWT صالح — إذا كانت الجلسة المحلية مفقودة (أُغلق المتصفح) أعد بناءها
+      if (!localSession) {
+        const uid = session.user.id;
+        // تحقق من تفضيل الجهاز: إذا كان مؤقتاً لا نُعيد البناء التلقائي
+        const devPref = localStorage.getItem(`ahu_device_pref_${uid}`);
+        if (devPref === 'temporary') {
+          // المستخدم اختار جلسة مؤقتة — لا إعادة بناء بعد الإغلاق
+          const offlineResult = await _checkOfflineSessionFallback();
+          if (offlineResult) return offlineResult;
+          return err('لا توجد جلسة نشطة');
+        }
+        // فحص مهلة الجلسة الدائمة (localStorage)
+        const persistedExpiry = localStorage.getItem(`ahu_sess_exp_${uid}`);
+        if (persistedExpiry && Date.now() > parseInt(persistedExpiry, 10)) {
+          await logout();
+          return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
+        }
+      }
+
+      const profileResult = await _fetchUserProfile(session.user.id);
+      if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
+
+      const profile = profileResult.data;
+      if (!profile.is_active) { await logout(); return err('تم تعطيل هذا الحساب'); }
+
+      await _ensureUserAccountNumber(profile.id, profile);
+
+      AuthState.currentUser   = profile;
+      AuthState.authUser      = session.user;
+      AuthState.isInitialized = true;
+
+      saveSession({
+        userId      : profile.id,
+        role        : profile.role,
+        displayName : profile.display_name,
+        username    : profile.username,
+        allowedTabs : profile.allowed_tabs || [],
+        accountNumber: profile.account_number,
+      });
+
+      _saveToDexieBackground(profile);
+      _migrateQuickLoginStorage();
+      return ok({ user: session.user, profile });
     }
 
-    const profileResult = await _fetchUserProfile(session.user.id);
-    if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
+    // 4. لا يوجد JWT صالح — تحقق من جلسة offline (Quick Login)
+    const offlineResult = await _checkOfflineSessionFallback();
+    if (offlineResult) return offlineResult;
 
-    const profile = profileResult.data;
-    if (!profile.is_active) { await logout(); return err('تم تعطيل هذا الحساب'); }
-
-    // ✅ التأكد من وجود رقم حساب للمستخدم
-    await _ensureUserAccountNumber(profile.id, profile);
-
-    AuthState.currentUser   = profile;
-    AuthState.authUser      = session.user;
-    AuthState.isInitialized = true;
-
-    saveSession({
-      userId      : profile.id,
-      role        : profile.role,
-      displayName : profile.display_name,
-      username    : profile.username,
-      allowedTabs : profile.allowed_tabs || [],
-      accountNumber: profile.account_number,
-    });
-
-    _saveToDexieBackground(profile);
-    _migrateQuickLoginStorage();
-    return ok({ user: session.user, profile });
+    // 5. لا توجد جلسة بأي شكل
+    clearSession();
+    return err('لا توجد جلسة نشطة');
 
   } catch (e) {
     return err(formatErrorMessage(e));
   }
+}
+
+// ============================================================
+// 3b. استعادة جلسة Offline بعد إغلاق المتصفح
+// ============================================================
+async function _checkOfflineSessionFallback() {
+  try {
+    if (typeof db === 'undefined' || !db.isOpen()) return null;
+
+    // البحث عن Quick Login offline محفوظ لأي مستخدم
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('ahu_quick_')) continue;
+      try {
+        const data = JSON.parse(localStorage.getItem(key) || '{}');
+        if (!data?.userId) continue;
+
+        const profile = await db.users.get(data.userId);
+        if (!profile?.is_active) continue;
+
+        AuthState.currentUser   = profile;
+        AuthState.isOffline     = true;
+        AuthState.isInitialized = true;
+        AuthState.authUser      = null;
+
+        saveSession({
+          userId       : profile.id,
+          displayName  : profile.display_name,
+          username     : profile.username,
+          offlineSession: true,
+          quickLoginMode: true,
+          accountNumber : profile.account_number,
+        });
+
+        console.log('✅ [checkSession] استعادة جلسة offline من Quick Login:', profile.display_name);
+        return ok({ profile, offline: true });
+      } catch { continue; }
+    }
+  } catch (e) {
+    console.warn('⚠️ _checkOfflineSessionFallback:', e.message);
+  }
+  return null;
 }
 
 // ============================================================
@@ -195,34 +359,54 @@ async function refreshSession() {
 // 5. الدخول السريع — enableQuickLogin
 // ============================================================
 async function enableQuickLogin(equation) {
+  console.log('[enableQuickLogin] بدء التفعيل — equation:', equation);
   try {
-    if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
-    
-    const trimmed = String(equation).trim();
-    if (!trimmed) return err('المعادلة فارغة');
-    
+    if (!AuthState.currentUser) {
+      console.error('[enableQuickLogin] فشل: لا يوجد مستخدم في AuthState.currentUser');
+      return err('يجب تسجيل الدخول أولاً');
+    }
+
+    // 3.1: تطبيع المعادلة (إزالة المسافات) قبل الهاش
+    const normalized = normalizeEquation(equation);
+    console.log('[enableQuickLogin] normalized:', normalized);
+    if (!normalized) {
+      console.error('[enableQuickLogin] فشل: المعادلة فارغة بعد التطبيع');
+      return err('المعادلة فارغة');
+    }
+
     try {
       const parser = new window.exprEval.Parser();
-      const result = parser.evaluate(trimmed);
-      if (typeof result !== 'number' || !isFinite(result))
+      const result = parser.evaluate(normalized);
+      console.log('[enableQuickLogin] نتيجة المعادلة:', result);
+      if (typeof result !== 'number' || !isFinite(result)) {
+        console.error('[enableQuickLogin] فشل: النتيجة ليست رقماً صحيحاً، القيمة:', result);
         return err('المعادلة لا تُنتج رقماً صحيحاً');
+      }
     } catch (e) {
+      console.error('[enableQuickLogin] فشل: خطأ في تقييم المعادلة:', e.message);
       return err('المعادلة غير صالحة رياضياً');
     }
-    
+
     // الهاش مرتبط بـ userId لمنع استخدام نفس المعادلة بين حسابات مختلفة
     const uid  = AuthState.currentUser.id;
-    const hash = await hashSHA256(trimmed, uid);
+    const hash = await hashSHA256(normalized, uid);
+    console.log('[enableQuickLogin] hash:', hash, '| uid:', uid);
 
     // ✅ إنشاء Token من الخادم — لا نخزن كلمة المرور إطلاقاً
-    if (!isOnline()) return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت');
+    if (!isOnline()) {
+      console.error('[enableQuickLogin] فشل: isOnline()=false');
+      return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت');
+    }
 
     // ✅ S6 + UX-4: التحقق من كلمة المرور مع شرح الغرض للمستخدم
     const password = await PasswordDialog.show({
       title   : 'تأكيد هويتك',
       subtitle : 'سيتم استخدام هذه المعادلة للدخول السريع مستقبلاً — حتى بدون إنترنت',
     });
-    if (!password) return err('تم إلغاء تفعيل الدخول السريع');
+    if (!password) {
+      console.error('[enableQuickLogin] فشل: المستخدم ألغى حوار كلمة المرور (password=null/undefined/empty)');
+      return err('تم إلغاء تفعيل الدخول السريع');
+    }
 
     const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
       email   : AuthState.authUser?.email || AuthState.currentUser.username,
@@ -231,18 +415,27 @@ async function enableQuickLogin(equation) {
     if (verifyError) {
       return err('كلمة المرور غير صحيحة. فشل تفعيل الدخول السريع');
     }
+    console.log('[enableQuickLogin] ✅ كلمة المرور صحيحة');
 
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوماً
+    const expiresAt  = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوماً
+    const deviceId   = getDeviceToken();
+    console.log('[enableQuickLogin] deviceId:', deviceId, '| expiresAt:', expiresAt.toISOString());
+
+    if (!deviceId) {
+      console.error('[enableQuickLogin] فشل: getDeviceToken() أرجع null/undefined');
+      return err('فشل الحصول على معرف الجهاز');
+    }
 
     const { data: token, error: tokenError } = await supabaseClient.rpc(
       'create_quick_login_token',
       {
         p_user_id      : uid,
         p_equation_hash: hash,
-        p_device_id    : getDeviceToken(),
+        p_device_id    : deviceId,
         p_expires_at   : expiresAt.toISOString(),
       }
     );
+    console.log('[enableQuickLogin] RPC create_quick_login_token → token:', token, '| error:', tokenError);
 
     if (tokenError || !token) {
       console.error('[enableQuickLogin] فشل إنشاء Token:', tokenError);
@@ -259,6 +452,7 @@ async function enableQuickLogin(equation) {
       createdAt  : new Date().toISOString(),
     };
     localStorage.setItem(`ahu_quick_${uid}`, JSON.stringify(quickData));
+    console.log('[enableQuickLogin] ✅ تم حفظ quickData في localStorage');
 
     AuthState.currentUser.quick_equation_hash = hash;
 
@@ -279,8 +473,10 @@ async function enableQuickLogin(equation) {
     }
 
     saveSession({ ...getSession(), quickLoginEnabled: true });
+    console.log('[enableQuickLogin] ✅ تم التفعيل بنجاح');
     return ok(true);
   } catch (e) {
+    console.error('[enableQuickLogin] استثناء غير متوقع:', e);
     return err(formatErrorMessage(e));
   }
 }
@@ -290,15 +486,16 @@ async function enableQuickLogin(equation) {
 // ============================================================
 async function quickLogin(equation) {
   try {
-    const trimmed = String(equation).trim();
-    if (!trimmed) return err('معادلة فارغة');
+    // 3.1: تطبيع المعادلة قبل حساب الهاش
+    const normalized = normalizeEquation(equation);
+    if (!normalized) return err('معادلة فارغة');
 
     // مفتاح عام على مستوى الجهاز — نستخدمه قبل معرفة userId
     const lockCheck = _checkBruteForce('quick_login');
     if (!isOk(lockCheck)) return lockCheck;
 
-    // البحث per-user: لكل مدخل نستخرج userId ونحسب الهاش بـ Salt الخاص به
-    // لا نحسب هاشاً واحداً مسبقاً لأنه مرتبط بـ userId المجهول حتى الآن
+    const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
     if (isOnline()) {
       let quickData = null;
       for (let i = 0; i < localStorage.length; i++) {
@@ -307,18 +504,24 @@ async function quickLogin(equation) {
         try {
           const data = JSON.parse(localStorage.getItem(key));
           if (!data?.userId) continue;
-          // نحسب الهاش بنفس userId المستخرج من هذا المدخل
-          const candidateHash = await hashSHA256(trimmed, data.userId);
-          if (candidateHash === data.hash) {
-            quickData = data;
-            break;
-          }
-        } catch (e) { /* تجاهل أخطاء JSON في localStorage */ }
+          const candidateHash = await hashSHA256(normalized, data.userId);
+          if (candidateHash === data.hash) { quickData = data; break; }
+        } catch (e) { /* تجاهل أخطاء JSON */ }
       }
 
       if (!quickData) {
         _recordFailedAttempt('quick_login');
-        return err('لم يتم تفعيل الدخول السريع على هذا الجهاز، أو المعادلة غير صحيحة');
+        // 3.2: رسالة آمنة — لا تكشف وجود/غياب المستخدم
+        return err('المعادلة غير صحيحة، حاول مرة أخرى');
+      }
+
+      // 3.4: ترقية تلقائية للتوكنات القديمة (ليست UUID)
+      if (!_uuidRe.test(quickData.token || '')) {
+        // نُبقي على الهاش/userId في localStorage للمراجعة؛ نحذف التوكن القديم فقط
+        const { token: _old, ...rest } = quickData;
+        localStorage.setItem(`ahu_quick_${quickData.userId}`, JSON.stringify(rest));
+        showToast('تم تحديث معادلة الدخول السريع — أعد التفعيل من إعدادات ملفك الشخصي', 'info', 5000);
+        return err('يُرجى إعادة تفعيل الدخول السريع مرة واحدة من الإعدادات');
       }
 
       // التحقق من صيغة Token: يجب UUID (صيغة xxxxxxxx-xxxx-...) وليس hex قديم
@@ -330,14 +533,14 @@ async function quickLogin(equation) {
 
       const { userId } = quickData;
 
-      // ✅ S4: فحص Brute Force الخاص بهذا المستخدم تحديداً
-      // (المفتاح العام 'quick_login' يحمي من تخمين المعادلات بمجهول)
-      // (المفتاح الخاص يحمي من استنزاف Token هذا المستخدم تحديداً)
+      // 3.3: فحص قفل localStorage الخاص بهذا المستخدم (يبقى بعد إغلاق المتصفح)
+      const qlLock = _checkQlBruteForce(userId);
+      if (!isOk(qlLock)) return qlLock;
+
       const perUserLock = _checkBruteForce(`quick_login_${userId}`);
       if (!isOk(perUserLock)) return perUserLock;
 
       try {
-        // ✅ التحقق عبر Token — لا signInWithPassword، لا كلمة مرور
         const { data: tokenResult, error: tokenError } =
           await supabaseClient.rpc('quick_login_with_token', {
             p_token    : quickData.token,
@@ -347,15 +550,18 @@ async function quickLogin(equation) {
         if (tokenError) throw tokenError;
 
         if (!tokenResult?.success) {
-          // Token منتهي الصلاحية أو غير صالح → حذف البيانات المحلية
           localStorage.removeItem(`ahu_quick_${userId}`);
-          return err(tokenResult?.error || 'انتهت صلاحية الدخول السريع. يُرجى إعادة التفعيل');
+          _recordQlFailure(userId);
+          // 3.2: رسالة موحدة لجميع حالات الفشل
+          return err('المعادلة غير صحيحة، حاول مرة أخرى');
         }
 
         const profile = tokenResult.user;
-        if (!profile.is_active) return err('تم تعطيل هذا الحساب. راجع المدير.');
+        if (!profile.is_active) {
+          _recordQlFailure(userId);
+          return err('المعادلة غير صحيحة، حاول مرة أخرى');
+        }
 
-        // ✅ الحصول على JWT حقيقي عبر كلمة المرور المؤقتة
         const { data: authData, error: authError } =
           await supabaseClient.auth.signInWithPassword({
             email   : profile.username,
@@ -363,7 +569,8 @@ async function quickLogin(equation) {
           });
         if (authError) {
           console.error('[QuickLogin] فشل الدخول بكلمة المرور المؤقتة:', authError);
-          return err('فشل تسجيل الدخول السريع: ' + authError.message);
+          _recordQlFailure(userId);
+          return err('المعادلة غير صحيحة، حاول مرة أخرى');
         }
 
         // ✅ Token Rotation: نحدّث الـ Token المخزن للاستخدام التالي
@@ -373,12 +580,12 @@ async function quickLogin(equation) {
         }
 
         AuthState.currentUser   = profile;
-        AuthState.authUser      = authData.user; // ✅ JWT حقيقي من Supabase
+        AuthState.authUser      = authData.user;
         AuthState.isInitialized = true;
         _resetAttempts('quick_login');
         _resetAttempts(`quick_login_${userId}`);
+        _qlBfReset(userId); // 3.3: إعادة تعيين عداد localStorage عند النجاح
 
-        // role و allowedTabs لا تُخزَّن في localStorage — تُقرأ دائماً من AuthState.currentUser
         saveSession({
           userId        : profile.id,
           displayName   : profile.display_name,
@@ -393,7 +600,6 @@ async function quickLogin(equation) {
         return ok({ profile });
       } catch (e) {
         console.error('[QuickLogin] فشل تسجيل الدخول:', e);
-        // ✅ L1: خطأ الشبكة لا يحذف بيانات الدخول السريع ولا يُسجّل محاولة فاشلة
         const isNetworkError = e?.message?.includes('Failed to fetch')
           || e?.message?.includes('NetworkError')
           || e?.name === 'TypeError';
@@ -401,7 +607,8 @@ async function quickLogin(equation) {
           return err('انقطع الاتصال. يُرجى المحاولة مجدداً عند عودة الشبكة');
         }
         _recordFailedAttempt(`quick_login_${quickData.userId}`);
-        return err(formatErrorMessage(e));
+        _recordQlFailure(quickData.userId);
+        return err('المعادلة غير صحيحة، حاول مرة أخرى');
       }
     }
 
@@ -415,8 +622,7 @@ async function quickLogin(equation) {
         let stored;
         try { stored = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) { continue; }
         if (!stored?.userId) continue;
-        // نفس منطق Online: نحسب الهاش per-userId
-        const candidateHash = await hashSHA256(trimmed, stored.userId);
+        const candidateHash = await hashSHA256(normalized, stored.userId);
         if (candidateHash !== stored.hash) continue;
         if (typeof db !== 'undefined' && db.isOpen()) {
           offlineProfile = await db.users.get(stored.userId);
@@ -429,22 +635,28 @@ async function quickLogin(equation) {
 
     if (!offlineProfile) {
       _recordFailedAttempt('quick_login');
-      return err('الدخول السريع غير متاح offline.\nسجّل دخولك التقليدي مرة واحدة أولاً.');
+      return err('المعادلة غير صحيحة، حاول مرة أخرى');
     }
 
-    // ✅ S4: فحص Brute Force الخاص بهذا المستخدم (offline)
+    // 3.3: فحص قفل localStorage (offline)
+    const qlLockOffline = _checkQlBruteForce(offlineProfile.id);
+    if (!isOk(qlLockOffline)) return qlLockOffline;
+
     const perUserLockOffline = _checkBruteForce(`quick_login_${offlineProfile.id}`);
     if (!isOk(perUserLockOffline)) return perUserLockOffline;
 
-    if (!offlineProfile.is_active) return err('تم تعطيل هذا الحساب.');
+    if (!offlineProfile.is_active) {
+      _recordQlFailure(offlineProfile.id);
+      return err('المعادلة غير صحيحة، حاول مرة أخرى');
+    }
 
     AuthState.currentUser   = offlineProfile;
     AuthState.isOffline     = true;
     AuthState.isInitialized = true;
     _resetAttempts('quick_login');
     _resetAttempts(`quick_login_${offlineProfile.id}`);
+    _qlBfReset(offlineProfile.id); // 3.3
 
-    // role و allowedTabs لا تُخزَّن في localStorage — تُقرأ من AuthState.currentUser (مُحمَّل من Dexie)
     saveSession({
       userId        : offlineProfile.id,
       displayName   : offlineProfile.display_name,
@@ -470,6 +682,7 @@ async function disableQuickLogin() {
 
     const uid = AuthState.currentUser.id;
     localStorage.removeItem(`ahu_quick_${uid}`);
+    _qlBfReset(uid); // 3.3: إعادة تعيين عداد المحاولات عند الإلغاء
 
     AuthState.currentUser.quick_equation_hash = null;
 
@@ -477,6 +690,17 @@ async function disableQuickLogin() {
       if (typeof db !== 'undefined' && db.isOpen())
         await db.users.update(uid, { quick_equation_hash: null });
     } catch (e) { console.warn('⚠️ [disableQuickLogin] Dexie تحديث فشل:', e.message); }
+
+    // تحديث Supabase لضمان ثبات الحالة بعد إعادة تحميل الصفحة
+    if (isOnline()) {
+      try {
+        await supabaseClient.from(TABLES.USERS)
+          .update({ quick_equation_hash: null })
+          .eq('id', uid);
+      } catch (e) {
+        console.warn('⚠️ [disableQuickLogin] Supabase تحديث فشل:', e.message);
+      }
+    }
 
     return ok(true);
   } catch (e) { return err(formatErrorMessage(e)); }
@@ -829,8 +1053,10 @@ function _recordFailedAttempt(key) {
   const r   = _bfRead(key) || { count: 0, lastAttempt: now };
   r.count++;
   r.lastAttempt = now;
-  if (r.count >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS)
-    r.lockedUntil = now + SECURITY_CONFIG.LOCKOUT_MINUTES * 60 * 1000;
+  // قفل متعدد المراحل
+  if      (r.count >= 20) r.lockedUntil = now + 60 * 60 * 1000;   // 1 ساعة
+  else if (r.count >= 10) r.lockedUntil = now + 15 * 60 * 1000;   // 15 دقيقة
+  else if (r.count >= 5)  r.lockedUntil = now + 5  * 60 * 1000;   // 5 دقائق
   _bfWrite(key, r);
 }
 function _translateAuthError(msg) {
@@ -939,6 +1165,39 @@ function getAllowedTabs() {
 }
 
 // ============================================================
+// 17. تسجيل الخروج من الأجهزة الأخرى
+// ============================================================
+async function signOutOtherDevices() {
+  try {
+    const { error } = await supabaseClient.auth.signOut({ scope: 'others' });
+    if (error) return err('فشل تسجيل الخروج من الأجهزة الأخرى: ' + error.message);
+    return ok(true);
+  } catch (e) {
+    return err(formatErrorMessage(e));
+  }
+}
+
+async function signOutAllDevices() {
+  try {
+    const uid = AuthState.currentUser?.id;
+    if (uid) {
+      try { localStorage.removeItem(`ahu_sess_exp_${uid}`); } catch { }
+    }
+    const { error } = await supabaseClient.auth.signOut({ scope: 'global' });
+    if (error) return err('فشل تسجيل الخروج: ' + error.message);
+    clearSession();
+    AuthState.currentUser   = null;
+    AuthState.authUser      = null;
+    AuthState.isInitialized = false;
+    AuthState.isOffline     = false;
+    window.dispatchEvent(new CustomEvent('auth:logout'));
+    return ok(true);
+  } catch (e) {
+    return err(formatErrorMessage(e));
+  }
+}
+
+// ============================================================
 // تصدير
 // ============================================================
 const AuthService = {
@@ -950,6 +1209,7 @@ const AuthService = {
   verifyIsActive,
   canAccessTab, getAllowedTabs, generateAccountNumber,
   getUserAccountNumber, createAccountNumber, generateBankAccountNumber, createBankAccount,
+  signOutOtherDevices, signOutAllDevices,
   _state: AuthState,
 };
 

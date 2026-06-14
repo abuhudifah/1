@@ -58,9 +58,17 @@ const ProfileSettingsComponent = {
     // ── بطاقة الدخول السريع ──
     wrap.appendChild(this._buildQuickLoginCard(user));
 
+    // ── بطاقة المصادقة بدون إنترنت ──
+    wrap.appendChild(this._buildOfflineAuthCard(user));
+
+    // ── بطاقة الأجهزة النشطة ──
+    wrap.appendChild(this._buildActiveDevicesCard(user));
+
     container.appendChild(wrap);
 
     this._bindEvents(user);
+    this._bindDeviceEvents(user);
+    this._bindOfflineAuthEvents(user);
     if (window.lucide) lucide.createIcons();
   },
 
@@ -192,6 +200,156 @@ const ProfileSettingsComponent = {
         border:1px solid #fca5a5;border-radius:8px;color:#dc2626;font-size:.83rem;margin-top:10px;"></div>`;
 
     return card;
+  },
+
+  // ────────────────────────────────────────────────────────
+  // بطاقة الأجهزة النشطة (جديدة — المرحلة 1)
+  // ────────────────────────────────────────────────────────
+  _buildActiveDevicesCard(user) {
+    const card = this._card('📱 الأجهزة النشطة');
+    card.setAttribute('data-psc-devices-card', '');
+
+    // استخراج معلومات الجهاز الحالي من userAgent
+    const ua = navigator.userAgent;
+    let browser = 'متصفح';
+    if      (ua.includes('Edg'))     browser = 'Edge';
+    else if (ua.includes('Chrome'))  browser = 'Chrome';
+    else if (ua.includes('Firefox')) browser = 'Firefox';
+    else if (ua.includes('Safari'))  browser = 'Safari';
+    let os = 'جهاز';
+    if      (ua.includes('iPhone'))  os = 'iPhone';
+    else if (ua.includes('iPad'))    os = 'iPad';
+    else if (ua.includes('Android')) os = 'Android';
+    else if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Mac'))     os = 'Mac';
+    else if (ua.includes('Linux'))   os = 'Linux';
+
+    const devPrefKey = `ahu_device_pref_${user.id}`;
+    const devPref    = localStorage.getItem(devPrefKey) || 'persistent';
+    const prefLabel  = devPref === 'temporary' ? 'جلسة مؤقتة' : 'جلسة دائمة';
+    const prefColor  = devPref === 'temporary' ? '#f59e0b' : '#16a34a';
+
+    card.innerHTML += `
+      <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
+        إدارة الجلسات النشطة لحسابك عبر الأجهزة المختلفة.
+      </p>
+
+      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px;">
+        <!-- الجهاز الحالي -->
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:rgba(99,102,241,.06);">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+            display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">
+            💻
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:.88rem;color:var(--text-primary);">
+              ${escapeHtml(browser)} على ${escapeHtml(os)}
+            </div>
+            <div style="font-size:.76rem;color:var(--text-muted);margin-top:2px;">
+              هذا الجهاز · <span style="color:${prefColor};font-weight:500;">${escapeHtml(prefLabel)}</span>
+            </div>
+          </div>
+          <span style="padding:3px 10px;background:rgba(99,102,241,.12);color:#6366f1;
+            border-radius:20px;font-size:.73rem;font-weight:600;white-space:nowrap;">الجهاز الحالي</span>
+        </div>
+      </div>
+
+      <!-- تغيير تفضيل الجهاز -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;
+        padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;">
+        <div style="flex:1;">
+          <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">تفضيل هذا الجهاز</div>
+          <div style="font-size:.76rem;color:var(--text-muted);margin-top:2px;">
+            ${devPref === 'temporary'
+              ? 'جلسة مؤقتة — تُحذف عند إغلاق المتصفح'
+              : 'جلسة دائمة — تبقى حتى بعد إغلاق المتصفح (8 ساعات)'}
+          </div>
+        </div>
+        <button id="psc-toggle-pref" style="
+          padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:600;
+          border:1px solid var(--border);background:transparent;color:var(--text-secondary);
+          cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s;">
+          ${devPref === 'temporary' ? 'تحويل لدائم' : 'تحويل لمؤقت'}
+        </button>
+      </div>
+
+      <!-- أزرار الخروج -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="psc-signout-others" class="btn btn-sm"
+          style="flex:1;background:rgba(245,158,11,.08);color:#d97706;
+            border:1px solid rgba(245,158,11,.25);min-width:160px;">
+          <i data-lucide="log-out" style="width:13px;height:13px;"></i>
+          تسجيل الخروج من الأجهزة الأخرى
+        </button>
+        <button id="psc-signout-all" class="btn btn-sm"
+          style="background:rgba(220,38,38,.07);color:#dc2626;
+            border:1px solid rgba(220,38,38,.2);min-width:130px;">
+          <i data-lucide="shield-off" style="width:13px;height:13px;"></i>
+          خروج من كل الأجهزة
+        </button>
+      </div>`;
+
+    return card;
+  },
+
+  // ────────────────────────────────────────────────────────
+  // _bindDeviceEvents
+  // ────────────────────────────────────────────────────────
+  _bindDeviceEvents(user) {
+    // تبديل تفضيل الجهاز
+    document.getElementById('psc-toggle-pref')?.addEventListener('click', () => {
+      const key     = `ahu_device_pref_${user.id}`;
+      const current = localStorage.getItem(key) || 'persistent';
+      const next    = current === 'temporary' ? 'persistent' : 'temporary';
+      localStorage.setItem(key, next);
+      if (next === 'temporary') {
+        localStorage.removeItem(`ahu_sess_exp_${user.id}`);
+      } else {
+        localStorage.setItem(`ahu_sess_exp_${user.id}`, String(Date.now() + 8 * 60 * 60 * 1000));
+      }
+      const label = next === 'temporary' ? 'جلسة مؤقتة' : 'جلسة دائمة';
+      showToast(`✅ تم التغيير إلى ${label}`, 'success');
+      // إعادة رسم البطاقة
+      const card = document.querySelector('[data-psc-devices-card]');
+      if (card) {
+        const newCard = this._buildActiveDevicesCard(user);
+        newCard.setAttribute('data-psc-devices-card', '');
+        card.replaceWith(newCard);
+        this._bindDeviceEvents(user);
+        if (window.lucide) lucide.createIcons();
+      }
+    });
+
+    // تسجيل الخروج من الأجهزة الأخرى
+    document.getElementById('psc-signout-others')?.addEventListener('click', async () => {
+      if (!isOnline()) { showToast('يتطلب اتصالاً بالإنترنت', 'warning'); return; }
+      const btn = document.getElementById('psc-signout-others');
+      if (btn) { btn.disabled = true; btn.innerHTML = '⏳ جارٍ...'; }
+      const res = await AuthService.signOutOtherDevices();
+      if (isOk(res)) {
+        showToast('✅ تم تسجيل الخروج من جميع الأجهزة الأخرى', 'success');
+      } else {
+        showToast(res.error, 'error');
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="log-out" style="width:13px;height:13px;"></i> تسجيل الخروج من الأجهزة الأخرى';
+        if (window.lucide) lucide.createIcons();
+      }
+    });
+
+    // تسجيل الخروج من جميع الأجهزة
+    document.getElementById('psc-signout-all')?.addEventListener('click', async () => {
+      const confirmed = await confirmDialog(
+        'تسجيل الخروج من جميع الأجهزة؟\n\nستحتاج لتسجيل الدخول مجدداً على هذا الجهاز أيضاً.',
+        'تأكيد الخروج', 'إلغاء', 'danger'
+      );
+      if (!confirmed) return;
+      if (!isOnline()) { showToast('يتطلب اتصالاً بالإنترنت', 'warning'); return; }
+      const res = await AuthService.signOutAllDevices();
+      if (!isOk(res)) showToast(res.error, 'error');
+      // signOutAllDevices يُرسل auth:logout → App.js يعيد التوجيه لشاشة الدخول
+    });
   },
 
   // ────────────────────────────────────────────────────────
@@ -360,8 +518,10 @@ const ProfileSettingsComponent = {
         this._bindEvents(user);
         if (window.lucide) lucide.createIcons();
       }
-    } else {
-      this._showErr('psc-eq-err', `فشل التفعيل: ${result.error}`);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = origText;
+      if (window.lucide) lucide.createIcons();
     }
   },
 
@@ -401,6 +561,175 @@ const ProfileSettingsComponent = {
     } else {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="zap-off" style="width:13px;height:13px;"></i> إزالة الدخول السريع'; }
       showToast(`فشل الإزالة: ${result.error}`, 'error');
+      if (window.lucide) lucide.createIcons();
+    }
+  },
+
+  // ────────────────────────────────────────────────────────
+  // بطاقة المصادقة بدون إنترنت (PIN + البصمة أو Face ID)
+  // ────────────────────────────────────────────────────────
+  _buildOfflineAuthCard(user) {
+    const session    = OfflineAuthService.getOfflineSession(user.id);
+    const hasPin     = !!session?.hasPin;
+    const hasWebAuthn= !!session?.hasWebAuthn;
+    const supportsWA = !!window.PublicKeyCredential;
+
+    const card = this._card('🔒 الدخول بدون إنترنت');
+    card.setAttribute('data-psc-offline-card', '');
+
+    card.innerHTML += `
+      <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
+        أدخل بدون اتصال بالإنترنت عبر PIN أو البصمة أو Face ID.
+      </p>
+
+      <!-- PIN -->
+      <div style="padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);
+        border-radius:10px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;">
+            <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">PIN الدخول بدون إنترنت</div>
+            <div style="font-size:.76rem;margin-top:2px;color:${hasPin ? '#16a34a' : 'var(--text-muted)'};">
+              ${hasPin ? '✅ مفعّل على هذا الجهاز' : 'غير مفعّل'}
+            </div>
+          </div>
+          ${!hasPin ? `
+          <button id="psc-pin-enable" class="btn btn-primary btn-sm" style="white-space:nowrap;">
+            تفعيل PIN الدخول بدون إنترنت
+          </button>` : `
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="psc-pin-change" class="btn btn-sm"
+              style="background:rgba(99,102,241,.1);color:#6366f1;border:1px solid rgba(99,102,241,.3);">
+              تغيير PIN
+            </button>
+            <button id="psc-pin-delete" class="btn btn-sm"
+              style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);">
+              حذف PIN
+            </button>
+          </div>`}
+        </div>
+      </div>
+
+      <!-- البصمة أو Face ID -->
+      <div style="padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);
+        border-radius:10px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;">
+            <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">البصمة أو Face ID</div>
+            <div style="font-size:.76rem;margin-top:2px;color:${hasWebAuthn ? '#16a34a' : 'var(--text-muted)'};">
+              ${hasWebAuthn ? '✅ مفعّل على هذا الجهاز' : 'غير مفعّل'}
+            </div>
+          </div>
+          ${!hasWebAuthn && supportsWA ? `
+          <button id="psc-webauthn-enable" class="btn btn-primary btn-sm" style="white-space:nowrap;">
+            تفعيل البصمة أو Face ID
+          </button>` : ''}
+          ${hasWebAuthn ? `
+          <button id="psc-webauthn-disable" class="btn btn-sm"
+            style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);white-space:nowrap;">
+            إلغاء البصمة أو Face ID
+          </button>` : ''}
+          ${!hasWebAuthn && !supportsWA ? `
+          <span style="font-size:.75rem;color:var(--text-muted);">غير مدعوم في هذا المتصفح</span>` : ''}
+        </div>
+      </div>`;
+
+    return card;
+  },
+
+  // ────────────────────────────────────────────────────────
+  // _bindOfflineAuthEvents
+  // ────────────────────────────────────────────────────────
+  _bindOfflineAuthEvents(user) {
+    // تفعيل PIN
+    document.getElementById('psc-pin-enable')?.addEventListener('click', async () => {
+      const pin = await PinDialog.showCreate({ minLength: 6, maxLength: 6, userId: user.id });
+      if (!pin) return;
+      const res = await OfflineAuthService.createOfflineSession(user.id, pin);
+      if (isOk(res)) {
+        showToast('✅ تم تفعيل PIN الدخول بدون إنترنت', 'success');
+      } else {
+        showToast(res.error || 'فشل تفعيل PIN', 'error');
+      }
+      this._rerenderOfflineCard(user);
+    });
+
+    // تغيير PIN
+    document.getElementById('psc-pin-change')?.addEventListener('click', async () => {
+      const oldPin = await PinDialog.show({ title: 'أدخل PIN الحالي', minLength: 6, maxLength: 6, userId: user.id });
+      if (!oldPin) return;
+      const verify = await OfflineAuthService.verifyOfflineSession(user.id, oldPin);
+      if (!isOk(verify)) {
+        showToast(verify.error || 'PIN غير صحيح', 'error');
+        return;
+      }
+      const newPin = await PinDialog.showCreate({ minLength: 6, maxLength: 6, userId: user.id });
+      if (!newPin) return;
+      const res = await OfflineAuthService.createOfflineSession(user.id, newPin);
+      if (isOk(res)) {
+        showToast('✅ تم تغيير PIN بنجاح', 'success');
+      } else {
+        showToast(res.error || 'فشل تغيير PIN', 'error');
+      }
+      this._rerenderOfflineCard(user);
+    });
+
+    // حذف PIN
+    document.getElementById('psc-pin-delete')?.addEventListener('click', async () => {
+      const confirmed = await confirmDialog(
+        'حذف PIN الدخول بدون إنترنت؟\n\nلن تتمكن من الدخول بدون إنترنت حتى تُفعّله مجدداً.',
+        'حذف', 'إلغاء', 'danger'
+      );
+      if (!confirmed) return;
+      const res = await OfflineAuthService.endOfflineSession(user.id);
+      if (isOk(res)) {
+        showToast('✅ تم حذف PIN الدخول بدون إنترنت', 'success');
+      } else {
+        showToast(res.error || 'فشل حذف PIN', 'error');
+      }
+      this._rerenderOfflineCard(user);
+    });
+
+    // تفعيل البصمة أو Face ID
+    document.getElementById('psc-webauthn-enable')?.addEventListener('click', async () => {
+      const res = await OfflineAuthService.enableWebAuthn(user.id);
+      if (isOk(res)) {
+        showToast('✅ تم تفعيل البصمة أو Face ID', 'success');
+      } else {
+        showToast(res.error || 'فشل تفعيل البصمة أو Face ID', 'error');
+      }
+      this._rerenderOfflineCard(user);
+    });
+
+    // إلغاء البصمة أو Face ID
+    document.getElementById('psc-webauthn-disable')?.addEventListener('click', async () => {
+      const confirmed = await confirmDialog(
+        'إلغاء البصمة أو Face ID؟\n\nيمكنك إعادة تفعيلها لاحقاً.',
+        'إلغاء التفعيل', 'رجوع', 'danger'
+      );
+      if (!confirmed) return;
+      try {
+        const raw = localStorage.getItem(`ahu_offline_session_${user.id}`);
+        if (raw) {
+          const session = JSON.parse(raw);
+          session.hasWebAuthn = false;
+          localStorage.setItem(`ahu_offline_session_${user.id}`, JSON.stringify(session));
+        }
+      } catch { /* تجاهل */ }
+      showToast('✅ تم إلغاء البصمة أو Face ID', 'success');
+      this._rerenderOfflineCard(user);
+    });
+  },
+
+  // ────────────────────────────────────────────────────────
+  // _rerenderOfflineCard — إعادة رسم بطاقة المصادقة بدون إنترنت
+  // ────────────────────────────────────────────────────────
+  _rerenderOfflineCard(user) {
+    const card = document.querySelector('[data-psc-offline-card]');
+    if (card) {
+      const newCard = this._buildOfflineAuthCard(user);
+      newCard.setAttribute('data-psc-offline-card', '');
+      card.replaceWith(newCard);
+      this._bindOfflineAuthEvents(user);
       if (window.lucide) lucide.createIcons();
     }
   },
@@ -450,4 +779,4 @@ const ProfileSettingsComponent = {
 };
 
 window.ProfileSettingsComponent = ProfileSettingsComponent;
-console.log('✅ ProfileSettingsComponent.js v1.1 — السلوك الرابع: عرض رقم الحساب الفعلي من users.account_number');
+console.log('✅ ProfileSettingsComponent.js v2.0 — إدارة الأجهزة النشطة + تفضيل الجلسة الدائمة/المؤقتة');

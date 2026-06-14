@@ -357,6 +357,7 @@ function _pinUpdateDots() {
     if (!dot) continue;
     dot.classList.toggle('filled', i < _pinValue.length);
   }
+  if (_pinMode === 'create') _pinUpdateStrength();
 }
 
 function _pinShowError(msg) {
@@ -459,7 +460,7 @@ const PinDialog = {
       _pinMode     = 'create';
       _pinFirst    = null;
       _pinValue    = '';
-      _pinMin      = opts.minLength || 4;
+      _pinMin      = opts.minLength || 6;
       _pinMax      = opts.maxLength || 6;
       _pinUserId   = opts.userId   || null;
       _pinTitle    = 'إنشاء PIN جديد';
@@ -498,6 +499,12 @@ const PinDialog = {
 
     if (_pinMode === 'create') {
       if (_pinFirst === null) {
+        // فحص قوة PIN قبل المتابعة
+        const strength = _pinStrength(_pinValue);
+        if (strength.weak) {
+          _pinShowError('اختر PIN أصعب: تجنّب الأرقام المتشابهة والتسلسلات البسيطة');
+          return;
+        }
         // الخطوة الأولى: حفظ PIN والطلب بالتأكيد
         _pinFirst    = _pinValue;
         _pinValue    = '';
@@ -521,15 +528,17 @@ const PinDialog = {
     }
 
     // ✅ نجح
-    const result = _pinValue;
+    const result  = _pinValue;
+    const resolve = _pinResolve;
     this.close();
-    if (_pinResolve) _pinResolve(result);
+    if (resolve) resolve(result);
   },
 
   /** إلغاء */
   _cancel() {
+    const resolve = _pinResolve;
     this.close();
-    if (_pinResolve) _pinResolve(null);
+    if (resolve) resolve(null);
   },
 
   /** إغلاق الـ Dialog */
