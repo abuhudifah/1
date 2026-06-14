@@ -603,15 +603,17 @@ const PinDialog = {
     }
 
     // ✅ نجح
-    const result = _pinValue;
+    const result  = _pinValue;
+    const resolve = _pinResolve;
     this.close();
-    if (_pinResolve) _pinResolve(result);
+    if (resolve) resolve(result);
   },
 
   /** إلغاء */
   _cancel() {
+    const resolve = _pinResolve;
     this.close();
-    if (_pinResolve) _pinResolve(null);
+    if (resolve) resolve(null);
   },
 
   /** إغلاق الـ Dialog */
