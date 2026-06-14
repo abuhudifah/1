@@ -713,6 +713,48 @@ function _updateConnStatus(isNowOnline) {
     SyncEngine.startAutoSync().catch(e => console.warn('[App] SyncEngine:', e.message));
   }
   _updateSyncWidget();
+
+  // إعادة الاتصال أثناء وضع Offline → عرض مودال إعادة تسجيل الدخول
+  if (isNowOnline && wasOffline) {
+    _showReconnectionModal();
+  }
+}
+
+/** مودال إعادة الاتصال: يظهر عند عودة الإنترنت في وضع Offline */
+function _showReconnectionModal() {
+  // لا تعرض أكثر من نسخة واحدة
+  if (document.querySelector('.reconnection-modal')) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'reconnection-modal';
+  modal.innerHTML = `
+    <div class="reconnection-modal-content">
+      <span class="reconnection-icon">🌐</span>
+      <h2>تمت معاودة الاتصال بالإنترنت</h2>
+      <p>
+        بياناتك المحفوظة تُزامن في الخلفية.<br>
+        يرجى تسجيل الدخول مرة أخرى للوصول لجميع المميزات.
+      </p>
+      <button id="btn-relogin" class="reconnection-btn">
+        العودة لشاشة تسجيل الدخول
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  modal.querySelector('#btn-relogin').addEventListener('click', () => {
+    modal.remove();
+    _handleReconnectionConfirm();
+  });
+}
+
+/** تسجيل الخروج وإعادة التحميل بعد إغلاق مودال إعادة الاتصال */
+function _handleReconnectionConfirm() {
+  if (typeof AuthService !== 'undefined' && AuthService.logout) {
+    AuthService.logout();
+  }
+  window.location.reload();
 }
 
 // ============================================================
