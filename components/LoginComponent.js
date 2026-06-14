@@ -883,6 +883,96 @@ const _CSS = `
   body.dark-mode .ql-skip-btn { border-color: rgba(255,255,255,0.12); }
   body.dark-mode .ql-skip-btn:hover { background: rgba(255,255,255,0.05); }
 
+  /* ── واجهة PIN ── */
+  .pin-dots-row {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    margin: 22px 0 24px;
+  }
+  .pin-dot {
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: rgba(15,23,42,0.08);
+    border: 2px solid rgba(15,23,42,0.20);
+    transition: background 140ms, transform 140ms, border-color 140ms;
+  }
+  body.dark-mode .pin-dot {
+    background: rgba(255,255,255,0.10);
+    border-color: rgba(255,255,255,0.28);
+  }
+  .pin-dot.filled {
+    background: #6366f1;
+    border-color: #4f46e5;
+    transform: scale(1.2);
+  }
+  .pin-keypad {
+    display: grid;
+    grid-template-columns: repeat(3,1fr);
+    gap: 10px;
+    margin: 0 auto;
+    max-width: 260px;
+  }
+  .pin-key {
+    width: 100%; aspect-ratio: 1;
+    border-radius: 12px;
+    background: rgba(15,23,42,0.05);
+    border: 1.5px solid rgba(15,23,42,0.10);
+    color: var(--text-primary,#0f172a);
+    font-size: 1.3rem; font-weight: 600;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 110ms, transform 90ms;
+    font-family: inherit;
+  }
+  body.dark-mode .pin-key {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+    color: #f1f5f9;
+  }
+  .pin-key:hover { background: rgba(15,23,42,0.10); }
+  body.dark-mode .pin-key:hover { background: rgba(255,255,255,0.12); }
+  .pin-key:active { transform: scale(0.90); }
+  .pin-key-del {
+    background: rgba(239,68,68,0.07);
+    border-color: rgba(239,68,68,0.18);
+    color: #dc2626; font-size: 1rem;
+  }
+  .pin-key-del:hover { background: rgba(239,68,68,0.14); }
+  body.dark-mode .pin-key-del { color: #f87171; }
+  .pin-key-ok {
+    background: rgba(34,197,94,0.08);
+    border-color: rgba(34,197,94,0.20);
+    color: #16a34a; font-size: 1rem;
+  }
+  .pin-key-ok:hover { background: rgba(34,197,94,0.16); }
+  body.dark-mode .pin-key-ok { color: #4ade80; }
+  .pin-status {
+    min-height: 18px; text-align: center;
+    font-size: 0.80rem; margin: 10px 0 0;
+    color: #ef4444;
+  }
+  .pin-webauthn-btn {
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; width: 100%;
+    padding: 11px 14px; margin-top: 12px;
+    background: rgba(99,102,241,0.07);
+    border: 1.5px solid rgba(99,102,241,0.22);
+    border-radius: 12px;
+    color: #6366f1;
+    font-size: 0.86rem; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: background 140ms, transform 110ms;
+  }
+  body.dark-mode .pin-webauthn-btn {
+    background: rgba(99,102,241,0.12);
+    border-color: rgba(99,102,241,0.32);
+    color: #a5b4fc;
+  }
+  .pin-webauthn-btn:hover { background: rgba(99,102,241,0.14); transform: translateY(-1px); }
+  body.dark-mode .pin-webauthn-btn:hover { background: rgba(99,102,241,0.20); }
+  .pin-webauthn-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
   /* ── قائمة اختيار الحساب (Offline Account Selector) ── */
   .offline-account-item {
     display: flex;
@@ -1004,6 +1094,8 @@ const LoginComponent = {
     offlineAccounts        : [],   // قائمة الحسابات في account-selector
     pendingPinUserId       : null, // المستخدم المختار لواجهة PIN
     pendingPinHasWebAuthn  : false,
+    currentPinInput        : '',   // الأرقام المُدخَلة في واجهة PIN
+    pinVerifying           : false,// قفل التحقق لمنع التكرار
   },
   _onSuccess : null,
   _container : null,
@@ -1078,6 +1170,8 @@ const LoginComponent = {
     scene.innerHTML = '';
     if (this._state.view === 'calc') {
       scene.appendChild(this._buildCalcCard());
+    } else if (this._state.view === 'pin') {
+      scene.appendChild(this._buildPinCard());
     } else if (this._state.view === 'account-selector') {
       scene.appendChild(this._buildAccountSelectorCard());
     } else if (this._state.view === 'offline') {
@@ -1444,12 +1538,272 @@ const LoginComponent = {
   },
 
   // ─────────────────────────────────────────────────────────
-  // placeholder واجهة PIN — يُنفَّذ كاملاً في الخطوة 3
+  // واجهة PIN — نقطة الدخول
   // ─────────────────────────────────────────────────────────
   _showPinInterface(userId, hasWebAuthn = false) {
     this._state.pendingPinUserId      = userId;
     this._state.pendingPinHasWebAuthn = hasWebAuthn;
-    showToast('واجهة PIN قيد التطوير (الخطوة 3)', 'info');
+    this._state.currentPinInput       = '';
+    this._state.pinVerifying          = false;
+    this._state.view = 'pin';
+    this._renderView();
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // بناء بطاقة PIN
+  // ─────────────────────────────────────────────────────────
+  _buildPinCard() {
+    const { pendingPinHasWebAuthn, currentPinInput, pinVerifying } = this._state;
+    const MAX_PIN = 6;
+
+    const card = document.createElement('div');
+    card.className = 'lp-card offline-card';
+
+    // رأس
+    const header = document.createElement('div');
+    header.className = 'offline-header';
+    header.innerHTML = `
+      <div class="offline-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <div class="offline-title-col">
+        <div class="offline-title">الدخول بدون إنترنت</div>
+        <div class="offline-subtitle">أدخل رمز PIN</div>
+      </div>`;
+    card.appendChild(header);
+
+    // 6 نقاط
+    const dotsRow = document.createElement('div');
+    dotsRow.className = 'pin-dots-row';
+    for (let i = 0; i < MAX_PIN; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'pin-dot' + (i < currentPinInput.length ? ' filled' : '');
+      dotsRow.appendChild(dot);
+    }
+    card.appendChild(dotsRow);
+
+    // منطقة الحالة (خطأ / تحميل)
+    const statusEl = document.createElement('div');
+    statusEl.id        = 'pin-status';
+    statusEl.className = 'pin-status';
+    card.appendChild(statusEl);
+
+    // لوحة المفاتيح: 1-9 ثم ⌫ 0 ✓
+    const keypad = document.createElement('div');
+    keypad.className = 'pin-keypad';
+    const keys = [
+      { label:'1', cls:'', val:'1' }, { label:'2', cls:'', val:'2' }, { label:'3', cls:'', val:'3' },
+      { label:'4', cls:'', val:'4' }, { label:'5', cls:'', val:'5' }, { label:'6', cls:'', val:'6' },
+      { label:'7', cls:'', val:'7' }, { label:'8', cls:'', val:'8' }, { label:'9', cls:'', val:'9' },
+      { label:'⌫', cls:' pin-key-del', val:'del' },
+      { label:'0', cls:'', val:'0' },
+      { label:'✓', cls:' pin-key-ok',  val:'ok'  },
+    ];
+    keys.forEach(({ label, cls, val }) => {
+      const btn = document.createElement('button');
+      btn.type      = 'button';
+      btn.className = 'pin-key' + cls;
+      btn.textContent = label;
+      btn.disabled  = pinVerifying;
+      btn.addEventListener('click', () => this._handlePinInput(val));
+      keypad.appendChild(btn);
+    });
+    card.appendChild(keypad);
+
+    // زر البصمة (شرطي)
+    if (pendingPinHasWebAuthn) {
+      const waBtn = document.createElement('button');
+      waBtn.id        = 'btn-pin-webauthn';
+      waBtn.type      = 'button';
+      waBtn.className = 'pin-webauthn-btn';
+      waBtn.disabled  = pinVerifying;
+      waBtn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
+          <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
+          <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>
+          <path d="M2 12a10 10 0 0 1 18-6"/>
+          <path d="M2 16h.01"/>
+          <path d="M21.8 16c.2-2 .131-5.354 0-6"/>
+          <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>
+          <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
+          <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
+        </svg>
+        <span>الدخول بالبصمة أو Face ID</span>`;
+      waBtn.addEventListener('click', () => this._tryOfflineWebAuthnLogin());
+      card.appendChild(waBtn);
+    }
+
+    // زر الرجوع
+    const backBtn = document.createElement('button');
+    backBtn.type      = 'button';
+    backBtn.className = 'offline-back-btn';
+    backBtn.style.marginTop = '12px';
+    backBtn.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      <span>العودة</span>`;
+    backBtn.addEventListener('click', () => {
+      // إذا جاء من قائمة اختيار → ارجع إليها، وإلا ارجع للآلة
+      if (this._state.offlineAccounts.length > 0) {
+        this._state.view = 'account-selector';
+        this._renderView();
+      } else {
+        this._switchToCalc();
+      }
+    });
+    card.appendChild(backBtn);
+
+    return card;
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // معالجة إدخال PIN
+  // ─────────────────────────────────────────────────────────
+  _handlePinInput(val) {
+    if (this._state.pinVerifying) return;
+    const cur = this._state.currentPinInput;
+    const MAX = 6;
+
+    if (val === 'del') {
+      this._state.currentPinInput = cur.slice(0, -1);
+    } else if (val === 'ok') {
+      if (cur.length >= 4) {
+        this._verifyPin();
+        return; // _verifyPin يستدعي _renderView بنفسه
+      } else {
+        const el = document.getElementById('pin-status');
+        if (el) el.textContent = 'PIN يجب أن يكون 4 أرقام على الأقل';
+      }
+      return;
+    } else {
+      if (cur.length < MAX) {
+        this._state.currentPinInput = cur + val;
+        // تحقق تلقائي عند الوصول لـ 6 أرقام
+        if (this._state.currentPinInput.length === MAX) {
+          this._renderView(); // أظهر النقطة السادسة ممتلئة أولاً
+          setTimeout(() => this._verifyPin(), 250);
+          return;
+        }
+      }
+    }
+    this._renderView();
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // التحقق من PIN
+  // ─────────────────────────────────────────────────────────
+  async _verifyPin() {
+    const { pendingPinUserId, currentPinInput } = this._state;
+    if (!pendingPinUserId || !currentPinInput) return;
+
+    this._state.pinVerifying = true;
+    this._renderView();
+
+    const statusEl = document.getElementById('pin-status');
+    if (statusEl) statusEl.textContent = '⏳ جارٍ التحقق...';
+
+    try {
+      const result = await OfflineAuthService.verifyOfflineSession(pendingPinUserId, currentPinInput);
+
+      if (isOk(result)) {
+        await this._enterOfflineMode(pendingPinUserId);
+      } else {
+        this._state.currentPinInput = '';
+        this._state.pinVerifying    = false;
+        this._renderView();
+        const el = document.getElementById('pin-status');
+        if (el) {
+          el.textContent = result.error || 'PIN غير صحيح';
+          // رسالة برتقالية: عدد المحاولات المتبقية إن وُجد
+        }
+      }
+    } catch (e) {
+      this._state.currentPinInput = '';
+      this._state.pinVerifying    = false;
+      this._renderView();
+      if (window.showToast) showToast('خطأ في التحقق: ' + e.message, 'error');
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // التحقق بالبصمة (Offline) — فشل يبقى في الواجهة
+  // ─────────────────────────────────────────────────────────
+  async _tryOfflineWebAuthnLogin() {
+    const { pendingPinUserId } = this._state;
+    if (!pendingPinUserId) return;
+
+    this._state.pinVerifying = true;
+    this._renderView();
+
+    const statusEl = document.getElementById('pin-status');
+    if (statusEl) statusEl.textContent = '👆 جارٍ التحقق من البصمة...';
+
+    try {
+      const result = await OfflineAuthService.verifyWithWebAuthn(pendingPinUserId);
+
+      if (isOk(result)) {
+        await this._enterOfflineMode(pendingPinUserId);
+      } else {
+        // فشل → يبقى في الواجهة، المستخدم يدخل PIN يدوياً
+        this._state.pinVerifying = false;
+        this._renderView();
+        const el = document.getElementById('pin-status');
+        if (el) el.textContent = result.error || 'فشل التحقق من البصمة';
+      }
+    } catch (e) {
+      this._state.pinVerifying = false;
+      this._renderView();
+      const el = document.getElementById('pin-status');
+      if (el) el.textContent = 'خطأ في البصمة: ' + e.message;
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // دخول وضع Offline بعد التحقق الناجح
+  // ─────────────────────────────────────────────────────────
+  async _enterOfflineMode(userId) {
+    // جلب بروفايل المستخدم من Dexie
+    let user = null;
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      try { user = await db.users.get(userId); } catch { }
+    }
+
+    if (!user) {
+      showToast('لم يُعثر على بيانات المستخدم محلياً', 'error');
+      this._state.pinVerifying = false;
+      this._renderView();
+      return;
+    }
+    if (!user.is_active) {
+      showToast('تم تعطيل هذا الحساب. راجع المدير.', 'error');
+      this._state.pinVerifying = false;
+      this._renderView();
+      return;
+    }
+
+    AuthState.isOffline     = true;
+    AuthState.currentUser   = user;
+    AuthState.authUser      = null;
+    AuthState.isInitialized = true;
+
+    saveSession({
+      userId       : user.id,
+      displayName  : user.display_name,
+      username     : user.username,
+      isOffline    : true,
+      accountNumber: user.account_number,
+    });
+
+    showToast(`🔌 مرحباً ${user.display_name} — وضع Offline`, 'success');
+
+    if (this._onSuccess) {
+      this._onSuccess(user);
+    }
   },
 
   // ─────────────────────────────────────────────────────────
