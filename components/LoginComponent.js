@@ -1711,10 +1711,8 @@ const LoginComponent = {
       if (!devPref) {
         // أول دخول على هذا الجهاز — اعرض مودال تفضيل الجهاز
         this._showDevicePreferenceModal(profile);
-      } else if (!profile.quick_equation_hash) {
-        // تفضيل محفوظ لكن الدخول السريع غير مفعّل → اعرض Modal الإعداد
-        this._showQuickSetupModal(profile);
       } else {
+        // البانر داخل التطبيق يتولى تذكير المستخدم بإعداد الدخول السريع
         setTimeout(() => this._onSuccess?.(profile), 400);
       }
     } else {
@@ -1783,121 +1781,12 @@ const LoginComponent = {
         // إزالة وقت انتهاء الجلسة الدائمة
         localStorage.removeItem(`ahu_sess_exp_${uid}`);
       }
-      // بعد الاختيار → تحقق من Quick Login
-      if (!profile.quick_equation_hash) {
-        this._showQuickSetupModal(profile);
-      } else {
-        setTimeout(() => this._onSuccess?.(profile), 300);
-      }
+      // البانر داخل التطبيق (QuickLoginBanner) يتولى الإعداد
+      setTimeout(() => this._onSuccess?.(profile), 300);
     };
 
     document.getElementById('dev-pref-yes')?.addEventListener('click', () => proceed('persistent'));
     document.getElementById('dev-pref-no')?.addEventListener('click',  () => proceed('temporary'));
-  },
-
-  // ─────────────────────────────────────────────────────────
-  // Modal إعداد Quick Login (يظهر بعد نجاح Traditional Login)
-  // ─────────────────────────────────────────────────────────
-  _showQuickSetupModal(profile) {
-    const overlay = document.createElement('div');
-    overlay.className = 'ql-setup-overlay';
-
-    const sheet = document.createElement('div');
-    sheet.className = 'ql-setup-sheet';
-    sheet.innerHTML = `
-      <div style="text-align:center;font-size:2rem;margin-bottom:10px;">⚡</div>
-      <div class="ql-setup-title">فعّل الدخول السريع</div>
-      <div class="ql-setup-desc">
-        ادخل معادلة رياضية بسيطة تحفظها (مثل 12+88).
-        في كل مرة تفتح التطبيق، أدخلها في الحاسبة واضغط = للدخول فوراً.
-      </div>
-      <div class="ql-device-note">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
-        </svg>
-        <span>مرتبط بهذا الجهاز فقط — يعمل بدون اتصال</span>
-      </div>`;
-
-    const eqWrap = document.createElement('div');
-    eqWrap.className = 'ql-eq-wrap';
-
-    const eqInput = document.createElement('input');
-    eqInput.type = 'text';
-    eqInput.dir = 'ltr';
-    eqInput.placeholder = 'مثال: 12+88 أو 5*20';
-    eqInput.className = 'ql-eq-input';
-    eqInput.autocomplete = 'off';
-
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'ql-eq-save';
-    saveBtn.textContent = 'تفعيل';
-
-    eqWrap.appendChild(eqInput);
-    eqWrap.appendChild(saveBtn);
-    sheet.appendChild(eqWrap);
-
-    const preview = document.createElement('div');
-    preview.className = 'ql-preview';
-    sheet.appendChild(preview);
-
-    const skipBtn = document.createElement('button');
-    skipBtn.className = 'ql-skip-btn';
-    skipBtn.textContent = 'تخطّ — سأفعّل لاحقاً من الإعدادات';
-    sheet.appendChild(skipBtn);
-
-    overlay.appendChild(sheet);
-    document.body.appendChild(overlay);
-
-    // Preview
-    eqInput.addEventListener('input', () => {
-      if (!preview) return;
-      try {
-        const p = new window.exprEval.Parser();
-        const v = p.evaluate(eqInput.value.trim());
-        preview.textContent = `النتيجة: ${v}`;
-        preview.style.color = '#10b981';
-      } catch {
-        preview.textContent = eqInput.value ? 'معادلة غير صالحة' : '';
-        preview.style.color = '#f87171';
-      }
-    });
-
-    // حفظ
-    saveBtn.addEventListener('click', async () => {
-      const eq = eqInput.value.trim();
-      if (!eq) { if (window.showToast) showToast('أدخل معادلة أولاً', 'warning'); return; }
-      saveBtn.disabled = true;
-      saveBtn.textContent = '...';
-      const res = await AuthService.enableQuickLogin(eq);
-      if (isOk(res)) {
-        if (window.showToast) showToast('⚡ تم تفعيل الدخول السريع!', 'success');
-        overlay.remove();
-        this._onSuccess?.(profile);
-      } else {
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'تفعيل';
-        if (window.showToast) showToast(res.error, 'error');
-      }
-    });
-
-    // Enter في حقل المعادلة
-    eqInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveBtn.click(); });
-
-    // تخطّي
-    skipBtn.addEventListener('click', () => {
-      overlay.remove();
-      this._onSuccess?.(profile);
-    });
-
-    // إغلاق بالنقر خارج الـ sheet
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay) {
-        overlay.remove();
-        this._onSuccess?.(profile);
-      }
-    });
-
-    setTimeout(() => eqInput.focus(), 300);
   },
 
   // ─────────────────────────────────────────────────────────
