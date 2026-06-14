@@ -883,6 +883,44 @@ const _CSS = `
   body.dark-mode .ql-skip-btn { border-color: rgba(255,255,255,0.12); }
   body.dark-mode .ql-skip-btn:hover { background: rgba(255,255,255,0.05); }
 
+  /* ── أزرار الدخول الثلاثة (أيقونات فقط) ── */
+  .calc-auth-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 14px;
+  }
+  .calc-auth-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.10);
+    border: 1.5px solid rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 180ms, transform 120ms, box-shadow 180ms;
+    flex-shrink: 0;
+  }
+  .calc-auth-btn:hover {
+    background: rgba(255,255,255,0.20);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+  }
+  .calc-auth-btn:active { transform: translateY(0); box-shadow: none; }
+  .calc-auth-btn--webauthn {
+    border-color: rgba(99,102,241,0.50);
+    color: #a5b4fc;
+  }
+  .calc-auth-btn--webauthn:hover { background: rgba(99,102,241,0.20); }
+  .calc-auth-btn--offline {
+    border-color: rgba(251,146,60,0.45);
+    color: #fdba74;
+  }
+  .calc-auth-btn--offline:hover { background: rgba(251,146,60,0.15); }
+
   /* ── Animations ── */
   @keyframes lp-shake {
     0%,100% { transform:translateX(0); }
@@ -1094,34 +1132,42 @@ const LoginComponent = {
     status.className = 'calc-ql-status';
     card.appendChild(status);
 
-    // زر البصمة (يظهر فقط إذا تم إعداد WebAuthn على هذا الجهاز)
-    if (this._hasWebAuthnSetup()) {
-      const webAuthnBtn = document.createElement('button');
-      webAuthnBtn.id = 'calc-webauthn-btn';
-      webAuthnBtn.className = 'lp-switch-btn';
-      webAuthnBtn.style.cssText = 'margin-bottom:6px;border-color:rgba(99,102,241,.35);color:#818cf8;';
-      webAuthnBtn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-          <path d="M12 2a5 5 0 0 1 5 5v2H7V7a5 5 0 0 1 5-5z"/>
-          <rect x="3" y="9" width="18" height="13" rx="2"/>
-          <line x1="12" y1="13" x2="12" y2="17"/>
-        </svg>
-        <span>الدخول بالبصمة أو Face ID</span>`;
-      webAuthnBtn.addEventListener('click', () => this._tryWebAuthnLogin());
-      card.appendChild(webAuthnBtn);
-    }
+    // ── صف الأزرار الثلاثة (أيقونات فقط) ──
+    const authRow = document.createElement('div');
+    authRow.className = 'calc-auth-row';
 
-    // زر التسجيل التقليدي
-    const switchBtn = document.createElement('button');
-    switchBtn.className = 'lp-switch-btn';
-    switchBtn.innerHTML = `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-        <rect x="3" y="11" width="18" height="11" rx="2"/>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-      </svg>
-      <span>تسجيل الدخول بالبريد وكلمة المرور</span>`;
-    switchBtn.addEventListener('click', () => this._switchToLogin());
-    card.appendChild(switchBtn);
+    // زر 1: الدخول التقليدي 🔑
+    const btnTraditional = document.createElement('button');
+    btnTraditional.id        = 'btn-traditional-login';
+    btnTraditional.className = 'calc-auth-btn';
+    btnTraditional.title     = 'تسجيل الدخول بالبريد وكلمة المرور';
+    btnTraditional.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>`;
+    btnTraditional.addEventListener('click', () => this._switchToLogin());
+    authRow.appendChild(btnTraditional);
+
+    // زر 2: الدخول السريع بالبصمة 👆 — مخفي في البداية، يظهر شرطياً
+    const btnWebAuthn = document.createElement('button');
+    btnWebAuthn.id           = 'btn-quick-webauthn';
+    btnWebAuthn.className    = 'calc-auth-btn calc-auth-btn--webauthn';
+    btnWebAuthn.title        = 'الدخول السريع بالبصمة أو Face ID';
+    btnWebAuthn.style.display = 'none';
+    btnWebAuthn.innerHTML    = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>`;
+    btnWebAuthn.addEventListener('click', () => this._tryQuickWebAuthnLogin());
+    authRow.appendChild(btnWebAuthn);
+
+    // زر 3: الدخول بدون إنترنت 🔌
+    const btnOffline = document.createElement('button');
+    btnOffline.id        = 'btn-offline-login';
+    btnOffline.className = 'calc-auth-btn calc-auth-btn--offline';
+    btnOffline.title     = 'الدخول بدون إنترنت';
+    btnOffline.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>`;
+    btnOffline.addEventListener('click', () => this._offlineLogin());
+    authRow.appendChild(btnOffline);
+
+    card.appendChild(authRow);
+
+    // تحديث ظهور زر البصمة بعد بناء الـ DOM
+    this._updateQuickWebAuthnBtnVisibility();
 
     return card;
   },
@@ -1656,6 +1702,46 @@ const LoginComponent = {
       }
     } catch { /* localStorage غير متاح */ }
     return false;
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // تحديث ظهور زر البصمة في الآلة الحاسبة
+  // الشرط: ahu_quick_* صالح + ahu_offline_session_* hasWebAuthn=true
+  // ─────────────────────────────────────────────────────────
+  _updateQuickWebAuthnBtnVisibility() {
+    const btn = document.getElementById('btn-quick-webauthn');
+    if (!btn) return;
+    if (!window.PublicKeyCredential) { btn.style.display = 'none'; return; }
+
+    let show = false;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_quick_')) continue;
+        let quick;
+        try { quick = JSON.parse(localStorage.getItem(key) || '{}'); } catch { continue; }
+        if (!quick?.token || !quick?.userId) continue;
+        // تحقق من انتهاء الصلاحية
+        if (quick.expiresAt && new Date().toISOString() > quick.expiresAt) continue;
+        // تحقق من وجود WebAuthn في ahu_offline_session_*
+        try {
+          const offlineRaw = localStorage.getItem(`ahu_offline_session_${quick.userId}`);
+          if (!offlineRaw) continue;
+          const offline = JSON.parse(offlineRaw);
+          if (offline?.hasWebAuthn === true) { show = true; break; }
+        } catch { continue; }
+      }
+    } catch { /* localStorage غير متاح */ }
+
+    btn.style.display = show ? 'flex' : 'none';
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // _tryQuickWebAuthnLogin — الدخول السريع بالبصمة (Online)
+  // سيُنفَّذ كاملاً في الخطوة 3 — حالياً يستدعي المسار القائم
+  // ─────────────────────────────────────────────────────────
+  _tryQuickWebAuthnLogin() {
+    this._tryWebAuthnLogin();
   },
 
   async _tryWebAuthnLogin() {
