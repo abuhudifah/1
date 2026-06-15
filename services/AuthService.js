@@ -584,6 +584,20 @@ async function _redeemQuickToken(quickData) {
       return err('المعادلة غير صحيحة، حاول مرة أخرى');
     }
 
+    // ✅ استعادة كلمة مرور البريد الأصلية فور إنشاء الجلسة:
+    //    quick_login_with_token استبدلت كلمة المرور بكلمة مؤقتة لتسجيل الدخول،
+    //    وهنا نُعيد الكلمة الأصلية حتى لا يتعطّل الدخول بالبريد لاحقاً.
+    //    تحديث الكلمة عبر SQL لا يُبطل هذه الجلسة (JWT) القائمة.
+    try {
+      const { error: restoreError } =
+        await supabaseClient.rpc('quick_login_restore_password');
+      if (restoreError) {
+        console.warn('[QuickLogin] تعذّرت استعادة كلمة المرور الأصلية:', restoreError);
+      }
+    } catch (restoreEx) {
+      console.warn('[QuickLogin] استثناء أثناء استعادة كلمة المرور:', restoreEx);
+    }
+
     // ✅ Token Rotation: نحدّث الـ Token المخزن للاستخدام التالي (نُبقي حقول البصمة)
     if (tokenResult.new_token) {
       const raw = localStorage.getItem(`ahu_quick_${userId}`);
