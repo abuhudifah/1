@@ -29,6 +29,13 @@ function normalizeEquation(eq) {
   return String(eq).replace(/\s+/g, '');
 }
 
+// ── فحص الاتصال الشبكي الحقيقي ───────────────────────────────────────────────
+// يختلف عن isOnline() الذي يُرجع false متى كان AuthState.isOffline=true (وضع
+// Offline اليدوي). إدارة المعادلة السريعة عملية خادم: تهمّها الشبكة الفعلية فقط.
+function _hasRealConnection() {
+  try { return navigator.onLine !== false; } catch (e) { return true; }
+}
+
 // ── Brute Force helpers ─────────────────────────────────────────────────────
 // sessionStorage للقفل المؤقت (يُمسح بإغلاق التبويب)
 const _BF_PREFIX = 'ahu_bf_';
@@ -399,9 +406,12 @@ async function enableQuickLogin(equation) {
     console.log('[enableQuickLogin] hash:', hash, '| uid:', uid);
 
     // ✅ إنشاء Token من الخادم — لا نخزن كلمة المرور إطلاقاً
-    if (!isOnline()) {
-      console.error('[enableQuickLogin] فشل: isOnline()=false');
-      return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت');
+    // ملاحظة: إدارة المعادلة عملية خادم تتطلب اتصالاً حقيقياً + جلسة JWT صالحة،
+    // ولا علاقة لها باختيار المستخدم وضع Offline اليدوي. لذا نفحص الاتصال الشبكي
+    // الحقيقي (navigator.onLine) ووجود authUser، لا isOnline() المرتبط بـ AuthState.isOffline.
+    if (!_hasRealConnection() || !AuthState.authUser) {
+      console.error('[enableQuickLogin] فشل: لا اتصال حقيقي أو لا جلسة JWT');
+      return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت وجلسة نشطة');
     }
 
     // ✅ S6 + UX-4: التحقق من كلمة المرور مع شرح الغرض للمستخدم
@@ -696,26 +706,35 @@ async function disableQuickLogin() {
     if (!AuthState.currentUser) return err('يجب تسجيل الدخول أولاً');
 
     const uid = AuthState.currentUser.id;
+
+    // ✅ الإزالة عملية خادم: لا نُجري إزالة محلية جزئية تُحدِث تضارباً عند إعادة التحميل.
+    // نشترط اتصالاً شبكياً حقيقياً + جلسة JWT، ونحدّث الخادم أولاً (مصدر الحقيقة).
+    if (!_hasRealConnection() || !AuthState.authUser) {
+      return err('تتطلب إزالة الدخول السريع اتصالاً بالإنترنت وجلسة نشطة');
+    }
+
+    try {
+      const { error: supaErr } = await supabaseClient.from(TABLES.USERS)
+        .update({ quick_equation_hash: null })
+        .eq('id', uid);
+      if (supaErr) {
+        console.warn('⚠️ [disableQuickLogin] Supabase تحديث فشل:', supaErr.message);
+        return err('فشلت إزالة الدخول السريع من الخادم — حاول مجدداً');
+      }
+    } catch (e) {
+      console.warn('⚠️ [disableQuickLogin] Supabase استثناء:', e.message);
+      return err('انقطع الاتصال أثناء الإزالة — حاول مجدداً عند عودة الشبكة');
+    }
+
+    // ✅ الخادم تحدّث بنجاح → نظّف الحالة المحلية
     localStorage.removeItem(`ahu_quick_${uid}`);
     _qlBfReset(uid); // 3.3: إعادة تعيين عداد المحاولات عند الإلغاء
-
     AuthState.currentUser.quick_equation_hash = null;
 
     try {
       if (typeof db !== 'undefined' && db.isOpen())
         await db.users.update(uid, { quick_equation_hash: null });
     } catch (e) { console.warn('⚠️ [disableQuickLogin] Dexie تحديث فشل:', e.message); }
-
-    // تحديث Supabase لضمان ثبات الحالة بعد إعادة تحميل الصفحة
-    if (isOnline()) {
-      try {
-        await supabaseClient.from(TABLES.USERS)
-          .update({ quick_equation_hash: null })
-          .eq('id', uid);
-      } catch (e) {
-        console.warn('⚠️ [disableQuickLogin] Supabase تحديث فشل:', e.message);
-      }
-    }
 
     return ok(true);
   } catch (e) { return err(formatErrorMessage(e)); }
@@ -1016,12 +1035,16 @@ function _preloadEssentialData(profile) {
       if (profile.role === ROLES.ADMIN || profile.role === ROLES.ADMIN_ASSISTANT) {
         tasks.push(
           supabaseClient.from(TABLES.USERS)
-            .select('id,username,display_name,role,is_active,allowed_tabs,account_number')
+            .select('id,username,display_name,role,is_active,allowed_tabs,account_number,quick_equation_hash')
             .order('display_name')
             .limit(QUERY_LIMITS.USERS)
             .then(({ data }) => {
-              if (data && typeof db !== 'undefined' && db.isOpen())
-                db.users?.bulkPut(data.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {});
+              if (data && typeof db !== 'undefined' && db.isOpen()) {
+                // ✅ استثناء صفّ المستخدم الحالي: نسخته المرجعية تأتي من
+                // _saveToDexieBackground (الملف الكامل)، فلا نكتب فوقها ونمحو الهاش.
+                const others = data.filter(u => u.id !== profile.id);
+                db.users?.bulkPut(others.map(u => ({ ...u, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {});
+              }
             })
         );
       }
