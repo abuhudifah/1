@@ -385,16 +385,17 @@ function _buildHeader() {
   return header;
 }
 
-// حساب ارتفاعات الهيدر والنافار ديناميكياً
+// حساب ارتفاعات الهيدر والنافار والشريط البرتقالي ديناميكياً
 function _fixHeaderOverlap() {
   const header  = document.querySelector('.app-header');
   const nav     = document.querySelector('.app-nav');
   const content = document.getElementById('app-content');
   if (!header || !nav || !content) return;
-  const hh = header.offsetHeight;
-  const nh = nav.offsetHeight;
-  nav.style.top          = hh + 'px';
-  content.style.paddingTop = (hh + nh + 8) + 'px';
+  const hh      = header.offsetHeight;
+  const nh      = nav.offsetHeight;
+  const bannerH = document.getElementById('offline-banner')?.offsetHeight || 0;
+  nav.style.top            = hh + 'px';
+  content.style.paddingTop = (hh + nh + bannerH + 8) + 'px';
 }
 
 /* أيقونة الثيم SVG */
@@ -721,7 +722,7 @@ function _updateConnStatus(isNowOnline) {
   }
 }
 
-/** شريط وضع Offline — يظهر أعلى الصفحة عند AuthState.isOffline === true */
+/** شريط وضع Offline — يظهر أسفل الهيدر مباشرة (position:fixed) */
 function _buildOfflineBanner() {
   const old = document.getElementById('offline-banner');
   if (old) old.remove();
@@ -734,16 +735,15 @@ function _buildOfflineBanner() {
   banner.innerHTML = `<span class="offline-banner-icon">🔌</span>
                       <span class="offline-banner-text">وضع Offline — تعمل بدون اتصال</span>`;
 
-  // ✅ إدراج بعد الـ header مباشرة لتجنب الحجب
-  const header = document.getElementById('app-header');
-  const root   = document.getElementById('app-root');
-  if (header) {
-    header.insertAdjacentElement('afterend', banner);
-  } else if (root) {
-    root.insertBefore(banner, root.firstChild);
-  } else {
-    document.body.insertBefore(banner, document.body.firstChild);
-  }
+  // position:fixed → نُلحق بـ body مباشرة (لا علاقة للـ DOM hierarchy)
+  document.body.appendChild(banner);
+
+  // ضبط top بعد أن يكون الهيدر قابلاً للقياس
+  requestAnimationFrame(() => {
+    const header = document.getElementById('app-header');
+    if (header) banner.style.top = header.offsetHeight + 'px';
+    _fixHeaderOverlap(); // إعادة حساب paddingTop للمحتوى
+  });
 }
 
 let _reconnectionModalShown = false; // ✅ guard لمنع تكرار المودال
