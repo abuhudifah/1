@@ -2260,18 +2260,15 @@ const LoginComponent = {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (!key?.startsWith('ahu_quick_')) continue;
+        // تخطّ مفتاح البانر — ليس بيانات مستخدم
+        if (key === 'ahu_quick_banner_dismissed') continue;
         let quick;
         try { quick = JSON.parse(localStorage.getItem(key) || '{}'); } catch { continue; }
         if (!quick?.token || !quick?.userId) continue;
         // تحقق من انتهاء الصلاحية
         if (quick.expiresAt && new Date().toISOString() > quick.expiresAt) continue;
-        // تحقق من وجود WebAuthn في ahu_offline_session_*
-        try {
-          const offlineRaw = localStorage.getItem(`ahu_offline_session_${quick.userId}`);
-          if (!offlineRaw) continue;
-          const offline = JSON.parse(offlineRaw);
-          if (offline?.hasWebAuthn === true) { show = true; break; }
-        } catch { continue; }
+        // تحقق من وجود WebAuthn داخل ahu_quick_* نفسه (مفصول عن Offline)
+        if (quick.hasWebAuthn === true) { show = true; break; }
       }
     } catch { /* localStorage غير متاح */ }
 

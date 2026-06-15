@@ -162,11 +162,24 @@ const QuickLoginBanner = {
     if (supportsWebAuthn) {
       banner.querySelector('#ql-banner-webauthn')?.addEventListener('click', async () => {
         const btn = banner.querySelector('#ql-banner-webauthn');
+        // التحقق من وجود معادلة دخول سريع صالحة أولاً
+        let hasQuickToken = false;
+        try {
+          const raw = localStorage.getItem(`ahu_quick_${profile.id}`);
+          if (raw) {
+            const qData = JSON.parse(raw);
+            hasQuickToken = !!(qData?.token && qData?.userId);
+          }
+        } catch { /* تجاهل */ }
+        if (!hasQuickToken) {
+          if (window.showToast) showToast('فعّل الدخول السريع بالمعادلة أولاً من الإعدادات', 'warning');
+          return;
+        }
         if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ التفعيل...'; }
         try {
-          const result = await OfflineAuthService.enableWebAuthn(profile.id);
+          const result = await OfflineAuthService.enableWebAuthn(profile.id, 'quick');
           if (isOk(result)) {
-            if (window.showToast) showToast('✅ تم تفعيل البصمة أو Face ID', 'success');
+            if (window.showToast) showToast('✅ تم تفعيل البصمة للدخول السريع', 'success');
             this.dismiss();
           } else {
             if (window.showToast) showToast(result.error || 'فشل تفعيل البصمة', 'error');

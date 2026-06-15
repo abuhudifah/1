@@ -368,7 +368,7 @@ const OfflineAuthService = {
    * @param {string} userId
    * @returns {Promise<{ok: boolean, error?: string}>}
    */
-  async enableWebAuthn(userId) {
+  async enableWebAuthn(userId, type = 'offline') {
     if (!window.PublicKeyCredential) {
       return err('المتصفح لا يدعم البصمة أو Face ID');
     }
@@ -429,10 +429,21 @@ const OfflineAuthService = {
       }
 
       // تحديث localStorage (بدون credId — metadata فقط)
-      const session = this.getOfflineSession(userId);
-      if (session) {
-        session.hasWebAuthn = true;
-        localStorage.setItem(`ahu_offline_session_${userId}`, JSON.stringify(session));
+      if (type === 'quick') {
+        try {
+          const raw = localStorage.getItem(`ahu_quick_${userId}`);
+          const qData = raw ? JSON.parse(raw) : null;
+          if (qData) {
+            qData.hasWebAuthn = true;
+            localStorage.setItem(`ahu_quick_${userId}`, JSON.stringify(qData));
+          }
+        } catch { /* تجاهل أخطاء localStorage */ }
+      } else {
+        const session = this.getOfflineSession(userId);
+        if (session) {
+          session.hasWebAuthn = true;
+          localStorage.setItem(`ahu_offline_session_${userId}`, JSON.stringify(session));
+        }
       }
 
       console.log('✅ OfflineAuthService: WebAuthn مُفعَّل');
