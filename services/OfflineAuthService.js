@@ -377,14 +377,50 @@ const OfflineAuthService = {
       return err('تفعيل البصمة أو Face ID يتطلب اتصالاً بالإنترنت وجلسة نشطة');
     }
 
-    // يجب أن يكون الدخول السريع بالمعادلة مُفعَّلاً (البصمة بوّابة فوق التوكن)
+    // قراءة بيانات الدخول السريع الموجودة (إن وُجدت)
     let qData = null;
     try {
       const raw = localStorage.getItem(`ahu_quick_${userId}`);
       if (raw) qData = JSON.parse(raw);
     } catch { /* تجاهل */ }
-    if (!qData?.token || !qData?.userId) {
-      return err('فعّل الدخول السريع بالمعادلة أولاً من الإعدادات');
+
+    // إذا لا توجد معادلة → أنشئ token مستقل للبصمة بعد تأكيد كلمة المرور مرة واحدة
+    if (!qData?.token) {
+      const password = await window.PasswordDialog?.show({
+        title  : 'تأكيد هويتك لتفعيل البصمة',
+        subtitle: 'مطلوب مرة واحدة فقط لإنشاء رمز الجهاز الآمن',
+      });
+      if (!password) return err('تم إلغاء تفعيل البصمة');
+
+      const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
+        email   : window.AuthState?.authUser?.email || window.AuthState?.currentUser?.username,
+        password,
+      });
+      if (verifyError) return err('كلمة المرور غير صحيحة');
+
+      const waHash    = await hashSHA256('_webauthn_only_' + userId, userId);
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const deviceId  = getDeviceToken();
+
+      const { data: waToken, error: tokenError } = await supabaseClient.rpc(
+        'create_quick_login_token',
+        { p_user_id: userId, p_equation_hash: waHash,
+          p_device_id: deviceId, p_expires_at: expiresAt.toISOString() }
+      );
+      if (tokenError || !waToken) {
+        return err('فشل إنشاء رمز البصمة: ' + (tokenError?.message || 'خطأ غير معروف'));
+      }
+
+      qData = {
+        hash        : waHash,
+        userId,
+        token       : waToken,
+        displayName : window.AuthState?.currentUser?.display_name,
+        expiresAt   : expiresAt.toISOString(),
+        createdAt   : new Date().toISOString(),
+        webauthnOnly: true,
+      };
+      localStorage.setItem(`ahu_quick_${userId}`, JSON.stringify(qData));
     }
 
     try {
