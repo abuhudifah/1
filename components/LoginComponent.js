@@ -2382,13 +2382,18 @@ const LoginComponent = {
 
       if (isOk(res)) {
         if (rEl)    { rEl.style.color = '#10b981'; rEl.textContent = '✓'; }
-        if (statEl) statEl.textContent = '✅ تم التحقق — جاري الدخول...';
-        if (window.showToast) showToast(`⚡ مرحباً ${res.data.profile.display_name}`, 'success');
+        if (res.data?.offlineSession) {
+          if (statEl) statEl.textContent = '🔌 لا يوجد إنترنت — جاري الدخول في وضع Offline...';
+          if (window.showToast) showToast(`🔌 مرحباً ${res.data.profile.display_name} — وضع Offline`, 'warning');
+        } else {
+          if (statEl) statEl.textContent = '✅ تم التحقق — جاري الدخول...';
+          if (window.showToast) showToast(`⚡ مرحباً ${res.data.profile.display_name}`, 'success');
+        }
         setTimeout(() => this._onSuccess?.(res.data.profile), 400);
       } else {
         if (rEl)    { rEl.style.color = '#f87171'; }
-        // عرض رسالة خطأ واضحة (دون كشف تفاصيل أمنية)
-        const errMsg = res.error?.includes('قفل') || res.error?.includes('محاولات')
+        // عرض رسالة خطأ واضحة — رسالة "لا إنترنت" تُعرض كاملة لتوجيه المستخدم
+        const errMsg = res.error?.includes('قفل') || res.error?.includes('محاولات') || res.error?.includes('🔌')
           ? res.error
           : 'المعادلة غير صحيحة، حاول مرة أخرى';
         if (statEl) {

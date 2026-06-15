@@ -654,6 +654,12 @@ async function quickLogin(equation) {
       return err('المعادلة غير صحيحة، حاول مرة أخرى');
     }
 
+    // ✅ إذا أجرى المستخدم logout صريحاً، لا نُدخله وضع Offline تلقائياً
+    // نُعلمه بالوضع ونطلب منه الضغط على 🔌 إذا أراد الدخول offline
+    if (sessionStorage.getItem('ahu_intentional_logout')) {
+      return err('لا يوجد اتصال بالإنترنت — اضغط 🔌 للدخول بدون إنترنت');
+    }
+
     AuthState.currentUser   = offlineProfile;
     AuthState.isOffline     = true;
     AuthState.isInitialized = true;
@@ -670,7 +676,7 @@ async function quickLogin(equation) {
       accountNumber : offlineProfile.account_number,
     });
 
-    return ok({ profile: offlineProfile });
+    return ok({ profile: offlineProfile, offlineSession: true });
   } catch (e) {
     console.error('❌ AuthService.quickLogin():', e);
     return err(formatErrorMessage(e));
@@ -1067,6 +1073,8 @@ function _translateAuthError(msg) {
   if (msg.includes('Invalid login credentials')) return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
   if (msg.includes('Email not confirmed'))        return 'يجب تأكيد البريد الإلكتروني أولاً';
   if (msg.includes('Too many requests'))          return 'محاولات كثيرة. انتظر قليلاً';
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed') || msg.includes('fetch'))
+    return 'لا يوجد اتصال بالإنترنت — تحقق من الشبكة أو استخدم 🔌 للدخول بدون إنترنت';
   return msg;
 }
 
