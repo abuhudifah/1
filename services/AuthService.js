@@ -292,6 +292,7 @@ async function checkSession() {
 
       await _setupDeviceToken(profile.id);
       _saveToDexieBackground(profile);
+      _preloadEssentialData(profile);
       _migrateQuickLoginStorage();
       return ok({ user: session.user, profile });
     }

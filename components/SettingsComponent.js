@@ -532,7 +532,7 @@ const SettingsComponent = {
      مسح كاش localStorage التشغيلي
      يُحافظ على: الثيم، بيانات المصادقة (quick_login، device_id، offline_session)
   ══════════════════════════════════════════ */
-  _clearLocalCaches() {
+  async _clearLocalCaches() {
     try {
       // تفضيل فلتر كشف الحساب (يشير إلى فترات زمنية لبيانات محذوفة)
       localStorage.removeItem('ahu_stmt_filter_pref');
@@ -550,6 +550,114 @@ const SettingsComponent = {
       console.warn('⚠️ _clearLocalCaches:', e.message);
     }
     await this._loadConflicts();
+  },
+
+  /* ══════════════════════════════════════════
+     تعارضات المزامنة
+  ══════════════════════════════════════════ */
+  async _loadConflicts() {
+    const listEl    = document.getElementById('sc-conflicts-list');
+    const badgeEl   = document.getElementById('sc-conflicts-badge');
+    const actionsEl = document.getElementById('sc-conflicts-actions');
+    if (!listEl) return;
+
+    try {
+      const conflicts = await db.sync_conflicts
+        .filter(c => !c.resolution)
+        .toArray();
+
+      if (!conflicts.length) {
+        listEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:.83rem;">
+          ✅ لا توجد تعارضات — كل شيء متزامن
+        </div>`;
+        if (badgeEl)   { badgeEl.style.display = 'none'; }
+        if (actionsEl) { actionsEl.style.display = 'none'; }
+        return;
+      }
+
+      if (badgeEl)   { badgeEl.textContent = conflicts.length; badgeEl.style.display = 'inline'; }
+      if (actionsEl) { actionsEl.style.display = 'flex'; }
+
+      listEl.innerHTML = conflicts.map(c => `
+        <div data-conflict-id="${c.id}"
+          style="padding:10px 12px;border-radius:8px;margin-bottom:8px;
+                 background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);font-size:.82rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span><strong>${escapeHtml(c.table_name)}</strong>
+              <span style="color:var(--text-muted);margin-right:6px;">${escapeHtml(String(c.record_id || ''))}</span>
+            </span>
+            <span style="color:var(--text-muted);font-size:.76rem;">${escapeHtml(c.created_at ? c.created_at.slice(0,16).replace('T',' ') : '')}</span>
+          </div>
+          ${c.reason ? `<div style="color:#dc2626;margin-top:4px;">${escapeHtml(c.reason)}</div>` : ''}
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            <button class="btn btn-sm sc-resolve-server" data-id="${c.id}"
+              style="background:rgba(34,197,94,.1);color:#16a34a;border:1px solid rgba(34,197,94,.3);font-size:.76rem;">
+              ✅ قبول الخادم
+            </button>
+            <button class="btn btn-sm sc-resolve-client" data-id="${c.id}"
+              style="background:rgba(59,130,246,.1);color:#2563eb;border:1px solid rgba(59,130,246,.3);font-size:.76rem;">
+              🖥 فرض العميل
+            </button>
+            <button class="btn btn-sm sc-resolve-delete" data-id="${c.id}"
+              style="background:rgba(107,114,128,.08);color:#6b7280;border:1px solid rgba(107,114,128,.25);font-size:.76rem;">
+              🗑 تجاهل
+            </button>
+          </div>
+        </div>`).join('');
+
+      listEl.querySelectorAll('.sc-resolve-server').forEach(btn =>
+        btn.addEventListener('click', () => this._resolveOneConflict(Number(btn.dataset.id), 'server')));
+      listEl.querySelectorAll('.sc-resolve-client').forEach(btn =>
+        btn.addEventListener('click', () => this._resolveOneConflict(Number(btn.dataset.id), 'client')));
+      listEl.querySelectorAll('.sc-resolve-delete').forEach(btn =>
+        btn.addEventListener('click', () => this._resolveOneConflict(Number(btn.dataset.id), 'delete')));
+
+    } catch (e) {
+      if (listEl) listEl.innerHTML = `<div style="color:#dc2626;font-size:.82rem;">❌ خطأ: ${escapeHtml(e.message)}</div>`;
+    }
+  },
+
+  async _resolveOneConflict(conflictId, resolution) {
+    try {
+      if (resolution === 'delete') {
+        await db.sync_conflicts.delete(conflictId);
+      } else {
+        const result = await SyncQueue.resolveConflict(conflictId, resolution);
+        if (!result.ok) { showToast(result.error || 'فشل حل التعارض', 'error'); return; }
+      }
+      await this._loadConflicts();
+      showToast('تم حل التعارض', 'success');
+    } catch (e) {
+      showToast(`خطأ: ${e.message}`, 'error');
+    }
+  },
+
+  async _resolveAllConflicts(resolution) {
+    try {
+      const conflicts = await db.sync_conflicts.filter(c => !c.resolution).toArray();
+      if (!conflicts.length) { showToast('لا توجد تعارضات', 'info'); return; }
+      for (const c of conflicts) {
+        await SyncQueue.resolveConflict(c.id, resolution).catch(() => {});
+      }
+      await this._loadConflicts();
+      showToast(`تم حل ${conflicts.length} تعارض بنسخة الخادم`, 'success');
+    } catch (e) {
+      showToast(`خطأ: ${e.message}`, 'error');
+    }
+  },
+
+  async _clearAllConflicts() {
+    try {
+      const count = await db.sync_conflicts.filter(c => !c.resolution).count();
+      if (!count) { showToast('لا توجد تعارضات', 'info'); return; }
+      await db.sync_conflicts.where('resolution').equals(null).delete().catch(() =>
+        db.sync_conflicts.filter(c => !c.resolution).delete()
+      );
+      await this._loadConflicts();
+      showToast(`تم حذف ${count} تعارض`, 'success');
+    } catch (e) {
+      showToast(`خطأ: ${e.message}`, 'error');
+    }
   },
 
 };
