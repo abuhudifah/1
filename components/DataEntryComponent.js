@@ -1331,7 +1331,7 @@ const DataEntryComponent = {
       }
       showToast('✅ تم حفظ التحصيل', 'success');
       this._resetForm('col');
-      const colBalRes = AuthState.isOffline ? null : await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      const colBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
       const companyRecord = companyId ? (AppStore.getState('companies') || []).find(c => c.id === companyId) : null;
       await this._showResultModal({
         title          : '✅ تم تسجيل تحصيل جديد',
@@ -1344,7 +1344,7 @@ const DataEntryComponent = {
         notes          : notes || null,
         agentId,
         date           : txData.date,
-        agentBalance   : colBalRes && isOk(colBalRes) ? colBalRes.data : null,
+        agentBalance   : isOk(colBalRes) ? colBalRes.data : null,
       });
     } else {
       showToast(`❌ ${result.error}`, 'error');
@@ -1376,8 +1376,8 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ السحب البنكي', 'success');
       this._resetForm('wd');
-      const wdBalRes = AuthState.isOffline ? null : await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate(), agentBalance: wdBalRes && isOk(wdBalRes) ? wdBalRes.data : null });
+      const wdBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate(), agentBalance: isOk(wdBalRes) ? wdBalRes.data : null });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1421,9 +1421,9 @@ const DataEntryComponent = {
       showToast('✅ تم حفظ الإيداع', 'success');
       this._resetForm('dep');
       const ceil = Math.round(bank?.financial_ceiling || 0);
-      const used = AuthState.isOffline ? null : await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
-      const depBalRes = AuthState.isOffline ? null : await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      await this._showResultModal({ title:'✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: (used !== null && ceil > 0) ? Math.max(0, ceil - used) : null, agentBalance: depBalRes && isOk(depBalRes) ? depBalRes.data : null });
+      const used = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
+      const depBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({ title:'✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: Math.max(0, ceil - used), agentBalance: isOk(depBalRes) ? depBalRes.data : null });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1460,7 +1460,7 @@ const DataEntryComponent = {
     if (isOk(result)) {
       showToast('✅ تم حفظ المصروف', 'success');
       this._resetForm('exp');
-      const expBalRes = AuthState.isOffline ? null : await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      const expBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
       await this._showResultModal({
         title        : '✅ تم تسجيل مصروف',
         type         : 'مصروف',
@@ -1469,7 +1469,7 @@ const DataEntryComponent = {
         notes        : details || null,
         agentId,
         date         : txDate,
-        agentBalance : expBalRes && isOk(expBalRes) ? expBalRes.data : null,
+        agentBalance : isOk(expBalRes) ? expBalRes.data : null,
       });
     } else {
       showToast(`❌ ${result.error}`, 'error');
