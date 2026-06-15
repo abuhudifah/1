@@ -133,8 +133,16 @@ const ProfileSettingsComponent = {
     const supportsWA = !!window.PublicKeyCredential;
     let hasQuickWebAuthn = false;
     try {
-      const raw = localStorage.getItem(`ahu_quick_${user.id}`);
-      if (raw) { const d = JSON.parse(raw); hasQuickWebAuthn = d?.hasWebAuthn === true; }
+      // المسار الجديد: خزنة البصمة (ahu_bio_*)؛ مع fallback للقديم (ahu_quick_*)
+      const bioRaw = localStorage.getItem(`ahu_bio_${user.id}`);
+      if (bioRaw) {
+        const b = JSON.parse(bioRaw);
+        hasQuickWebAuthn = b?.hasWebAuthn === true && !!b?.credentialId;
+      }
+      if (!hasQuickWebAuthn) {
+        const raw = localStorage.getItem(`ahu_quick_${user.id}`);
+        if (raw) { const d = JSON.parse(raw); hasQuickWebAuthn = d?.hasWebAuthn === true; }
+      }
     } catch { /* تجاهل */ }
     const card = this._card('⚡ الدخول السريع');
     card.setAttribute('data-psc-quick-card', '');
@@ -573,7 +581,7 @@ const ProfileSettingsComponent = {
         if (btn) { btn.disabled = false; btn.textContent = 'تفعيل البصمة'; }
         return;
       }
-      const result = await OfflineAuthService.enableWebAuthn(user.id);
+      const result = await AuthService.enableBiometricQuickLogin(user.id);
       if (isOk(result)) {
         showToast('✅ تم تفعيل البصمة للدخول السريع', 'success');
         const qCard = document.querySelector('[data-psc-quick-card]');
@@ -604,6 +612,12 @@ const ProfileSettingsComponent = {
     );
     if (!confirmed) return;
     try {
+      // المسار الجديد: حذف خزنة البصمة وبياناتها المحلية
+      localStorage.removeItem(`ahu_bio_${user.id}`);
+      if (typeof SessionVault !== 'undefined') {
+        SessionVault.remove(user.id, SessionVault.SECRET.BIOMETRIC);
+      }
+      // المسار القديم: إزالة علامة البصمة من توكن الخادم إن وُجد
       const raw = localStorage.getItem(`ahu_quick_${user.id}`);
       if (raw) {
         const d = JSON.parse(raw);

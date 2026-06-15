@@ -25,7 +25,10 @@ function _hasAnyQuickLogin() {
     // نتحقق من localStorage فقط (sessionStorage تُمسح بين التبويبات)
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k?.startsWith('ahu_quick_')) {
+      // المسار الجديد: خزنة مشفّرة (معادلة/بصمة/PIN) أو بيانات بصمة محلية
+      if (k?.startsWith('ahu_vault_') || k?.startsWith('ahu_bio_')) return true;
+      // المسار القديم: توكن خادم بهاش معادلة
+      if (k?.startsWith('ahu_quick_') && k !== 'ahu_quick_banner_dismissed') {
         const d = JSON.parse(localStorage.getItem(k) || '{}');
         if (d.hash) return true;
       }
@@ -2161,7 +2164,7 @@ const LoginComponent = {
 
   // ─────────────────────────────────────────────────────────
   // تحديث ظهور زر البصمة في الآلة الحاسبة
-  // الشرط: ahu_quick_* صالح + hasWebAuthn=true داخله
+  // المسار الجديد: ahu_bio_* (خزنة بصمة) — مع fallback لـ ahu_quick_*
   // ─────────────────────────────────────────────────────────
   _updateQuickWebAuthnBtnVisibility() {
     const btn = document.getElementById('btn-quick-webauthn');
@@ -2172,15 +2175,20 @@ const LoginComponent = {
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
+        // المسار الجديد: بيانات بصمة الخزنة المشفّرة
+        if (key?.startsWith('ahu_bio_')) {
+          let bio;
+          try { bio = JSON.parse(localStorage.getItem(key) || '{}'); } catch { continue; }
+          if (bio?.hasWebAuthn === true && bio?.credentialId) { show = true; break; }
+          continue;
+        }
+        // المسار القديم: ahu_quick_* فيه توكن + hasWebAuthn
         if (!key?.startsWith('ahu_quick_')) continue;
-        // تخطّ مفتاح البانر — ليس بيانات مستخدم
         if (key === 'ahu_quick_banner_dismissed') continue;
         let quick;
         try { quick = JSON.parse(localStorage.getItem(key) || '{}'); } catch { continue; }
         if (!quick?.token || !quick?.userId) continue;
-        // تحقق من انتهاء الصلاحية
         if (quick.expiresAt && new Date().toISOString() > quick.expiresAt) continue;
-        // تحقق من وجود WebAuthn داخل ahu_quick_* نفسه (مفصول عن Offline)
         if (quick.hasWebAuthn === true) { show = true; break; }
       }
     } catch { /* localStorage غير متاح */ }
@@ -2197,19 +2205,33 @@ const LoginComponent = {
   },
 
   async _tryWebAuthnLogin() {
-    // البحث عن userId من بيانات الدخول السريع التي فُعِّلت لها البصمة
+    // البحث عن userId من بيانات البصمة — المسار الجديد (ahu_bio_*) أولاً
     let userId = null;
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (!key?.startsWith('ahu_quick_')) continue;
-        if (key === 'ahu_quick_banner_dismissed') continue;
+        if (!key?.startsWith('ahu_bio_')) continue;
         try {
-          const data = JSON.parse(localStorage.getItem(key) || '{}');
-          if (data?.hasWebAuthn && data?.token && data?.userId) { userId = data.userId; break; }
+          const bio = JSON.parse(localStorage.getItem(key) || '{}');
+          if (bio?.hasWebAuthn && bio?.credentialId) { userId = key.slice('ahu_bio_'.length); break; }
         } catch { continue; }
       }
     } catch { /* localStorage غير متاح */ }
+
+    // fallback: المسار القديم (ahu_quick_* فيه توكن + بصمة)
+    if (!userId) {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!key?.startsWith('ahu_quick_')) continue;
+          if (key === 'ahu_quick_banner_dismissed') continue;
+          try {
+            const data = JSON.parse(localStorage.getItem(key) || '{}');
+            if (data?.hasWebAuthn && data?.token && data?.userId) { userId = data.userId; break; }
+          } catch { continue; }
+        }
+      } catch { /* localStorage غير متاح */ }
+    }
 
     if (!userId) {
       if (window.showToast) showToast('لم يتم العثور على بصمة مُفعَّلة للدخول السريع', 'error');

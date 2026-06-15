@@ -460,6 +460,66 @@ const OfflineAuthService = {
   },
 
   // ==========================================================
+  // WebAuthn — تسجيل اعتماد فقط (للخزنة المشفّرة، بلا توكن خادم)
+  // ==========================================================
+
+  /**
+   * يُسجّل اعتماد WebAuthn (Passkey / بصمة) ويُعيد معرّفه فقط — بلا إنشاء
+   * توكن خادم وبلا كتابة `ahu_quick_`. يُستخدم في نموذج «الخزنة المشفّرة»
+   * حيث تحرس البصمة فكّ خزنة BIOMETRIC المحلية (refresh_token).
+   *
+   * @param {string} userId
+   * @returns {Promise<{ok: boolean, data?: {credentialId: string}, error?: string}>}
+   */
+  async registerWebAuthnCredentialOnly(userId) {
+    if (!window.PublicKeyCredential) {
+      return err('المتصفح لا يدعم البصمة أو Face ID');
+    }
+    if (!isOnline() || !window.AuthState?.authUser) {
+      return err('تفعيل البصمة أو Face ID يتطلب اتصالاً بالإنترنت وجلسة نشطة');
+    }
+
+    try {
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const userIdBuf = new TextEncoder().encode(userId);
+
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp              : { name: APP_CONFIG.NAME_SHORT, id: window.location.hostname },
+          user            : {
+            id          : userIdBuf,
+            name        : window.AuthState?.currentUser?.username  || userId,
+            displayName : window.AuthState?.currentUser?.display_name || userId,
+          },
+          pubKeyCredParams: [
+            { alg: -7,   type: 'public-key' }, // ES256
+            { alg: -257, type: 'public-key' }, // RS256
+          ],
+          timeout               : 60_000,
+          attestation           : 'none',
+          authenticatorSelection: {
+            residentKey     : 'preferred',
+            userVerification: 'required',
+          },
+        },
+      });
+
+      if (!credential) return err('لم يتم إنشاء بيانات الاعتماد');
+
+      const credId = _bufferToBase64url(credential.rawId);
+      console.log('✅ OfflineAuthService: اعتماد WebAuthn مُسجَّل (وضع الخزنة)');
+      return ok({ credentialId: credId });
+
+    } catch (e) {
+      if (e.name === 'NotAllowedError') {
+        return err('تم رفض طلب التحقق بالبصمة');
+      }
+      return err('خطأ في تفعيل البصمة أو Face ID: ' + e.message);
+    }
+  },
+
+  // ==========================================================
   // WebAuthn — التحقق
   // ==========================================================
 
@@ -479,17 +539,28 @@ const OfflineAuthService = {
     const bfCheck = _checkPinBruteForce(userId);
     if (!isOk(bfCheck)) return bfCheck;
 
-    // جلب credential ID من ahu_quick_* (بصمة الدخول السريع — per-device)
+    // جلب credential ID — أولاً من خزنة البصمة الجديدة (ahu_bio_*)، ثم
+    // fallback إلى ahu_quick_* القديم (توافق خلفي للأجهزة غير المُهاجَرة).
     let credentialId = null;
     try {
-      const raw = localStorage.getItem(`ahu_quick_${userId}`);
-      if (raw) {
-        const qData = JSON.parse(raw);
-        if (qData?.hasWebAuthn && qData?.webauthnCredentialId) {
-          credentialId = qData.webauthnCredentialId;
-        }
+      const bioRaw = localStorage.getItem(`ahu_bio_${userId}`);
+      if (bioRaw) {
+        const bData = JSON.parse(bioRaw);
+        if (bData?.credentialId) credentialId = bData.credentialId;
       }
     } catch { /* تجاهل أخطاء localStorage */ }
+
+    if (!credentialId) {
+      try {
+        const raw = localStorage.getItem(`ahu_quick_${userId}`);
+        if (raw) {
+          const qData = JSON.parse(raw);
+          if (qData?.hasWebAuthn && qData?.webauthnCredentialId) {
+            credentialId = qData.webauthnCredentialId;
+          }
+        }
+      } catch { /* تجاهل أخطاء localStorage */ }
+    }
 
     if (!credentialId) {
       return err('لم يتم تفعيل البصمة على هذا الجهاز. فعّلها من إعدادات الدخول السريع.');
