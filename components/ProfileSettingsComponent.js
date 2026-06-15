@@ -132,12 +132,10 @@ const ProfileSettingsComponent = {
     const hasQuick = !!user.quick_equation_hash;
     const supportsWA = !!window.PublicKeyCredential;
     let hasQuickWebAuthn = false;
-    if (hasQuick) {
-      try {
-        const raw = localStorage.getItem(`ahu_quick_${user.id}`);
-        if (raw) { const d = JSON.parse(raw); hasQuickWebAuthn = d?.hasWebAuthn === true; }
-      } catch { /* تجاهل */ }
-    }
+    try {
+      const raw = localStorage.getItem(`ahu_quick_${user.id}`);
+      if (raw) { const d = JSON.parse(raw); hasQuickWebAuthn = d?.hasWebAuthn === true; }
+    } catch { /* تجاهل */ }
     const card = this._card('⚡ الدخول السريع');
     card.setAttribute('data-psc-quick-card', '');
 
@@ -207,7 +205,7 @@ const ProfileSettingsComponent = {
       <div id="psc-eq-err" style="display:none;padding:8px 12px;background:#fee2e2;
         border:1px solid #fca5a5;border-radius:8px;color:#dc2626;font-size:.83rem;margin-top:10px;"></div>
 
-      ${hasQuick && supportsWA ? `
+      ${supportsWA ? `
       <hr style="border:none;border-top:1px solid var(--border);margin:18px 0;" />
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div>
@@ -216,8 +214,10 @@ const ProfileSettingsComponent = {
           </div>
           <div style="font-size:.78rem;color:var(--text-secondary);margin-top:3px;">
             ${hasQuickWebAuthn
-              ? 'مُفعَّلة — تستطيع الدخول بلمسة واحدة بدل المعادلة'
-              : 'بعد تفعيلها، تضغط زر البصمة في الحاسبة بدل إدخال المعادلة'}
+              ? 'مُفعَّلة — تستطيع الدخول بلمسة واحدة'
+              : hasQuick
+                ? 'بعد تفعيلها، تضغط زر البصمة في الحاسبة بدل إدخال المعادلة'
+                : 'بعد تفعيلها، تستطيع الدخول بلمسة واحدة بدون معادلة'}
           </div>
         </div>
         ${hasQuickWebAuthn

@@ -415,26 +415,6 @@ async function enableQuickLogin(equation) {
       return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت وجلسة نشطة');
     }
 
-    // ✅ S6 + UX-4: التحقق من كلمة المرور مع شرح الغرض للمستخدم
-    const password = await PasswordDialog.show({
-      title   : 'تأكيد هويتك',
-      subtitle : 'سيتم استخدام هذه المعادلة للدخول السريع مستقبلاً — حتى بدون إنترنت',
-    });
-    if (!password) {
-      console.error('[enableQuickLogin] فشل: المستخدم ألغى حوار كلمة المرور (password=null/undefined/empty)');
-      return err('تم إلغاء تفعيل الدخول السريع');
-    }
-
-    const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
-      email   : AuthState.authUser?.email || AuthState.currentUser.username,
-      password,
-    });
-    if (verifyError) {
-      console.error('[enableQuickLogin] فشل: signInWithPassword رفض كلمة المرور:', verifyError.message, '| code:', verifyError.status);
-      return err('كلمة المرور غير صحيحة. فشل تفعيل الدخول السريع');
-    }
-    console.log('[enableQuickLogin] ✅ كلمة المرور صحيحة');
-
     const expiresAt  = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوماً
     const deviceId   = getDeviceToken();
     console.log('[enableQuickLogin] deviceId:', deviceId, '| expiresAt:', expiresAt.toISOString());
