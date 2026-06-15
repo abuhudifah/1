@@ -401,13 +401,15 @@ const DailySummaryComponent = {
   },
 
   async _handleDelete(tx) {
-    const isToday = tx.date===getCurrentSaudiDate();
-    const msg = isToday
-      ? `هل تريد حذف عملية ${TRANSACTION_TYPE_LABELS[tx.type]} بمبلغ ${formatCurrency(tx.amount)}؟`
-      : `هذه العملية من تاريخ ${formatDateArabic(tx.date)}. سيتم إنشاء قيد عكسي. هل تريد المتابعة؟`;
-    const confirmed = await confirmDialog(msg,'حذف','إلغاء','danger');
+    // ✅ المعاملات نهائية بعد المزامنة: الحذف الفعلي مسموح فقط ما دامت
+    //    العملية «معلّقة» (لم تُرفع للخادم بعد). بعد المزامنة → قيد عكسي.
+    const isPending = tx.sync_status === 'pending';
+    const msg = isPending
+      ? `هل تريد حذف عملية ${TRANSACTION_TYPE_LABELS[tx.type]} بمبلغ ${formatCurrency(tx.amount)}؟ (لم تُزامن بعد)`
+      : `هذه العملية مُزامنة ونهائية. سيتم إنشاء قيد عكسي بدل الحذف. هل تريد المتابعة؟`;
+    const confirmed = await confirmDialog(msg,isPending?'حذف':'عكس','إلغاء','danger');
     if (!confirmed) return;
-    if (isToday) {
+    if (isPending) {
       const result = await repo.delete(TABLES.TRANSACTIONS,tx.id);
       if(isOk(result)){AppStore.deleteTransaction(tx.id);showToast('تم حذف العملية','success');}
       else showToast(`فشل: ${result.error}`,'error');
@@ -627,6 +629,12 @@ const DailySummaryComponent = {
   },
 
   _openEditModal(tx) {
+    // ✅ المعاملات نهائية بعد المزامنة: التعديل مسموح فقط للعمليات «المعلّقة».
+    //    بعد المزامنة، التصحيح يكون بالحذف (الذي يُنشئ قيداً عكسياً).
+    if (tx.sync_status !== 'pending') {
+      showToast('هذه العملية مُزامنة ونهائية — للتصحيح استخدم الحذف (قيد عكسي)','info',4000);
+      return;
+    }
     const body = document.getElementById('edit-modal-body');
     if (!body||!this._editModal) return;
     body.innerHTML = `

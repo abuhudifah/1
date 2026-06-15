@@ -314,7 +314,10 @@ async function createTransactionWithEntries(txData) {
 
     const transaction = {
       ...txData,
-      id              : txData.id || (isOnline() ? generateUUID() : generateTempId()),
+      // ✅ UUID حقيقي دائماً (حتى أوفلاين). Postgres يقبل المعرّف المُولّد من
+      //    العميل، فيُلغى نظام TEMP_ID و replaceTempId ومعه فئة أعطال FK
+      //    (transactions_customer_id_fkey / account_ledger.reference_id).
+      id              : txData.id || generateUUID(),
       date            : txData.date || getCurrentSaudiDate(),
       time            : txData.time || getCurrentSaudiTime(),
       created_at      : new Date().toISOString(),
