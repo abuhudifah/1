@@ -177,7 +177,7 @@ const QuickLoginBanner = {
         }
         if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ التفعيل...'; }
         try {
-          const result = await OfflineAuthService.enableWebAuthn(profile.id, 'quick');
+          const result = await OfflineAuthService.enableWebAuthn(profile.id);
           if (isOk(result)) {
             if (window.showToast) showToast('✅ تم تفعيل البصمة للدخول السريع', 'success');
             this.dismiss();

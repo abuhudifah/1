@@ -1093,7 +1093,6 @@ const LoginComponent = {
     offlineUser            : null,
     offlineAccounts        : [],   // قائمة الحسابات في account-selector
     pendingPinUserId       : null, // المستخدم المختار لواجهة PIN
-    pendingPinHasWebAuthn  : false,
     currentPinInput        : '',   // الأرقام المُدخَلة في واجهة PIN
     pinVerifying           : false,// قفل التحقق لمنع التكرار
   },
@@ -1488,10 +1487,7 @@ const LoginComponent = {
         try {
           const data = JSON.parse(localStorage.getItem(key) || '{}');
           if (data?.hasPin === true && data?.userId) {
-            sessions.push({
-              userId     : data.userId,
-              hasWebAuthn: data.hasWebAuthn || false,
-            });
+            sessions.push({ userId: data.userId });
           }
         } catch { continue; }
       }
@@ -1509,7 +1505,7 @@ const LoginComponent = {
 
     // حساب واحد → انتقال مباشر لواجهة PIN
     if (sessions.length === 1) {
-      this._showPinInterface(sessions[0].userId, sessions[0].hasWebAuthn);
+      this._showPinInterface(sessions[0].userId);
       return;
     }
 
@@ -1538,11 +1534,10 @@ const LoginComponent = {
   // ─────────────────────────────────────────────────────────
   // واجهة PIN — نقطة الدخول
   // ─────────────────────────────────────────────────────────
-  _showPinInterface(userId, hasWebAuthn = false) {
-    this._state.pendingPinUserId      = userId;
-    this._state.pendingPinHasWebAuthn = hasWebAuthn;
-    this._state.currentPinInput       = '';
-    this._state.pinVerifying          = false;
+  _showPinInterface(userId) {
+    this._state.pendingPinUserId = userId;
+    this._state.currentPinInput  = '';
+    this._state.pinVerifying     = false;
     this._state.view = 'pin';
     this._renderView();
   },
@@ -1551,7 +1546,7 @@ const LoginComponent = {
   // بناء بطاقة PIN
   // ─────────────────────────────────────────────────────────
   _buildPinCard() {
-    const { pendingPinHasWebAuthn, currentPinInput, pinVerifying } = this._state;
+    const { currentPinInput, pinVerifying } = this._state;
     const MAX_PIN = 6;
 
     const card = document.createElement('div');
@@ -1610,30 +1605,6 @@ const LoginComponent = {
       keypad.appendChild(btn);
     });
     card.appendChild(keypad);
-
-    // زر البصمة (شرطي)
-    if (pendingPinHasWebAuthn) {
-      const waBtn = document.createElement('button');
-      waBtn.id        = 'btn-pin-webauthn';
-      waBtn.type      = 'button';
-      waBtn.className = 'pin-webauthn-btn';
-      waBtn.disabled  = pinVerifying;
-      waBtn.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
-          <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
-          <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>
-          <path d="M2 12a10 10 0 0 1 18-6"/>
-          <path d="M2 16h.01"/>
-          <path d="M21.8 16c.2-2 .131-5.354 0-6"/>
-          <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>
-          <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
-          <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
-        </svg>
-        <span>الدخول بالبصمة أو Face ID</span>`;
-      waBtn.addEventListener('click', () => this._tryOfflineWebAuthnLogin());
-      card.appendChild(waBtn);
-    }
 
     // زر الرجوع
     const backBtn = document.createElement('button');
@@ -1730,40 +1701,6 @@ const LoginComponent = {
   },
 
   // ─────────────────────────────────────────────────────────
-  // التحقق بالبصمة (Offline) — فشل يبقى في الواجهة
-  // ─────────────────────────────────────────────────────────
-  async _tryOfflineWebAuthnLogin() {
-    if (this._state.pinVerifying) return; // ✅ منع التشغيل المتزامن مع PIN
-    const { pendingPinUserId } = this._state;
-    if (!pendingPinUserId) return;
-
-    this._state.pinVerifying = true;
-    this._renderView();
-
-    const statusEl = document.getElementById('pin-status');
-    if (statusEl) statusEl.textContent = '👆 جارٍ التحقق من البصمة...';
-
-    try {
-      const result = await OfflineAuthService.verifyWithWebAuthn(pendingPinUserId);
-
-      if (isOk(result)) {
-        await this._enterOfflineMode(pendingPinUserId);
-      } else {
-        // فشل → يبقى في الواجهة، المستخدم يدخل PIN يدوياً
-        this._state.pinVerifying = false;
-        this._renderView();
-        const el = document.getElementById('pin-status');
-        if (el) el.textContent = result.error || 'فشل التحقق من البصمة';
-      }
-    } catch (e) {
-      this._state.pinVerifying = false;
-      this._renderView();
-      const el = document.getElementById('pin-status');
-      if (el) el.textContent = 'خطأ في البصمة: ' + e.message;
-    }
-  },
-
-  // ─────────────────────────────────────────────────────────
   // دخول وضع Offline بعد التحقق الناجح
   // ─────────────────────────────────────────────────────────
   async _enterOfflineMode(userId) {
@@ -1846,18 +1783,13 @@ const LoginComponent = {
       const btn = document.createElement('button');
       btn.type      = 'button';
       btn.className = 'offline-account-item';
-      // بصمة — SVG مضمّن لأن lucide غير متاح على شاشة الدخول
-      const fpSvg = acc.hasWebAuthn
-        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" title="بصمة مُفعَّلة"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>`
-        : '';
       btn.innerHTML = `
         <div class="offline-account-avatar">${escapeHtml((acc.displayName || '؟').charAt(0))}</div>
         <div class="offline-account-info">
           <div class="offline-account-name">${escapeHtml(acc.displayName)}</div>
           <div class="offline-account-num">${escapeHtml(acc.accountNumber)}</div>
-        </div>
-        ${fpSvg}`;
-      btn.addEventListener('click', () => this._showPinInterface(acc.userId, acc.hasWebAuthn));
+        </div>`;
+      btn.addEventListener('click', () => this._showPinInterface(acc.userId));
       list.appendChild(btn);
     });
     card.appendChild(list);
@@ -2228,27 +2160,8 @@ const LoginComponent = {
   },
 
   // ─────────────────────────────────────────────────────────
-  // WebAuthn Login — helpers
-  // ─────────────────────────────────────────────────────────
-
-  _hasWebAuthnSetup() {
-    if (!window.PublicKeyCredential) return false;
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key?.startsWith('ahu_offline_session_')) continue;
-        try {
-          const data = JSON.parse(localStorage.getItem(key) || '{}');
-          if (data?.hasWebAuthn) return true;
-        } catch { continue; }
-      }
-    } catch { /* localStorage غير متاح */ }
-    return false;
-  },
-
-  // ─────────────────────────────────────────────────────────
   // تحديث ظهور زر البصمة في الآلة الحاسبة
-  // الشرط: ahu_quick_* صالح + ahu_offline_session_* hasWebAuthn=true
+  // الشرط: ahu_quick_* صالح + hasWebAuthn=true داخله
   // ─────────────────────────────────────────────────────────
   _updateQuickWebAuthnBtnVisibility() {
     const btn = document.getElementById('btn-quick-webauthn');
@@ -2284,74 +2197,44 @@ const LoginComponent = {
   },
 
   async _tryWebAuthnLogin() {
-    if (typeof OfflineAuthService === 'undefined') {
-      if (window.showToast) showToast('خدمة Offline غير محمّلة', 'error');
-      return;
-    }
-
-    // البحث عن userId من جلسة offline محلية تحتوي على WebAuthn
+    // البحث عن userId من بيانات الدخول السريع التي فُعِّلت لها البصمة
     let userId = null;
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (!key?.startsWith('ahu_offline_session_')) continue;
+        if (!key?.startsWith('ahu_quick_')) continue;
+        if (key === 'ahu_quick_banner_dismissed') continue;
         try {
           const data = JSON.parse(localStorage.getItem(key) || '{}');
-          if (data?.hasWebAuthn && data?.userId) { userId = data.userId; break; }
+          if (data?.hasWebAuthn && data?.token && data?.userId) { userId = data.userId; break; }
         } catch { continue; }
       }
     } catch { /* localStorage غير متاح */ }
 
     if (!userId) {
-      if (window.showToast) showToast('لم يتم العثور على جلسة بصمة', 'error');
+      if (window.showToast) showToast('لم يتم العثور على بصمة مُفعَّلة للدخول السريع', 'error');
       return;
     }
 
     const statusEl = document.getElementById('calc-ql-status');
-    const webAuthnBtn = document.getElementById('calc-webauthn-btn');
+    const webAuthnBtn = document.getElementById('btn-quick-webauthn');
     if (statusEl) statusEl.textContent = '👆 جارٍ التحقق من البصمة...';
     if (webAuthnBtn) webAuthnBtn.disabled = true;
 
     try {
-      const result = await OfflineAuthService.verifyWithWebAuthn(userId);
+      // ✅ البصمة → مصادقة قاعدة البيانات + جلسة Supabase حقيقية
+      const result = await AuthService.quickLoginWithWebAuthn(userId);
 
       if (isOk(result)) {
-        if (typeof db === 'undefined' || !db.isOpen()) {
-          if (statusEl) statusEl.textContent = '❌ قاعدة البيانات المحلية غير متاحة';
-          if (webAuthnBtn) webAuthnBtn.disabled = false;
-          return;
-        }
-
-        const profile = await db.users.get(userId);
-        if (!profile || !profile.is_active) {
-          if (statusEl) statusEl.textContent = '❌ المستخدم غير موجود أو تم تعطيله';
-          if (webAuthnBtn) webAuthnBtn.disabled = false;
-          return;
-        }
-
-        AuthState.currentUser   = profile;
-        AuthState.isOffline     = true;
-        AuthState.isInitialized = true;
-        AuthState.authUser      = null;
-
-        saveSession({
-          userId       : profile.id,
-          displayName  : profile.display_name,
-          username     : profile.username,
-          offlineSession: true,
-          webauthnMode : true,
-          accountNumber: profile.account_number,
-        });
-
-        if (statusEl) statusEl.textContent = '✅ تم التحقق — جاري الدخول...';
-        if (window.showToast) showToast(`👆 مرحباً ${profile.display_name}`, 'success');
-        setTimeout(() => this._onSuccess?.(profile), 400);
+        if (statusEl) { statusEl.style.color = '#10b981'; statusEl.textContent = '✅ تم التحقق — جاري الدخول...'; }
+        if (window.showToast) showToast(`👆 مرحباً ${result.data.profile.display_name}`, 'success');
+        setTimeout(() => this._onSuccess?.(result.data.profile), 400);
       } else {
         if (statusEl) { statusEl.style.color = '#f87171'; statusEl.textContent = `❌ ${result.error}`; }
         if (webAuthnBtn) webAuthnBtn.disabled = false;
         setTimeout(() => {
           if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
-        }, 2500);
+        }, 2800);
       }
     } catch (e) {
       if (statusEl) statusEl.textContent = '';

@@ -573,7 +573,7 @@ const ProfileSettingsComponent = {
         if (btn) { btn.disabled = false; btn.textContent = 'تفعيل البصمة'; }
         return;
       }
-      const result = await OfflineAuthService.enableWebAuthn(user.id, 'quick');
+      const result = await OfflineAuthService.enableWebAuthn(user.id);
       if (isOk(result)) {
         showToast('✅ تم تفعيل البصمة للدخول السريع', 'success');
         const qCard = document.querySelector('[data-psc-quick-card]');
@@ -608,6 +608,7 @@ const ProfileSettingsComponent = {
       if (raw) {
         const d = JSON.parse(raw);
         delete d.hasWebAuthn;
+        delete d.webauthnCredentialId;
         localStorage.setItem(`ahu_quick_${user.id}`, JSON.stringify(d));
       }
     } catch { /* تجاهل */ }
@@ -666,22 +667,20 @@ const ProfileSettingsComponent = {
   // بطاقة المصادقة بدون إنترنت (PIN + البصمة أو Face ID)
   // ────────────────────────────────────────────────────────
   _buildOfflineAuthCard(user) {
-    const session    = OfflineAuthService.getOfflineSession(user.id);
-    const hasPin     = !!session?.hasPin;
-    const hasWebAuthn= !!session?.hasWebAuthn;
-    const supportsWA = !!window.PublicKeyCredential;
+    const session = OfflineAuthService.getOfflineSession(user.id);
+    const hasPin  = !!session?.hasPin;
 
     const card = this._card('🔒 الدخول بدون إنترنت');
     card.setAttribute('data-psc-offline-card', '');
 
     card.innerHTML += `
       <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
-        أدخل بدون اتصال بالإنترنت عبر PIN أو البصمة أو Face ID.
+        أدخل بدون اتصال بالإنترنت عبر رمز PIN. (البصمة متاحة للدخول السريع أونلاين فقط.)
       </p>
 
       <!-- PIN -->
       <div style="padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);
-        border-radius:10px;margin-bottom:12px;">
+        border-radius:10px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div style="flex:1;">
             <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">PIN الدخول بدون إنترنت</div>
@@ -703,30 +702,6 @@ const ProfileSettingsComponent = {
               حذف PIN
             </button>
           </div>`}
-        </div>
-      </div>
-
-      <!-- البصمة أو Face ID -->
-      <div style="padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);
-        border-radius:10px;">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <div style="flex:1;">
-            <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">البصمة أو Face ID</div>
-            <div style="font-size:.76rem;margin-top:2px;color:${hasWebAuthn ? '#16a34a' : 'var(--text-muted)'};">
-              ${hasWebAuthn ? '✅ مفعّل على هذا الجهاز' : 'غير مفعّل'}
-            </div>
-          </div>
-          ${!hasWebAuthn && supportsWA ? `
-          <button id="psc-webauthn-enable" class="btn btn-primary btn-sm" style="white-space:nowrap;">
-            تفعيل البصمة أو Face ID
-          </button>` : ''}
-          ${hasWebAuthn ? `
-          <button id="psc-webauthn-disable" class="btn btn-sm"
-            style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);white-space:nowrap;">
-            إلغاء البصمة أو Face ID
-          </button>` : ''}
-          ${!hasWebAuthn && !supportsWA ? `
-          <span style="font-size:.75rem;color:var(--text-muted);">غير مدعوم في هذا المتصفح</span>` : ''}
         </div>
       </div>`;
 
@@ -783,36 +758,6 @@ const ProfileSettingsComponent = {
       } else {
         showToast(res.error || 'فشل حذف PIN', 'error');
       }
-      this._rerenderOfflineCard(user);
-    });
-
-    // تفعيل البصمة أو Face ID
-    document.getElementById('psc-webauthn-enable')?.addEventListener('click', async () => {
-      const res = await OfflineAuthService.enableWebAuthn(user.id);
-      if (isOk(res)) {
-        showToast('✅ تم تفعيل البصمة أو Face ID', 'success');
-      } else {
-        showToast(res.error || 'فشل تفعيل البصمة أو Face ID', 'error');
-      }
-      this._rerenderOfflineCard(user);
-    });
-
-    // إلغاء البصمة أو Face ID
-    document.getElementById('psc-webauthn-disable')?.addEventListener('click', async () => {
-      const confirmed = await confirmDialog(
-        'إلغاء البصمة أو Face ID؟\n\nيمكنك إعادة تفعيلها لاحقاً.',
-        'إلغاء التفعيل', 'رجوع', 'danger'
-      );
-      if (!confirmed) return;
-      try {
-        const raw = localStorage.getItem(`ahu_offline_session_${user.id}`);
-        if (raw) {
-          const session = JSON.parse(raw);
-          session.hasWebAuthn = false;
-          localStorage.setItem(`ahu_offline_session_${user.id}`, JSON.stringify(session));
-        }
-      } catch { /* تجاهل */ }
-      showToast('✅ تم إلغاء البصمة أو Face ID', 'success');
       this._rerenderOfflineCard(user);
     });
   },

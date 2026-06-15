@@ -362,13 +362,14 @@ const OfflineAuthService = {
   // ==========================================================
 
   /**
-   * يُفعّل WebAuthn (Passkey / بصمة) للجلسة الحالية.
-   * يتطلب اتصالاً بالإنترنت + JWT صالح.
+   * يُفعّل WebAuthn (Passkey / بصمة) للدخول السريع (Online فقط).
+   * البصمة بوّابة حيوية فوق توكن الدخول السريع — per-device، تحقق محلي.
+   * يتطلب اتصالاً بالإنترنت + جلسة نشطة + تفعيل الدخول السريع بالمعادلة مسبقاً.
    *
    * @param {string} userId
    * @returns {Promise<{ok: boolean, error?: string}>}
    */
-  async enableWebAuthn(userId, type = 'offline') {
+  async enableWebAuthn(userId) {
     if (!window.PublicKeyCredential) {
       return err('المتصفح لا يدعم البصمة أو Face ID');
     }
@@ -376,8 +377,18 @@ const OfflineAuthService = {
       return err('تفعيل البصمة أو Face ID يتطلب اتصالاً بالإنترنت وجلسة نشطة');
     }
 
+    // يجب أن يكون الدخول السريع بالمعادلة مُفعَّلاً (البصمة بوّابة فوق التوكن)
+    let qData = null;
     try {
-      // Challenge عشوائي (لا نحتاج التحقق من الخادم لـ registration في هذا السياق)
+      const raw = localStorage.getItem(`ahu_quick_${userId}`);
+      if (raw) qData = JSON.parse(raw);
+    } catch { /* تجاهل */ }
+    if (!qData?.token || !qData?.userId) {
+      return err('فعّل الدخول السريع بالمعادلة أولاً من الإعدادات');
+    }
+
+    try {
+      // Challenge عشوائي (التسجيل لا يحتاج تحقق الخادم في هذا السياق)
       const challenge = crypto.getRandomValues(new Uint8Array(32));
       const userIdBuf = new TextEncoder().encode(userId);
 
@@ -407,46 +418,12 @@ const OfflineAuthService = {
 
       const credId = _bufferToBase64url(credential.rawId);
 
-      // حفظ credential ID في Supabase
-      const { error: saveError } = await supabaseClient.rpc('save_webauthn_credential', {
-        p_user_id       : userId,
-        p_device_id     : getDeviceToken(),
-        p_credential_id : credId,
-      });
+      // تخزين معرّف الاعتماد + علامة البصمة داخل ahu_quick_* (per-device، تحقق محلي)
+      qData.hasWebAuthn         = true;
+      qData.webauthnCredentialId = credId;
+      localStorage.setItem(`ahu_quick_${userId}`, JSON.stringify(qData));
 
-      if (saveError) return err('فشل حفظ بيانات البصمة أو Face ID: ' + saveError.message);
-
-      // تحديث Dexie
-      if (typeof db !== 'undefined' && db.isOpen()) {
-        const deviceId = getDeviceToken();
-        const sessions = await db.offline_sessions
-          .where('[user_id+device_id]')
-          .equals([userId, deviceId])
-          .toArray();
-        for (const s of sessions) {
-          await db.offline_sessions.update(s.id, { webauthn_credential_id: credId });
-        }
-      }
-
-      // تحديث localStorage (بدون credId — metadata فقط)
-      if (type === 'quick') {
-        try {
-          const raw = localStorage.getItem(`ahu_quick_${userId}`);
-          const qData = raw ? JSON.parse(raw) : null;
-          if (qData) {
-            qData.hasWebAuthn = true;
-            localStorage.setItem(`ahu_quick_${userId}`, JSON.stringify(qData));
-          }
-        } catch { /* تجاهل أخطاء localStorage */ }
-      } else {
-        const session = this.getOfflineSession(userId);
-        if (session) {
-          session.hasWebAuthn = true;
-          localStorage.setItem(`ahu_offline_session_${userId}`, JSON.stringify(session));
-        }
-      }
-
-      console.log('✅ OfflineAuthService: WebAuthn مُفعَّل');
+      console.log('✅ OfflineAuthService: بصمة الدخول السريع مُفعَّلة');
       return ok(true);
 
     } catch (e) {
@@ -477,22 +454,20 @@ const OfflineAuthService = {
     const bfCheck = _checkPinBruteForce(userId);
     if (!isOk(bfCheck)) return bfCheck;
 
-    // جلب credential ID من Dexie
+    // جلب credential ID من ahu_quick_* (بصمة الدخول السريع — per-device)
     let credentialId = null;
-    if (typeof db !== 'undefined' && db.isOpen()) {
-      const deviceId = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
-                       || localStorage.getItem(`ahu_device_${userId}`)
-                       || null;
-      const session  = await db.offline_sessions
-        .where('[user_id+device_id]')
-        .equals([userId, deviceId])
-        .filter(s => s.is_active === true && !!s.webauthn_credential_id)
-        .first();
-      credentialId = session?.webauthn_credential_id || null;
-    }
+    try {
+      const raw = localStorage.getItem(`ahu_quick_${userId}`);
+      if (raw) {
+        const qData = JSON.parse(raw);
+        if (qData?.hasWebAuthn && qData?.webauthnCredentialId) {
+          credentialId = qData.webauthnCredentialId;
+        }
+      }
+    } catch { /* تجاهل أخطاء localStorage */ }
 
     if (!credentialId) {
-      return err('لم يتم تفعيل البصمة أو Face ID على هذا الجهاز. استخدم PIN بدلاً من ذلك.');
+      return err('لم يتم تفعيل البصمة على هذا الجهاز. فعّلها من إعدادات الدخول السريع.');
     }
 
     try {
