@@ -105,6 +105,7 @@ async function _bootApp(profile) {
 
   // بناء الهيكل
   _buildAppShell();
+  _buildOfflineBanner();
 
   // ── تحديث last_login في الخلفية ──
   if (isOnline && isOnline()) {
@@ -384,16 +385,17 @@ function _buildHeader() {
   return header;
 }
 
-// حساب ارتفاعات الهيدر والنافار ديناميكياً
+// حساب ارتفاعات الهيدر والنافار والشريط البرتقالي ديناميكياً
 function _fixHeaderOverlap() {
   const header  = document.querySelector('.app-header');
   const nav     = document.querySelector('.app-nav');
   const content = document.getElementById('app-content');
   if (!header || !nav || !content) return;
-  const hh = header.offsetHeight;
-  const nh = nav.offsetHeight;
-  nav.style.top          = hh + 'px';
-  content.style.paddingTop = (hh + nh + 8) + 'px';
+  const hh      = header.offsetHeight;
+  const nh      = nav.offsetHeight;
+  const bannerH = document.getElementById('offline-banner')?.offsetHeight || 0;
+  nav.style.top            = hh + 'px';
+  content.style.paddingTop = (hh + nh + bannerH + 8) + 'px';
 }
 
 /* أيقونة الثيم SVG */
@@ -713,6 +715,76 @@ function _updateConnStatus(isNowOnline) {
     SyncEngine.startAutoSync().catch(e => console.warn('[App] SyncEngine:', e.message));
   }
   _updateSyncWidget();
+
+  // إعادة الاتصال أثناء وضع Offline → عرض مودال إعادة تسجيل الدخول
+  if (isNowOnline && wasOffline) {
+    _showReconnectionModal();
+  }
+}
+
+/** شريط وضع Offline — يظهر أسفل الهيدر مباشرة (position:fixed) */
+function _buildOfflineBanner() {
+  const old = document.getElementById('offline-banner');
+  if (old) old.remove();
+
+  if (!AuthState.isOffline) return;
+
+  const banner = document.createElement('div');
+  banner.id        = 'offline-banner';
+  banner.className = 'offline-banner';
+  banner.innerHTML = `<span class="offline-banner-icon">🔌</span>
+                      <span class="offline-banner-text">وضع Offline — تعمل بدون اتصال</span>`;
+
+  // position:fixed → نُلحق بـ body مباشرة (لا علاقة للـ DOM hierarchy)
+  document.body.appendChild(banner);
+
+  // ضبط top بعد أن يكون الهيدر قابلاً للقياس
+  requestAnimationFrame(() => {
+    const header = document.getElementById('app-header');
+    if (header) banner.style.top = header.offsetHeight + 'px';
+    _fixHeaderOverlap(); // إعادة حساب paddingTop للمحتوى
+  });
+}
+
+let _reconnectionModalShown = false; // ✅ guard لمنع تكرار المودال
+
+/** مودال إعادة الاتصال: يظهر عند عودة الإنترنت في وضع Offline */
+function _showReconnectionModal() {
+  if (document.querySelector('.reconnection-modal')) return;
+  if (_reconnectionModalShown) return; // ✅ منع إعادة الظهور بعد إغلاقه
+  _reconnectionModalShown = true;
+
+  const modal = document.createElement('div');
+  modal.className = 'reconnection-modal';
+  modal.innerHTML = `
+    <div class="reconnection-modal-content">
+      <span class="reconnection-icon">🌐</span>
+      <h2>تمت معاودة الاتصال بالإنترنت</h2>
+      <p>
+        بياناتك المحفوظة تُزامن في الخلفية.<br>
+        يرجى تسجيل الدخول مرة أخرى للوصول لجميع المميزات.
+      </p>
+      <button id="btn-relogin" class="reconnection-btn">
+        العودة لشاشة تسجيل الدخول
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  modal.querySelector('#btn-relogin').addEventListener('click', () => {
+    modal.remove();
+    _reconnectionModalShown = false; // ✅ إعادة الضبط عند الضغط
+    _handleReconnectionConfirm();
+  });
+}
+
+/** تسجيل الخروج وإعادة التحميل بعد إغلاق مودال إعادة الاتصال */
+async function _handleReconnectionConfirm() {
+  if (typeof AuthService !== 'undefined' && AuthService.logout) {
+    await AuthService.logout(); // ✅ انتظر إتمام الخروج قبل إعادة التحميل
+  }
+  window.location.reload();
 }
 
 // ============================================================

@@ -130,6 +130,14 @@ const ProfileSettingsComponent = {
   // ────────────────────────────────────────────────────────
   _buildQuickLoginCard(user) {
     const hasQuick = !!user.quick_equation_hash;
+    const supportsWA = !!window.PublicKeyCredential;
+    let hasQuickWebAuthn = false;
+    if (hasQuick) {
+      try {
+        const raw = localStorage.getItem(`ahu_quick_${user.id}`);
+        if (raw) { const d = JSON.parse(raw); hasQuickWebAuthn = d?.hasWebAuthn === true; }
+      } catch { /* تجاهل */ }
+    }
     const card = this._card('⚡ الدخول السريع');
     card.setAttribute('data-psc-quick-card', '');
 
@@ -197,7 +205,31 @@ const ProfileSettingsComponent = {
         </button>` : ''}
       </div>
       <div id="psc-eq-err" style="display:none;padding:8px 12px;background:#fee2e2;
-        border:1px solid #fca5a5;border-radius:8px;color:#dc2626;font-size:.83rem;margin-top:10px;"></div>`;
+        border:1px solid #fca5a5;border-radius:8px;color:#dc2626;font-size:.83rem;margin-top:10px;"></div>
+
+      ${hasQuick && supportsWA ? `
+      <hr style="border:none;border-top:1px solid var(--border);margin:18px 0;" />
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-weight:600;font-size:.87rem;color:var(--text-primary);">
+            👆 البصمة أو Face ID (للدخول السريع)
+          </div>
+          <div style="font-size:.78rem;color:var(--text-secondary);margin-top:3px;">
+            ${hasQuickWebAuthn
+              ? 'مُفعَّلة — تستطيع الدخول بلمسة واحدة بدل المعادلة'
+              : 'بعد تفعيلها، تضغط زر البصمة في الحاسبة بدل إدخال المعادلة'}
+          </div>
+        </div>
+        ${hasQuickWebAuthn
+          ? `<button id="psc-qwa-disable" class="btn btn-sm"
+               style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);">
+               إلغاء البصمة
+             </button>`
+          : `<button id="psc-qwa-enable" class="btn btn-sm btn-primary">
+               تفعيل البصمة
+             </button>`
+        }
+      </div>` : ''}`;
 
     return card;
   },
@@ -377,6 +409,10 @@ const ProfileSettingsComponent = {
     // إزالة الدخول السريع
     document.getElementById('psc-eq-disable')?.addEventListener('click', () => this._disableQuickLogin());
 
+    // تفعيل/إلغاء البصمة للدخول السريع
+    document.getElementById('psc-qwa-enable')?.addEventListener('click', () => this._enableQuickWebAuthn(user));
+    document.getElementById('psc-qwa-disable')?.addEventListener('click', () => this._disableQuickWebAuthn(user));
+
   },
 
   // ────────────────────────────────────────────────────────
@@ -498,29 +534,91 @@ const ProfileSettingsComponent = {
     saveBtn.disabled = true;
     saveBtn.innerHTML = '⏳ جاري التفعيل...';
 
-    const result = await AuthService.enableQuickLogin(eq);
+    try {
+      const result = await AuthService.enableQuickLogin(eq);
 
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = origText;
-    if (window.lucide) lucide.createIcons();
+      if (isOk(result)) {
+        showToast('⚡ تم تفعيل الدخول السريع بنجاح! احتفظ بمعادلتك.', 'success', 5000);
+        input.value = '';
+        this._previewEquation('');
 
-    if (isOk(result)) {
-      showToast('⚡ تم تفعيل الدخول السريع بنجاح! احتفظ بمعادلتك.', 'success', 5000);
-      input.value = '';
-      this._previewEquation('');
-
-      const user = { ...AuthService.getCurrentUser(), quick_equation_hash: 'set' };
-      const qCard = document.querySelector('[data-psc-quick-card]');
-      if (qCard) {
-        const newCard = this._buildQuickLoginCard(user);
-        newCard.setAttribute('data-psc-quick-card', '');
-        qCard.replaceWith(newCard);
-        this._bindEvents(user);
-        if (window.lucide) lucide.createIcons();
+        const user = { ...AuthService.getCurrentUser(), quick_equation_hash: 'set' };
+        const qCard = document.querySelector('[data-psc-quick-card]');
+        if (qCard) {
+          const newCard = this._buildQuickLoginCard(user);
+          newCard.setAttribute('data-psc-quick-card', '');
+          qCard.replaceWith(newCard);
+          this._bindEvents(user);
+          if (window.lucide) lucide.createIcons();
+        }
+      } else {
+        this._showErr('psc-eq-err', `فشل التفعيل: ${result.error}`);
       }
     } finally {
       saveBtn.disabled = false;
       saveBtn.innerHTML = origText;
+      if (window.lucide) lucide.createIcons();
+    }
+  },
+
+  // ────────────────────────────────────────────────────────
+  // _enableQuickWebAuthn — تفعيل البصمة للدخول السريع
+  // ────────────────────────────────────────────────────────
+  async _enableQuickWebAuthn(user) {
+    const btn = document.getElementById('psc-qwa-enable');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ التفعيل...'; }
+    try {
+      if (typeof OfflineAuthService === 'undefined') {
+        showToast('خدمة المصادقة غير محمّلة', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'تفعيل البصمة'; }
+        return;
+      }
+      const result = await OfflineAuthService.enableWebAuthn(user.id);
+      if (isOk(result)) {
+        showToast('✅ تم تفعيل البصمة للدخول السريع', 'success');
+        const qCard = document.querySelector('[data-psc-quick-card]');
+        if (qCard) {
+          const newCard = this._buildQuickLoginCard(user);
+          newCard.setAttribute('data-psc-quick-card', '');
+          qCard.replaceWith(newCard);
+          this._bindEvents(user);
+          if (window.lucide) lucide.createIcons();
+        }
+      } else {
+        showToast(result.error || 'فشل تفعيل البصمة', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'تفعيل البصمة'; }
+      }
+    } catch (e) {
+      showToast('خطأ في تفعيل البصمة: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'تفعيل البصمة'; }
+    }
+  },
+
+  // ────────────────────────────────────────────────────────
+  // _disableQuickWebAuthn — إلغاء البصمة للدخول السريع
+  // ────────────────────────────────────────────────────────
+  async _disableQuickWebAuthn(user) {
+    const confirmed = await confirmDialog(
+      'إلغاء البصمة للدخول السريع؟\n\nستستخدم المعادلة للدخول مجدداً.',
+      'إلغاء البصمة', 'تراجع', 'danger'
+    );
+    if (!confirmed) return;
+    try {
+      const raw = localStorage.getItem(`ahu_quick_${user.id}`);
+      if (raw) {
+        const d = JSON.parse(raw);
+        delete d.hasWebAuthn;
+        delete d.webauthnCredentialId;
+        localStorage.setItem(`ahu_quick_${user.id}`, JSON.stringify(d));
+      }
+    } catch { /* تجاهل */ }
+    showToast('✅ تم إلغاء البصمة للدخول السريع', 'success');
+    const qCard = document.querySelector('[data-psc-quick-card]');
+    if (qCard) {
+      const newCard = this._buildQuickLoginCard(user);
+      newCard.setAttribute('data-psc-quick-card', '');
+      qCard.replaceWith(newCard);
+      this._bindEvents(user);
       if (window.lucide) lucide.createIcons();
     }
   },
@@ -569,22 +667,20 @@ const ProfileSettingsComponent = {
   // بطاقة المصادقة بدون إنترنت (PIN + البصمة أو Face ID)
   // ────────────────────────────────────────────────────────
   _buildOfflineAuthCard(user) {
-    const session    = OfflineAuthService.getOfflineSession(user.id);
-    const hasPin     = !!session?.hasPin;
-    const hasWebAuthn= !!session?.hasWebAuthn;
-    const supportsWA = !!window.PublicKeyCredential;
+    const session = OfflineAuthService.getOfflineSession(user.id);
+    const hasPin  = !!session?.hasPin;
 
     const card = this._card('🔒 الدخول بدون إنترنت');
     card.setAttribute('data-psc-offline-card', '');
 
     card.innerHTML += `
       <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
-        أدخل بدون اتصال بالإنترنت عبر PIN أو البصمة أو Face ID.
+        أدخل بدون اتصال بالإنترنت عبر رمز PIN. (البصمة متاحة للدخول السريع أونلاين فقط.)
       </p>
 
       <!-- PIN -->
       <div style="padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);
-        border-radius:10px;margin-bottom:12px;">
+        border-radius:10px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div style="flex:1;">
             <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">PIN الدخول بدون إنترنت</div>
@@ -606,30 +702,6 @@ const ProfileSettingsComponent = {
               حذف PIN
             </button>
           </div>`}
-        </div>
-      </div>
-
-      <!-- البصمة أو Face ID -->
-      <div style="padding:12px 14px;background:var(--bg-secondary);border:1px solid var(--border);
-        border-radius:10px;">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <div style="flex:1;">
-            <div style="font-size:.85rem;font-weight:600;color:var(--text-primary);">البصمة أو Face ID</div>
-            <div style="font-size:.76rem;margin-top:2px;color:${hasWebAuthn ? '#16a34a' : 'var(--text-muted)'};">
-              ${hasWebAuthn ? '✅ مفعّل على هذا الجهاز' : 'غير مفعّل'}
-            </div>
-          </div>
-          ${!hasWebAuthn && supportsWA ? `
-          <button id="psc-webauthn-enable" class="btn btn-primary btn-sm" style="white-space:nowrap;">
-            تفعيل البصمة أو Face ID
-          </button>` : ''}
-          ${hasWebAuthn ? `
-          <button id="psc-webauthn-disable" class="btn btn-sm"
-            style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);white-space:nowrap;">
-            إلغاء البصمة أو Face ID
-          </button>` : ''}
-          ${!hasWebAuthn && !supportsWA ? `
-          <span style="font-size:.75rem;color:var(--text-muted);">غير مدعوم في هذا المتصفح</span>` : ''}
         </div>
       </div>`;
 
@@ -686,36 +758,6 @@ const ProfileSettingsComponent = {
       } else {
         showToast(res.error || 'فشل حذف PIN', 'error');
       }
-      this._rerenderOfflineCard(user);
-    });
-
-    // تفعيل البصمة أو Face ID
-    document.getElementById('psc-webauthn-enable')?.addEventListener('click', async () => {
-      const res = await OfflineAuthService.enableWebAuthn(user.id);
-      if (isOk(res)) {
-        showToast('✅ تم تفعيل البصمة أو Face ID', 'success');
-      } else {
-        showToast(res.error || 'فشل تفعيل البصمة أو Face ID', 'error');
-      }
-      this._rerenderOfflineCard(user);
-    });
-
-    // إلغاء البصمة أو Face ID
-    document.getElementById('psc-webauthn-disable')?.addEventListener('click', async () => {
-      const confirmed = await confirmDialog(
-        'إلغاء البصمة أو Face ID؟\n\nيمكنك إعادة تفعيلها لاحقاً.',
-        'إلغاء التفعيل', 'رجوع', 'danger'
-      );
-      if (!confirmed) return;
-      try {
-        const raw = localStorage.getItem(`ahu_offline_session_${user.id}`);
-        if (raw) {
-          const session = JSON.parse(raw);
-          session.hasWebAuthn = false;
-          localStorage.setItem(`ahu_offline_session_${user.id}`, JSON.stringify(session));
-        }
-      } catch { /* تجاهل */ }
-      showToast('✅ تم إلغاء البصمة أو Face ID', 'success');
       this._rerenderOfflineCard(user);
     });
   },

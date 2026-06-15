@@ -95,6 +95,8 @@ const QuickLoginBanner = {
       document.head.appendChild(style);
     }
 
+    const supportsWebAuthn = !!window.PublicKeyCredential;
+
     banner.innerHTML = `
       <!-- أيقونة -->
       <div id="ql-zap-icon" style="font-size:1.6rem;flex-shrink:0;">⚡</div>
@@ -105,28 +107,37 @@ const QuickLoginBanner = {
           فعّل الدخول السريع لتوفير وقتك
         </div>
         <div style="font-size:.8rem;color:rgba(255,255,255,.8);line-height:1.5;">
-          استخدم معادلة رياضية بسيطة للدخول بضغطة واحدة — بدون كتابة كلمة مرور في كل مرة.
+          استخدم معادلة رياضية أو البصمة للدخول بضغطة واحدة — بدون كتابة كلمة مرور في كل مرة.
         </div>
       </div>
 
       <!-- أزرار -->
-      <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;align-items:center;">
         <button id="ql-banner-activate"
           style="padding:8px 16px;border-radius:8px;border:none;cursor:pointer;
             background:#fff;color:#4f46e5;font-weight:700;font-size:.84rem;
             font-family:inherit;transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.15);"
           onmouseenter="this.style.transform='scale(1.03)'"
           onmouseleave="this.style.transform=''">
-          ⚡ فعّل الآن
+          ⚡ إعداد المعادلة
         </button>
+        ${supportsWebAuthn ? `
+        <button id="ql-banner-webauthn"
+          style="padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.5);
+            cursor:pointer;background:rgba(255,255,255,.12);color:#fff;
+            font-weight:600;font-size:.84rem;font-family:inherit;transition:all .15s;"
+          onmouseenter="this.style.background='rgba(255,255,255,.22)'"
+          onmouseleave="this.style.background='rgba(255,255,255,.12)'">
+          👆 إعداد البصمة
+        </button>` : ''}
         <button id="ql-banner-snooze"
-          style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.35);
-            cursor:pointer;background:transparent;color:rgba(255,255,255,.85);
+          style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.25);
+            cursor:pointer;background:transparent;color:rgba(255,255,255,.75);
             font-size:.8rem;font-family:inherit;transition:all .15s;"
           title="تذكير بعد ${this._SNOOZE_DAYS} أيام"
           onmouseenter="this.style.background='rgba(255,255,255,.1)'"
           onmouseleave="this.style.background='transparent'">
-          لاحقاً
+          تخطّ
         </button>
         <button id="ql-banner-dismiss"
           style="padding:8px;border-radius:8px;border:none;cursor:pointer;
@@ -147,6 +158,39 @@ const QuickLoginBanner = {
         App.navigateTo(TABS.SETTINGS);
       }
     });
+
+    if (supportsWebAuthn) {
+      banner.querySelector('#ql-banner-webauthn')?.addEventListener('click', async () => {
+        const btn = banner.querySelector('#ql-banner-webauthn');
+        // التحقق من وجود معادلة دخول سريع صالحة أولاً
+        let hasQuickToken = false;
+        try {
+          const raw = localStorage.getItem(`ahu_quick_${profile.id}`);
+          if (raw) {
+            const qData = JSON.parse(raw);
+            hasQuickToken = !!(qData?.token && qData?.userId);
+          }
+        } catch { /* تجاهل */ }
+        if (!hasQuickToken) {
+          if (window.showToast) showToast('فعّل الدخول السريع بالمعادلة أولاً من الإعدادات', 'warning');
+          return;
+        }
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ التفعيل...'; }
+        try {
+          const result = await OfflineAuthService.enableWebAuthn(profile.id);
+          if (isOk(result)) {
+            if (window.showToast) showToast('✅ تم تفعيل البصمة للدخول السريع', 'success');
+            this.dismiss();
+          } else {
+            if (window.showToast) showToast(result.error || 'فشل تفعيل البصمة', 'error');
+            if (btn) { btn.disabled = false; btn.textContent = '👆 إعداد البصمة'; }
+          }
+        } catch (e) {
+          if (window.showToast) showToast('خطأ في تفعيل البصمة: ' + e.message, 'error');
+          if (btn) { btn.disabled = false; btn.textContent = '👆 إعداد البصمة'; }
+        }
+      });
+    }
 
     banner.querySelector('#ql-banner-snooze').addEventListener('click', () => {
       try {

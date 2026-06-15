@@ -883,6 +883,177 @@ const _CSS = `
   body.dark-mode .ql-skip-btn { border-color: rgba(255,255,255,0.12); }
   body.dark-mode .ql-skip-btn:hover { background: rgba(255,255,255,0.05); }
 
+  /* ── واجهة PIN ── */
+  .pin-dots-row {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    margin: 22px 0 24px;
+  }
+  .pin-dot {
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: rgba(15,23,42,0.08);
+    border: 2px solid rgba(15,23,42,0.20);
+    transition: background 140ms, transform 140ms, border-color 140ms;
+  }
+  body.dark-mode .pin-dot {
+    background: rgba(255,255,255,0.10);
+    border-color: rgba(255,255,255,0.28);
+  }
+  .pin-dot.filled {
+    background: #6366f1;
+    border-color: #4f46e5;
+    transform: scale(1.2);
+  }
+  .pin-keypad {
+    display: grid;
+    grid-template-columns: repeat(3,1fr);
+    gap: 10px;
+    margin: 0 auto;
+    max-width: 260px;
+  }
+  .pin-key {
+    width: 100%; aspect-ratio: 1;
+    border-radius: 12px;
+    background: rgba(15,23,42,0.05);
+    border: 1.5px solid rgba(15,23,42,0.10);
+    color: var(--text-primary,#0f172a);
+    font-size: 1.3rem; font-weight: 600;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 110ms, transform 90ms;
+    font-family: inherit;
+  }
+  body.dark-mode .pin-key {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+    color: #f1f5f9;
+  }
+  .pin-key:hover { background: rgba(15,23,42,0.10); }
+  body.dark-mode .pin-key:hover { background: rgba(255,255,255,0.12); }
+  .pin-key:active { transform: scale(0.90); }
+  .pin-key-del {
+    background: rgba(239,68,68,0.07);
+    border-color: rgba(239,68,68,0.18);
+    color: #dc2626; font-size: 1rem;
+  }
+  .pin-key-del:hover { background: rgba(239,68,68,0.14); }
+  body.dark-mode .pin-key-del { color: #f87171; }
+  .pin-key-ok {
+    background: rgba(34,197,94,0.08);
+    border-color: rgba(34,197,94,0.20);
+    color: #16a34a; font-size: 1rem;
+  }
+  .pin-key-ok:hover { background: rgba(34,197,94,0.16); }
+  body.dark-mode .pin-key-ok { color: #4ade80; }
+  .pin-status {
+    min-height: 18px; text-align: center;
+    font-size: 0.80rem; margin: 10px 0 0;
+    color: #ef4444;
+  }
+  .pin-webauthn-btn {
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; width: 100%;
+    padding: 11px 14px; margin-top: 12px;
+    background: rgba(99,102,241,0.07);
+    border: 1.5px solid rgba(99,102,241,0.22);
+    border-radius: 12px;
+    color: #6366f1;
+    font-size: 0.86rem; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: background 140ms, transform 110ms;
+  }
+  body.dark-mode .pin-webauthn-btn {
+    background: rgba(99,102,241,0.12);
+    border-color: rgba(99,102,241,0.32);
+    color: #a5b4fc;
+  }
+  .pin-webauthn-btn:hover { background: rgba(99,102,241,0.14); transform: translateY(-1px); }
+  body.dark-mode .pin-webauthn-btn:hover { background: rgba(99,102,241,0.20); }
+  .pin-webauthn-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+  /* ── قائمة اختيار الحساب (Offline Account Selector) ── */
+  .offline-account-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 16px;
+    background: rgba(15,23,42,0.04);
+    border: 1.5px solid rgba(15,23,42,0.10);
+    border-radius: 12px;
+    color: var(--text-primary, #0f172a);
+    cursor: pointer;
+    text-align: right;
+    width: 100%;
+    transition: background 150ms, transform 120ms, border-color 150ms;
+    margin-bottom: 8px;
+  }
+  .offline-account-item:last-child { margin-bottom: 0; }
+  .offline-account-item:hover {
+    background: rgba(15,23,42,0.08);
+    border-color: rgba(15,23,42,0.20);
+    transform: translateX(-3px);
+  }
+  body.dark-mode .offline-account-item {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.10);
+    color: #f1f5f9;
+  }
+  body.dark-mode .offline-account-item:hover {
+    background: rgba(255,255,255,0.10);
+    border-color: rgba(255,255,255,0.20);
+  }
+  .offline-account-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+  }
+  .offline-account-info { flex: 1; text-align: right; }
+  .offline-account-name { font-weight: 600; font-size: 0.90rem; margin-bottom: 2px; }
+  .offline-account-num  { font-size: 0.76rem; color: var(--text-muted, #64748b); }
+
+  /* ── أزرار الدخول الثلاثة (أيقونات فقط) ── */
+  .calc-auth-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 14px;
+  }
+  .calc-auth-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.10);
+    border: 1.5px solid rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 180ms, transform 120ms, box-shadow 180ms;
+    flex-shrink: 0;
+  }
+  .calc-auth-btn:hover {
+    background: rgba(255,255,255,0.20);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+  }
+  .calc-auth-btn:active { transform: translateY(0); box-shadow: none; }
+  .calc-auth-btn--webauthn {
+    border-color: rgba(99,102,241,0.50);
+    color: #a5b4fc;
+  }
+  .calc-auth-btn--webauthn:hover { background: rgba(99,102,241,0.20); }
+  .calc-auth-btn--offline {
+    border-color: rgba(251,146,60,0.45);
+    color: #fdba74;
+  }
+  .calc-auth-btn--offline:hover { background: rgba(251,146,60,0.15); }
+
   /* ── Animations ── */
   @keyframes lp-shake {
     0%,100% { transform:translateX(0); }
@@ -912,14 +1083,18 @@ const LoginComponent = {
     result       : '0',
     justEvaluated: false,
     // حالة UI
-    view         : 'login',   // 'calc' | 'login' | 'offline'
+    view         : 'login',   // 'calc' | 'login' | 'offline' | 'account-selector'
     menuOpen     : false,
     isLoading    : false,
     showPassword : false,
     quickEnabled : false,
     quickPending : false,
     // الدخول بدون إنترنت
-    offlineUser  : null,
+    offlineUser            : null,
+    offlineAccounts        : [],   // قائمة الحسابات في account-selector
+    pendingPinUserId       : null, // المستخدم المختار لواجهة PIN
+    currentPinInput        : '',   // الأرقام المُدخَلة في واجهة PIN
+    pinVerifying           : false,// قفل التحقق لمنع التكرار
   },
   _onSuccess : null,
   _container : null,
@@ -994,6 +1169,11 @@ const LoginComponent = {
     scene.innerHTML = '';
     if (this._state.view === 'calc') {
       scene.appendChild(this._buildCalcCard());
+      this._updateQuickWebAuthnBtnVisibility(); // ✅ بعد الإضافة للـ DOM
+    } else if (this._state.view === 'pin') {
+      scene.appendChild(this._buildPinCard());
+    } else if (this._state.view === 'account-selector') {
+      scene.appendChild(this._buildAccountSelectorCard());
     } else if (this._state.view === 'offline') {
       scene.appendChild(this._buildOfflineCard());
     } else {
@@ -1094,17 +1274,39 @@ const LoginComponent = {
     status.className = 'calc-ql-status';
     card.appendChild(status);
 
-    // زر التسجيل التقليدي
-    const switchBtn = document.createElement('button');
-    switchBtn.className = 'lp-switch-btn';
-    switchBtn.innerHTML = `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-        <rect x="3" y="11" width="18" height="11" rx="2"/>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-      </svg>
-      <span>تسجيل الدخول بالبريد وكلمة المرور</span>`;
-    switchBtn.addEventListener('click', () => this._switchToLogin());
-    card.appendChild(switchBtn);
+    // ── صف الأزرار الثلاثة (أيقونات فقط) ──
+    const authRow = document.createElement('div');
+    authRow.className = 'calc-auth-row';
+
+    // زر 1: الدخول التقليدي 🔑
+    const btnTraditional = document.createElement('button');
+    btnTraditional.id        = 'btn-traditional-login';
+    btnTraditional.className = 'calc-auth-btn';
+    btnTraditional.title     = 'تسجيل الدخول بالبريد وكلمة المرور';
+    btnTraditional.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>`;
+    btnTraditional.addEventListener('click', () => this._switchToLogin());
+    authRow.appendChild(btnTraditional);
+
+    // زر 2: الدخول السريع بالبصمة 👆 — مخفي في البداية، يظهر شرطياً
+    const btnWebAuthn = document.createElement('button');
+    btnWebAuthn.id           = 'btn-quick-webauthn';
+    btnWebAuthn.className    = 'calc-auth-btn calc-auth-btn--webauthn';
+    btnWebAuthn.title        = 'الدخول السريع بالبصمة أو Face ID';
+    btnWebAuthn.style.display = 'none';
+    btnWebAuthn.innerHTML    = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>`;
+    btnWebAuthn.addEventListener('click', () => this._tryQuickWebAuthnLogin());
+    authRow.appendChild(btnWebAuthn);
+
+    // زر 3: الدخول بدون إنترنت 🔌
+    const btnOffline = document.createElement('button');
+    btnOffline.id        = 'btn-offline-login';
+    btnOffline.className = 'calc-auth-btn calc-auth-btn--offline';
+    btnOffline.title     = 'الدخول بدون إنترنت';
+    btnOffline.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>`;
+    btnOffline.addEventListener('click', () => this._offlineLogin());
+    authRow.appendChild(btnOffline);
+
+    card.appendChild(authRow);
 
     return card;
   },
@@ -1270,18 +1472,341 @@ const LoginComponent = {
   // ─────────────────────────────────────────────────────────
   // الدخول بدون إنترنت — يُبدّل للبطاقة المخصصة
   // ─────────────────────────────────────────────────────────
-  _offlineLogin() {
+  async _offlineLogin() {
     if (typeof OfflineAuthService === 'undefined') {
       showToast('خدمة Offline غير محمَّلة', 'error');
       return;
     }
-    if (typeof db === 'undefined' || !db.isOpen()) {
-      showToast('قاعدة البيانات المحلية غير متاحة', 'error');
+
+    // ── جمع جلسات hasPin=true من localStorage ──
+    const sessions = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_offline_session_')) continue;
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          if (data?.hasPin === true && data?.userId) {
+            sessions.push({ userId: data.userId });
+          }
+        } catch { continue; }
+      }
+    } catch { /* localStorage غير متاح */ }
+
+    // لا توجد جلسات مُفعَّلة → إشعار وبقاء في المكان
+    if (sessions.length === 0) {
+      showToast(
+        'سجّل الدخول بالبريد الإلكتروني أولاً ثم فعّل الدخول بدون إنترنت من إعداداتك',
+        'warning',
+        6000
+      );
       return;
     }
-    this._state.view = 'offline';
-    this._state.offlineUser = null;
+
+    // حساب واحد → انتقال مباشر لواجهة PIN
+    if (sessions.length === 1) {
+      this._showPinInterface(sessions[0].userId);
+      return;
+    }
+
+    // متعدد → جلب أسماء من Dexie ثم عرض قائمة الاختيار
+    const accounts = [];
+    for (const s of sessions) {
+      let displayName   = 'مستخدم غير معروف';
+      let accountNumber = '—';
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        try {
+          const user = await db.users.get(s.userId);
+          if (user) {
+            displayName   = user.display_name   || displayName;
+            accountNumber = user.account_number || accountNumber;
+          }
+        } catch { /* Dexie غير متاحة */ }
+      }
+      accounts.push({ ...s, displayName, accountNumber });
+    }
+
+    this._state.offlineAccounts = accounts;
+    this._state.view = 'account-selector';
     this._renderView();
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // واجهة PIN — نقطة الدخول
+  // ─────────────────────────────────────────────────────────
+  _showPinInterface(userId) {
+    this._state.pendingPinUserId = userId;
+    this._state.currentPinInput  = '';
+    this._state.pinVerifying     = false;
+    this._state.view = 'pin';
+    this._renderView();
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // بناء بطاقة PIN
+  // ─────────────────────────────────────────────────────────
+  _buildPinCard() {
+    const { currentPinInput, pinVerifying } = this._state;
+    const MAX_PIN = 6;
+
+    const card = document.createElement('div');
+    card.className = 'lp-card offline-card';
+
+    // رأس
+    const header = document.createElement('div');
+    header.className = 'offline-header';
+    header.innerHTML = `
+      <div class="offline-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <div class="offline-title-col">
+        <div class="offline-title">الدخول بدون إنترنت</div>
+        <div class="offline-subtitle">أدخل رمز PIN</div>
+      </div>`;
+    card.appendChild(header);
+
+    // 6 نقاط
+    const dotsRow = document.createElement('div');
+    dotsRow.className = 'pin-dots-row';
+    for (let i = 0; i < MAX_PIN; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'pin-dot' + (i < currentPinInput.length ? ' filled' : '');
+      dotsRow.appendChild(dot);
+    }
+    card.appendChild(dotsRow);
+
+    // منطقة الحالة (خطأ / تحميل)
+    const statusEl = document.createElement('div');
+    statusEl.id        = 'pin-status';
+    statusEl.className = 'pin-status';
+    card.appendChild(statusEl);
+
+    // لوحة المفاتيح: 1-9 ثم ⌫ 0 ✓
+    const keypad = document.createElement('div');
+    keypad.className = 'pin-keypad';
+    const keys = [
+      { label:'1', cls:'', val:'1' }, { label:'2', cls:'', val:'2' }, { label:'3', cls:'', val:'3' },
+      { label:'4', cls:'', val:'4' }, { label:'5', cls:'', val:'5' }, { label:'6', cls:'', val:'6' },
+      { label:'7', cls:'', val:'7' }, { label:'8', cls:'', val:'8' }, { label:'9', cls:'', val:'9' },
+      { label:'⌫', cls:' pin-key-del', val:'del' },
+      { label:'0', cls:'', val:'0' },
+      { label:'✓', cls:' pin-key-ok',  val:'ok'  },
+    ];
+    keys.forEach(({ label, cls, val }) => {
+      const btn = document.createElement('button');
+      btn.type      = 'button';
+      btn.className = 'pin-key' + cls;
+      btn.textContent = label;
+      btn.disabled  = pinVerifying;
+      btn.addEventListener('click', () => this._handlePinInput(val));
+      keypad.appendChild(btn);
+    });
+    card.appendChild(keypad);
+
+    // زر الرجوع
+    const backBtn = document.createElement('button');
+    backBtn.type      = 'button';
+    backBtn.className = 'offline-back-btn';
+    backBtn.style.marginTop = '12px';
+    backBtn.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      <span>العودة</span>`;
+    backBtn.addEventListener('click', () => {
+      // إذا جاء من قائمة اختيار → ارجع إليها، وإلا ارجع للآلة
+      if (this._state.offlineAccounts.length > 0) {
+        this._state.view = 'account-selector';
+        this._renderView();
+      } else {
+        this._switchToCalc();
+      }
+    });
+    card.appendChild(backBtn);
+
+    return card;
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // معالجة إدخال PIN
+  // ─────────────────────────────────────────────────────────
+  _handlePinInput(val) {
+    if (this._state.pinVerifying) return;
+    const cur = this._state.currentPinInput;
+    const MAX = 6;
+
+    if (val === 'del') {
+      this._state.currentPinInput = cur.slice(0, -1);
+    } else if (val === 'ok') {
+      if (cur.length >= 4) {
+        this._verifyPin();
+        return; // _verifyPin يستدعي _renderView بنفسه
+      } else {
+        const el = document.getElementById('pin-status');
+        if (el) el.textContent = 'PIN يجب أن يكون 4 أرقام على الأقل';
+      }
+      return;
+    } else {
+      if (cur.length < MAX) {
+        this._state.currentPinInput = cur + val;
+        // تحقق تلقائي عند الوصول لـ 6 أرقام
+        if (this._state.currentPinInput.length === MAX) {
+          this._state.pinVerifying = true; // ✅ أغلق النافذة قبل setTimeout
+          this._renderView();
+          setTimeout(() => this._verifyPin(), 250);
+          return;
+        }
+      }
+    }
+    this._renderView();
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // التحقق من PIN
+  // ─────────────────────────────────────────────────────────
+  async _verifyPin() {
+    const { pendingPinUserId, currentPinInput } = this._state;
+    if (!pendingPinUserId || !currentPinInput) return;
+
+    this._state.pinVerifying = true;
+    this._renderView();
+
+    const statusEl = document.getElementById('pin-status');
+    if (statusEl) statusEl.textContent = '⏳ جارٍ التحقق...';
+
+    try {
+      const result = await OfflineAuthService.verifyOfflineSession(pendingPinUserId, currentPinInput);
+
+      if (isOk(result)) {
+        await this._enterOfflineMode(pendingPinUserId);
+      } else {
+        this._state.currentPinInput = '';
+        this._state.pinVerifying    = false;
+        this._renderView();
+        const el = document.getElementById('pin-status');
+        if (el) {
+          el.textContent = result.error || 'PIN غير صحيح';
+          // رسالة برتقالية: عدد المحاولات المتبقية إن وُجد
+        }
+      }
+    } catch (e) {
+      this._state.currentPinInput = '';
+      this._state.pinVerifying    = false;
+      this._renderView();
+      if (window.showToast) showToast('خطأ في التحقق: ' + e.message, 'error');
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // دخول وضع Offline بعد التحقق الناجح
+  // ─────────────────────────────────────────────────────────
+  async _enterOfflineMode(userId) {
+    AuthState.isOffline = true; // ✅ يُضبط فوراً قبل أي await لتجنب race condition
+
+    // جلب بروفايل المستخدم من Dexie
+    let user = null;
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      try { user = await db.users.get(userId); } catch { }
+    }
+
+    if (!user) {
+      AuthState.isOffline = false; // ✅ تراجع عند الفشل
+      showToast('لم يُعثر على بيانات المستخدم محلياً', 'error');
+      this._state.pinVerifying = false;
+      this._renderView();
+      return;
+    }
+    if (!user.is_active) {
+      AuthState.isOffline = false; // ✅ تراجع عند الفشل
+      showToast('تم تعطيل هذا الحساب. راجع المدير.', 'error');
+      this._state.pinVerifying = false;
+      this._renderView();
+      return;
+    }
+
+    AuthState.isOffline     = true;
+    AuthState.currentUser   = user;
+    AuthState.authUser      = null;
+    AuthState.isInitialized = true;
+
+    saveSession({
+      userId       : user.id,
+      displayName  : user.display_name,
+      username     : user.username,
+      isOffline    : true,
+      accountNumber: user.account_number,
+    });
+
+    showToast(`🔌 مرحباً ${user.display_name} — وضع Offline`, 'success');
+
+    if (this._onSuccess) {
+      this._onSuccess(user);
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // بطاقة اختيار الحساب (عند وجود أكثر من حساب Offline)
+  // ─────────────────────────────────────────────────────────
+  _buildAccountSelectorCard() {
+    const card = document.createElement('div');
+    card.className = 'lp-card offline-card';
+
+    // رأس البطاقة
+    const header = document.createElement('div');
+    header.className = 'offline-header';
+    header.innerHTML = `
+      <div class="offline-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="1" y1="1" x2="23" y2="23"/>
+          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+          <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+          <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/>
+          <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+          <line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
+      </div>
+      <div class="offline-title-col">
+        <div class="offline-title">الدخول بدون إنترنت</div>
+        <div class="offline-subtitle">اختر حساباً للمتابعة</div>
+      </div>`;
+    card.appendChild(header);
+
+    // قائمة الحسابات
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;margin-bottom:14px;';
+
+    (this._state.offlineAccounts || []).forEach(acc => {
+      const btn = document.createElement('button');
+      btn.type      = 'button';
+      btn.className = 'offline-account-item';
+      btn.innerHTML = `
+        <div class="offline-account-avatar">${escapeHtml((acc.displayName || '؟').charAt(0))}</div>
+        <div class="offline-account-info">
+          <div class="offline-account-name">${escapeHtml(acc.displayName)}</div>
+          <div class="offline-account-num">${escapeHtml(acc.accountNumber)}</div>
+        </div>`;
+      btn.addEventListener('click', () => this._showPinInterface(acc.userId));
+      list.appendChild(btn);
+    });
+    card.appendChild(list);
+
+    // زر الرجوع
+    const backBtn = document.createElement('button');
+    backBtn.type      = 'button';
+    backBtn.className = 'offline-back-btn';
+    backBtn.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      <span>العودة للآلة الحاسبة</span>`;
+    backBtn.addEventListener('click', () => this._switchToCalc());
+    card.appendChild(backBtn);
+
+    return card;
   },
 
   // ─────────────────────────────────────────────────────────
@@ -1416,11 +1941,21 @@ const LoginComponent = {
     const searchBtn = searchInput.nextElementSibling;
     if (searchBtn) { searchBtn.disabled = true; searchBtn.querySelector('span').textContent = '...'; }
 
+    // ✅ guard للـ db
+    if (typeof db === 'undefined' || !db.isOpen()) {
+      errEl.innerHTML = '<span>❌</span><span>قاعدة البيانات المحلية غير متاحة</span>';
+      if (searchBtn) { searchBtn.disabled = false; searchBtn.querySelector('span').textContent = 'بحث'; }
+      return;
+    }
+
     let user = null;
     try {
-      const q = username.trim();
-      user = await db.users.where('username').equalsIgnoreCase(q).first()
-          || await db.users.filter(u => u.account_number === q).first();
+      const qLow = q.toLowerCase();
+      user = await db.users.filter(u =>
+        (u.username  && u.username.toLowerCase()  === qLow) ||
+        (u.display_name && u.display_name.toLowerCase() === qLow) ||
+        (u.account_number && u.account_number.toLowerCase() === qLow)
+      ).first();
     } catch (e) {
       errEl.innerHTML = `<span>❌</span><span>خطأ في البحث: ${escapeHtml(e.message)}</span>`;
     } finally {
@@ -1439,6 +1974,11 @@ const LoginComponent = {
 
     // عرض كرت المستخدم
     this._state.offlineUser = user;
+    // ✅ guard للـ OfflineAuthService
+    if (typeof OfflineAuthService === 'undefined') {
+      errEl.innerHTML = '<span>❌</span><span>خدمة Offline غير محمَّلة</span>';
+      return;
+    }
     const hasPin   = !!OfflineAuthService.getOfflineSession(user.id)?.hasPin;
     const initials = (user.display_name || '?').charAt(0);
 
@@ -1620,6 +2160,90 @@ const LoginComponent = {
   },
 
   // ─────────────────────────────────────────────────────────
+  // تحديث ظهور زر البصمة في الآلة الحاسبة
+  // الشرط: ahu_quick_* صالح + hasWebAuthn=true داخله
+  // ─────────────────────────────────────────────────────────
+  _updateQuickWebAuthnBtnVisibility() {
+    const btn = document.getElementById('btn-quick-webauthn');
+    if (!btn) return;
+    if (!window.PublicKeyCredential) { btn.style.display = 'none'; return; }
+
+    let show = false;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_quick_')) continue;
+        // تخطّ مفتاح البانر — ليس بيانات مستخدم
+        if (key === 'ahu_quick_banner_dismissed') continue;
+        let quick;
+        try { quick = JSON.parse(localStorage.getItem(key) || '{}'); } catch { continue; }
+        if (!quick?.token || !quick?.userId) continue;
+        // تحقق من انتهاء الصلاحية
+        if (quick.expiresAt && new Date().toISOString() > quick.expiresAt) continue;
+        // تحقق من وجود WebAuthn داخل ahu_quick_* نفسه (مفصول عن Offline)
+        if (quick.hasWebAuthn === true) { show = true; break; }
+      }
+    } catch { /* localStorage غير متاح */ }
+
+    btn.style.display = show ? 'flex' : 'none';
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // _tryQuickWebAuthnLogin — الدخول السريع بالبصمة (Online)
+  // سيُنفَّذ كاملاً في الخطوة 3 — حالياً يستدعي المسار القائم
+  // ─────────────────────────────────────────────────────────
+  _tryQuickWebAuthnLogin() {
+    this._tryWebAuthnLogin();
+  },
+
+  async _tryWebAuthnLogin() {
+    // البحث عن userId من بيانات الدخول السريع التي فُعِّلت لها البصمة
+    let userId = null;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('ahu_quick_')) continue;
+        if (key === 'ahu_quick_banner_dismissed') continue;
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          if (data?.hasWebAuthn && data?.token && data?.userId) { userId = data.userId; break; }
+        } catch { continue; }
+      }
+    } catch { /* localStorage غير متاح */ }
+
+    if (!userId) {
+      if (window.showToast) showToast('لم يتم العثور على بصمة مُفعَّلة للدخول السريع', 'error');
+      return;
+    }
+
+    const statusEl = document.getElementById('calc-ql-status');
+    const webAuthnBtn = document.getElementById('btn-quick-webauthn');
+    if (statusEl) statusEl.textContent = '👆 جارٍ التحقق من البصمة...';
+    if (webAuthnBtn) webAuthnBtn.disabled = true;
+
+    try {
+      // ✅ البصمة → مصادقة قاعدة البيانات + جلسة Supabase حقيقية
+      const result = await AuthService.quickLoginWithWebAuthn(userId);
+
+      if (isOk(result)) {
+        if (statusEl) { statusEl.style.color = '#10b981'; statusEl.textContent = '✅ تم التحقق — جاري الدخول...'; }
+        if (window.showToast) showToast(`👆 مرحباً ${result.data.profile.display_name}`, 'success');
+        setTimeout(() => this._onSuccess?.(result.data.profile), 400);
+      } else {
+        if (statusEl) { statusEl.style.color = '#f87171'; statusEl.textContent = `❌ ${result.error}`; }
+        if (webAuthnBtn) webAuthnBtn.disabled = false;
+        setTimeout(() => {
+          if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
+        }, 2800);
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '';
+      if (webAuthnBtn) webAuthnBtn.disabled = false;
+      if (window.showToast) showToast('خطأ في التحقق بالبصمة: ' + e.message, 'error');
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
   // Quick Login
   // ─────────────────────────────────────────────────────────
   async _tryQuickLogin(equation) {
@@ -1641,13 +2265,18 @@ const LoginComponent = {
 
       if (isOk(res)) {
         if (rEl)    { rEl.style.color = '#10b981'; rEl.textContent = '✓'; }
-        if (statEl) statEl.textContent = '✅ تم التحقق — جاري الدخول...';
-        if (window.showToast) showToast(`⚡ مرحباً ${res.data.profile.display_name}`, 'success');
+        if (res.data?.offlineSession) {
+          if (statEl) statEl.textContent = '🔌 لا يوجد إنترنت — جاري الدخول في وضع Offline...';
+          if (window.showToast) showToast(`🔌 مرحباً ${res.data.profile.display_name} — وضع Offline`, 'warning');
+        } else {
+          if (statEl) statEl.textContent = '✅ تم التحقق — جاري الدخول...';
+          if (window.showToast) showToast(`⚡ مرحباً ${res.data.profile.display_name}`, 'success');
+        }
         setTimeout(() => this._onSuccess?.(res.data.profile), 400);
       } else {
         if (rEl)    { rEl.style.color = '#f87171'; }
-        // عرض رسالة خطأ واضحة (دون كشف تفاصيل أمنية)
-        const errMsg = res.error?.includes('قفل') || res.error?.includes('محاولات')
+        // عرض رسالة خطأ واضحة — رسالة "لا إنترنت" تُعرض كاملة لتوجيه المستخدم
+        const errMsg = res.error?.includes('قفل') || res.error?.includes('محاولات') || res.error?.includes('🔌')
           ? res.error
           : 'المعادلة غير صحيحة، حاول مرة أخرى';
         if (statEl) {
@@ -1708,10 +2337,8 @@ const LoginComponent = {
       if (!devPref) {
         // أول دخول على هذا الجهاز — اعرض مودال تفضيل الجهاز
         this._showDevicePreferenceModal(profile);
-      } else if (!profile.quick_equation_hash) {
-        // تفضيل محفوظ لكن الدخول السريع غير مفعّل → اعرض Modal الإعداد
-        this._showQuickSetupModal(profile);
       } else {
+        // البانر داخل التطبيق يتولى تذكير المستخدم بإعداد الدخول السريع
         setTimeout(() => this._onSuccess?.(profile), 400);
       }
     } else {
@@ -1780,121 +2407,12 @@ const LoginComponent = {
         // إزالة وقت انتهاء الجلسة الدائمة
         localStorage.removeItem(`ahu_sess_exp_${uid}`);
       }
-      // بعد الاختيار → تحقق من Quick Login
-      if (!profile.quick_equation_hash) {
-        this._showQuickSetupModal(profile);
-      } else {
-        setTimeout(() => this._onSuccess?.(profile), 300);
-      }
+      // البانر داخل التطبيق (QuickLoginBanner) يتولى الإعداد
+      setTimeout(() => this._onSuccess?.(profile), 300);
     };
 
     document.getElementById('dev-pref-yes')?.addEventListener('click', () => proceed('persistent'));
     document.getElementById('dev-pref-no')?.addEventListener('click',  () => proceed('temporary'));
-  },
-
-  // ─────────────────────────────────────────────────────────
-  // Modal إعداد Quick Login (يظهر بعد نجاح Traditional Login)
-  // ─────────────────────────────────────────────────────────
-  _showQuickSetupModal(profile) {
-    const overlay = document.createElement('div');
-    overlay.className = 'ql-setup-overlay';
-
-    const sheet = document.createElement('div');
-    sheet.className = 'ql-setup-sheet';
-    sheet.innerHTML = `
-      <div style="text-align:center;font-size:2rem;margin-bottom:10px;">⚡</div>
-      <div class="ql-setup-title">فعّل الدخول السريع</div>
-      <div class="ql-setup-desc">
-        ادخل معادلة رياضية بسيطة تحفظها (مثل 12+88).
-        في كل مرة تفتح التطبيق، أدخلها في الحاسبة واضغط = للدخول فوراً.
-      </div>
-      <div class="ql-device-note">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
-        </svg>
-        <span>مرتبط بهذا الجهاز فقط — يعمل بدون اتصال</span>
-      </div>`;
-
-    const eqWrap = document.createElement('div');
-    eqWrap.className = 'ql-eq-wrap';
-
-    const eqInput = document.createElement('input');
-    eqInput.type = 'text';
-    eqInput.dir = 'ltr';
-    eqInput.placeholder = 'مثال: 12+88 أو 5*20';
-    eqInput.className = 'ql-eq-input';
-    eqInput.autocomplete = 'off';
-
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'ql-eq-save';
-    saveBtn.textContent = 'تفعيل';
-
-    eqWrap.appendChild(eqInput);
-    eqWrap.appendChild(saveBtn);
-    sheet.appendChild(eqWrap);
-
-    const preview = document.createElement('div');
-    preview.className = 'ql-preview';
-    sheet.appendChild(preview);
-
-    const skipBtn = document.createElement('button');
-    skipBtn.className = 'ql-skip-btn';
-    skipBtn.textContent = 'تخطّ — سأفعّل لاحقاً من الإعدادات';
-    sheet.appendChild(skipBtn);
-
-    overlay.appendChild(sheet);
-    document.body.appendChild(overlay);
-
-    // Preview
-    eqInput.addEventListener('input', () => {
-      if (!preview) return;
-      try {
-        const p = new window.exprEval.Parser();
-        const v = p.evaluate(eqInput.value.trim());
-        preview.textContent = `النتيجة: ${v}`;
-        preview.style.color = '#10b981';
-      } catch {
-        preview.textContent = eqInput.value ? 'معادلة غير صالحة' : '';
-        preview.style.color = '#f87171';
-      }
-    });
-
-    // حفظ
-    saveBtn.addEventListener('click', async () => {
-      const eq = eqInput.value.trim();
-      if (!eq) { if (window.showToast) showToast('أدخل معادلة أولاً', 'warning'); return; }
-      saveBtn.disabled = true;
-      saveBtn.textContent = '...';
-      const res = await AuthService.enableQuickLogin(eq);
-      if (isOk(res)) {
-        if (window.showToast) showToast('⚡ تم تفعيل الدخول السريع!', 'success');
-        overlay.remove();
-        this._onSuccess?.(profile);
-      } else {
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'تفعيل';
-        if (window.showToast) showToast(res.error, 'error');
-      }
-    });
-
-    // Enter في حقل المعادلة
-    eqInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveBtn.click(); });
-
-    // تخطّي
-    skipBtn.addEventListener('click', () => {
-      overlay.remove();
-      this._onSuccess?.(profile);
-    });
-
-    // إغلاق بالنقر خارج الـ sheet
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay) {
-        overlay.remove();
-        this._onSuccess?.(profile);
-      }
-    });
-
-    setTimeout(() => eqInput.focus(), 300);
   },
 
   // ─────────────────────────────────────────────────────────
