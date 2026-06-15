@@ -206,6 +206,7 @@ async function logout(clearLocalData = false) {
       try { localStorage.removeItem(`ahu_sess_exp_${uid}`); } catch { }
     }
 
+    sessionStorage.setItem('ahu_intentional_logout', '1'); // ✅ علامة logout صريح
     await supabaseClient.auth.signOut();
     clearSession();
 
@@ -308,15 +309,22 @@ async function checkSession() {
 // ============================================================
 async function _checkOfflineSessionFallback() {
   try {
+    // ✅ منع استعادة الجلسة بعد logout صريح
+    const logoutFlag = sessionStorage.getItem('ahu_intentional_logout');
+    if (logoutFlag) {
+      sessionStorage.removeItem('ahu_intentional_logout');
+      return null;
+    }
+
     if (typeof db === 'undefined' || !db.isOpen()) return null;
 
-    // البحث عن Quick Login offline محفوظ لأي مستخدم
+    // ✅ تبحث فقط في ahu_offline_session_* (ليس ahu_quick_*)
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (!key?.startsWith('ahu_quick_')) continue;
+      if (!key?.startsWith('ahu_offline_session_')) continue;
       try {
         const data = JSON.parse(localStorage.getItem(key) || '{}');
-        if (!data?.userId) continue;
+        if (!data?.userId || !data?.hasPin) continue; // ✅ يجب أن يكون لديه PIN
 
         const profile = await db.users.get(data.userId);
         if (!profile?.is_active) continue;
@@ -330,12 +338,11 @@ async function _checkOfflineSessionFallback() {
           userId       : profile.id,
           displayName  : profile.display_name,
           username     : profile.username,
-          offlineSession: true,
-          quickLoginMode: true,
-          accountNumber : profile.account_number,
+          isOffline    : true,
+          accountNumber: profile.account_number,
         });
 
-        console.log('✅ [checkSession] استعادة جلسة offline من Quick Login:', profile.display_name);
+        console.log('✅ [checkSession] استعادة جلسة Offline من PIN:', profile.display_name);
         return ok({ profile, offline: true });
       } catch { continue; }
     }
