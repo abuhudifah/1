@@ -1170,6 +1170,7 @@ const LoginComponent = {
     scene.innerHTML = '';
     if (this._state.view === 'calc') {
       scene.appendChild(this._buildCalcCard());
+      this._updateQuickWebAuthnBtnVisibility(); // ✅ بعد الإضافة للـ DOM
     } else if (this._state.view === 'pin') {
       scene.appendChild(this._buildPinCard());
     } else if (this._state.view === 'account-selector') {
@@ -1307,9 +1308,6 @@ const LoginComponent = {
     authRow.appendChild(btnOffline);
 
     card.appendChild(authRow);
-
-    // تحديث ظهور زر البصمة بعد بناء الـ DOM
-    this._updateQuickWebAuthnBtnVisibility();
 
     return card;
   },
@@ -1685,7 +1683,8 @@ const LoginComponent = {
         this._state.currentPinInput = cur + val;
         // تحقق تلقائي عند الوصول لـ 6 أرقام
         if (this._state.currentPinInput.length === MAX) {
-          this._renderView(); // أظهر النقطة السادسة ممتلئة أولاً
+          this._state.pinVerifying = true; // ✅ أغلق النافذة قبل setTimeout
+          this._renderView();
           setTimeout(() => this._verifyPin(), 250);
           return;
         }
@@ -1734,6 +1733,7 @@ const LoginComponent = {
   // التحقق بالبصمة (Offline) — فشل يبقى في الواجهة
   // ─────────────────────────────────────────────────────────
   async _tryOfflineWebAuthnLogin() {
+    if (this._state.pinVerifying) return; // ✅ منع التشغيل المتزامن مع PIN
     const { pendingPinUserId } = this._state;
     if (!pendingPinUserId) return;
 
@@ -1767,6 +1767,8 @@ const LoginComponent = {
   // دخول وضع Offline بعد التحقق الناجح
   // ─────────────────────────────────────────────────────────
   async _enterOfflineMode(userId) {
+    AuthState.isOffline = true; // ✅ يُضبط فوراً قبل أي await لتجنب race condition
+
     // جلب بروفايل المستخدم من Dexie
     let user = null;
     if (typeof db !== 'undefined' && db.isOpen()) {
@@ -1774,12 +1776,14 @@ const LoginComponent = {
     }
 
     if (!user) {
+      AuthState.isOffline = false; // ✅ تراجع عند الفشل
       showToast('لم يُعثر على بيانات المستخدم محلياً', 'error');
       this._state.pinVerifying = false;
       this._renderView();
       return;
     }
     if (!user.is_active) {
+      AuthState.isOffline = false; // ✅ تراجع عند الفشل
       showToast('تم تعطيل هذا الحساب. راجع المدير.', 'error');
       this._state.pinVerifying = false;
       this._renderView();
@@ -2005,6 +2009,13 @@ const LoginComponent = {
     const searchBtn = searchInput.nextElementSibling;
     if (searchBtn) { searchBtn.disabled = true; searchBtn.querySelector('span').textContent = '...'; }
 
+    // ✅ guard للـ db
+    if (typeof db === 'undefined' || !db.isOpen()) {
+      errEl.innerHTML = '<span>❌</span><span>قاعدة البيانات المحلية غير متاحة</span>';
+      if (searchBtn) { searchBtn.disabled = false; searchBtn.querySelector('span').textContent = 'بحث'; }
+      return;
+    }
+
     let user = null;
     try {
       const qLow = q.toLowerCase();
@@ -2031,6 +2042,11 @@ const LoginComponent = {
 
     // عرض كرت المستخدم
     this._state.offlineUser = user;
+    // ✅ guard للـ OfflineAuthService
+    if (typeof OfflineAuthService === 'undefined') {
+      errEl.innerHTML = '<span>❌</span><span>خدمة Offline غير محمَّلة</span>';
+      return;
+    }
     const hasPin   = !!OfflineAuthService.getOfflineSession(user.id)?.hasPin;
     const initials = (user.display_name || '?').charAt(0);
 

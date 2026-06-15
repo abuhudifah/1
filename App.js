@@ -734,18 +734,25 @@ function _buildOfflineBanner() {
   banner.innerHTML = `<span class="offline-banner-icon">🔌</span>
                       <span class="offline-banner-text">وضع Offline — تعمل بدون اتصال</span>`;
 
-  const root = document.getElementById('app-root');
-  if (root) {
+  // ✅ إدراج بعد الـ header مباشرة لتجنب الحجب
+  const header = document.getElementById('app-header');
+  const root   = document.getElementById('app-root');
+  if (header) {
+    header.insertAdjacentElement('afterend', banner);
+  } else if (root) {
     root.insertBefore(banner, root.firstChild);
   } else {
     document.body.insertBefore(banner, document.body.firstChild);
   }
 }
 
+let _reconnectionModalShown = false; // ✅ guard لمنع تكرار المودال
+
 /** مودال إعادة الاتصال: يظهر عند عودة الإنترنت في وضع Offline */
 function _showReconnectionModal() {
-  // لا تعرض أكثر من نسخة واحدة
   if (document.querySelector('.reconnection-modal')) return;
+  if (_reconnectionModalShown) return; // ✅ منع إعادة الظهور بعد إغلاقه
+  _reconnectionModalShown = true;
 
   const modal = document.createElement('div');
   modal.className = 'reconnection-modal';
@@ -767,14 +774,15 @@ function _showReconnectionModal() {
 
   modal.querySelector('#btn-relogin').addEventListener('click', () => {
     modal.remove();
+    _reconnectionModalShown = false; // ✅ إعادة الضبط عند الضغط
     _handleReconnectionConfirm();
   });
 }
 
 /** تسجيل الخروج وإعادة التحميل بعد إغلاق مودال إعادة الاتصال */
-function _handleReconnectionConfirm() {
+async function _handleReconnectionConfirm() {
   if (typeof AuthService !== 'undefined' && AuthService.logout) {
-    AuthService.logout();
+    await AuthService.logout(); // ✅ انتظر إتمام الخروج قبل إعادة التحميل
   }
   window.location.reload();
 }

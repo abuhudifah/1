@@ -1143,7 +1143,12 @@ function getAllowedUsers() {
 function getAllowedTabs() {
   // وضع Offline → 3 تبويبات فقط بغض النظر عن الدور
   if (AuthState.isOffline) {
-    return [TABS.DATA_ENTRY, TABS.FAILED_DEPOSITS, TABS.NOTIFICATIONS];
+    const t = typeof TABS !== 'undefined' ? TABS : {};
+    return [
+      t.DATA_ENTRY      || 'data-entry',
+      t.FAILED_DEPOSITS || 'failed-deposits',
+      t.NOTIFICATIONS   || 'notifications',
+    ];
   }
 
   const appRole = window.AppStore?.getState?.('role');
