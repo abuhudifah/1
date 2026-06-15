@@ -248,20 +248,18 @@ async function checkSession() {
       // JWT صالح — إذا كانت الجلسة المحلية مفقودة (أُغلق المتصفح) أعد بناءها
       if (!localSession) {
         const uid = session.user.id;
-        // تحقق من تفضيل الجهاز: إذا كان مؤقتاً لا نُعيد البناء التلقائي
+        // devPref='temporary' يعني فقط "لا تمدّد ahu_sess_exp" — لا يعني رمي JWT الصالح.
+        // ما دام JWT موجود وصالح نبني منه الجلسة دائماً بغض النظر عن devPref.
         const devPref = localStorage.getItem(`ahu_device_pref_${uid}`);
-        if (devPref === 'temporary') {
-          // المستخدم اختار جلسة مؤقتة — لا إعادة بناء بعد الإغلاق
-          const offlineResult = await _checkOfflineSessionFallback();
-          if (offlineResult) return offlineResult;
-          return err('لا توجد جلسة نشطة');
+        if (devPref !== 'temporary') {
+          // فحص مهلة الجلسة الدائمة فقط للجلسات غير المؤقتة
+          const persistedExpiry = localStorage.getItem(`ahu_sess_exp_${uid}`);
+          if (persistedExpiry && Date.now() > parseInt(persistedExpiry, 10)) {
+            await logout();
+            return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
+          }
         }
-        // فحص مهلة الجلسة الدائمة (localStorage)
-        const persistedExpiry = localStorage.getItem(`ahu_sess_exp_${uid}`);
-        if (persistedExpiry && Date.now() > parseInt(persistedExpiry, 10)) {
-          await logout();
-          return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
-        }
+        // JWT صالح في كلتا الحالتين → نكمل ببناء الجلسة من JWT أدناه
       }
 
       const profileResult = await _fetchUserProfile(session.user.id);
@@ -613,8 +611,10 @@ async function _redeemQuickToken(quickData) {
 
     saveSession({
       userId        : profile.id,
+      role          : profile.role,
       displayName   : profile.display_name,
       username      : profile.username,
+      allowedTabs   : profile.allowed_tabs || [],
       quickLoginMode: true,
       accountNumber : profile.account_number,
     });
