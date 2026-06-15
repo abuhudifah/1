@@ -72,4 +72,27 @@ describe('SessionVault', () => {
       SV.unlock({ userId, secretType: SV.SECRET.EQUATION, secret: 'x' })
     ).rejects.toThrow();
   });
+
+  it('خزنة البصمة (BIOMETRIC) بمفتاح عالي الإنتروبيا: round-trip', async () => {
+    // مفتاح عشوائي 32 بايت مُرمّز base64 (كما يُولّده _randomVaultKey)
+    const bioKey = btoa(String.fromCharCode(
+      ...crypto.getRandomValues(new Uint8Array(32))
+    ));
+    await SV.create({ userId, secretType: SV.SECRET.BIOMETRIC, secret: bioKey, payload });
+    expect(SV.has(userId, SV.SECRET.BIOMETRIC)).toBe(true);
+
+    const out = await SV.unlock({ userId, secretType: SV.SECRET.BIOMETRIC, secret: bioKey });
+    expect(out.refresh_token).toBe('rt_secret_abc');
+    expect(out.profile.role).toBe('agent');
+  });
+
+  it('خزنة البصمة تفشل بمفتاح خاطئ', async () => {
+    const bioKey = btoa(String.fromCharCode(
+      ...crypto.getRandomValues(new Uint8Array(32))
+    ));
+    await SV.create({ userId, secretType: SV.SECRET.BIOMETRIC, secret: bioKey, payload });
+    await expect(
+      SV.unlock({ userId, secretType: SV.SECRET.BIOMETRIC, secret: 'wrong-key' })
+    ).rejects.toThrow();
+  });
 });

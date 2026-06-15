@@ -549,6 +549,9 @@ async function enableQuickLogin(equation) {
           });
         } catch (e) { console.warn('[enableQuickLogin] register_device فشل:', e?.message); }
 
+        // إغلاق المسار القديم: حذف توكن الخادم القديم إن وُجد على هذا الجهاز
+        try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
+
         saveSession({ ...getSession(), quickLoginEnabled: true });
         console.log('[enableQuickLogin] ✅ تم التفعيل عبر الخزنة المشفّرة');
         return ok(true);
@@ -666,6 +669,8 @@ async function quickLogin(equation) {
         const res = await _establishSessionFromVault(payload, uid);
         if (isOk(res)) {
           _resetAttempts('quick_login');
+          // إغلاق المسار القديم: حذف توكن الخادم القديم لهذا الجهاز نهائياً
+          try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
           // أعد تخزين الخزنة بالتوكن المُدوَّر للاستخدام التالي
           try {
             const { data: { session: cur } } = await supabaseClient.auth.getSession();
@@ -825,6 +830,78 @@ async function _redeemQuickToken(quickData) {
 }
 
 // ============================================================
+// 6b. تفعيل البصمة عبر الخزنة المشفّرة — بلا توكن خادم وبلا كلمة مرور
+// ============================================================
+// يُولّد مفتاح خزنة عشوائي عالي الإنتروبيا، يسجّل اعتماد WebAuthn، ثم يحفظ
+// خزنة BIOMETRIC تحوي refresh_token. تحرس بوّابة WebAuthn فكّ الخزنة لاحقاً.
+function _randomVaultKey() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return (typeof btoa === 'function') ? btoa(bin) : Buffer.from(bytes).toString('base64');
+}
+
+async function enableBiometricQuickLogin(userId) {
+  try {
+    const uid = userId || AuthState.currentUser?.id;
+    if (!uid) return err('مستخدم غير محدد');
+
+    const V = _vault();
+    if (!V?.isSupported()) {
+      // متصفّح بلا WebCrypto → المسار القديم (توكن خادم) عبر OfflineAuthService
+      if (typeof OfflineAuthService === 'undefined') return err('خدمة المصادقة غير محمّلة');
+      return await OfflineAuthService.enableWebAuthn(uid);
+    }
+
+    if (!_hasRealConnection() || !AuthState.authUser) {
+      return err('تفعيل البصمة يتطلب اتصالاً بالإنترنت وجلسة نشطة');
+    }
+    if (typeof OfflineAuthService === 'undefined') return err('خدمة المصادقة غير محمّلة');
+
+    // 1) جلسة حالية صالحة (مصدر refresh_token للخزنة)
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session?.refresh_token) return err('تعذّر الحصول على الجلسة — أعد تسجيل الدخول');
+
+    // 2) تسجيل اعتماد WebAuthn فقط (بلا توكن خادم)
+    const reg = await OfflineAuthService.registerWebAuthnCredentialOnly(uid);
+    if (!isOk(reg)) return reg;
+    const credentialId = reg.data.credentialId;
+
+    // 3) خزنة BIOMETRIC مشفّرة بمفتاح عشوائي
+    const bioKey = _randomVaultKey();
+    await V.create({
+      userId    : uid,
+      secretType: V.SECRET.BIOMETRIC,
+      secret    : bioKey,
+      payload   : _buildVaultPayload(AuthState.currentUser, session),
+    });
+
+    // 4) بيانات البصمة المحلية (معرّف الاعتماد + مفتاح الخزنة)
+    try {
+      localStorage.setItem(`ahu_bio_${uid}`, JSON.stringify({
+        credentialId, bioKey, hasWebAuthn: true, createdAt: new Date().toISOString(),
+      }));
+    } catch (e) { return err('تعذّر حفظ بيانات البصمة محليّاً: ' + e.message); }
+
+    // 5) سجّل الجهاز + أغلق المسار القديم
+    try {
+      await supabaseClient.rpc('register_device', {
+        p_device_id : getDeviceToken(),
+        p_label     : AuthState.currentUser?.display_name || null,
+        p_user_agent: (typeof navigator !== 'undefined' ? navigator.userAgent : null),
+      });
+    } catch (e) { console.warn('[enableBiometricQuickLogin] register_device فشل:', e?.message); }
+    try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
+
+    console.log('[enableBiometricQuickLogin] ✅ تم التفعيل عبر الخزنة المشفّرة');
+    return ok(true);
+  } catch (e) {
+    console.error('❌ AuthService.enableBiometricQuickLogin():', e);
+    return err(formatErrorMessage(e));
+  }
+}
+
+// ============================================================
 // 6c. الدخول السريع بالبصمة (WebAuthn) — Online فقط، جلسة حقيقية
 // ============================================================
 async function quickLoginWithWebAuthn(userId) {
@@ -840,7 +917,50 @@ async function quickLoginWithWebAuthn(userId) {
     const lockCheck = _checkBruteForce('quick_login');
     if (!isOk(lockCheck)) return lockCheck;
 
-    // قراءة بيانات الدخول السريع لهذا المستخدم
+    if (typeof OfflineAuthService === 'undefined') {
+      return err('خدمة المصادقة غير محمّلة');
+    }
+
+    // ✅ المسار الجديد: خزنة BIOMETRIC مشفّرة — بلا توكن خادم وبلا كلمة مرور
+    const V = _vault();
+    let bioMeta = null;
+    try {
+      const raw = localStorage.getItem(`ahu_bio_${userId}`);
+      if (raw) bioMeta = JSON.parse(raw);
+    } catch { /* تجاهل */ }
+
+    if (V?.isSupported() && bioMeta?.bioKey && V.has(userId, V.SECRET.BIOMETRIC)) {
+      // بوّابة التحقّق الحيوي (محلي داخل المتصفح)
+      const bio = await OfflineAuthService.verifyWithWebAuthn(userId);
+      if (!isOk(bio)) return bio;
+
+      // فكّ الخزنة بمفتاحها ثم استعادة جلسة Supabase من refresh_token
+      let payload;
+      try {
+        payload = await V.unlock({ userId, secretType: V.SECRET.BIOMETRIC, secret: bioMeta.bioKey });
+      } catch (e) {
+        return err('تعذّر فكّ خزنة البصمة — أعد تفعيل البصمة من الإعدادات');
+      }
+
+      const res = await _establishSessionFromVault(payload, userId);
+      if (isOk(res)) {
+        _resetAttempts('quick_login');
+        try { localStorage.removeItem(`ahu_quick_${userId}`); } catch { /* تجاهل */ }
+        // أعد تخزين الخزنة بالتوكن المُدوَّر للاستخدام التالي
+        try {
+          const { data: { session: cur } } = await supabaseClient.auth.getSession();
+          if (cur) {
+            await V.create({
+              userId, secretType: V.SECRET.BIOMETRIC, secret: bioMeta.bioKey,
+              payload: _buildVaultPayload(AuthState.currentUser, cur),
+            });
+          }
+        } catch { /* تجاهل */ }
+      }
+      return res;
+    }
+
+    // ── المسار القديم (أجهزة legacy: توكن خادم في ahu_quick_) ────────────
     let quickData = null;
     try {
       const raw = localStorage.getItem(`ahu_quick_${userId}`);
@@ -849,13 +969,9 @@ async function quickLoginWithWebAuthn(userId) {
 
     const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!quickData?.token || !quickData?.userId || !_uuidRe.test(quickData.token)) {
-      return err('فعّل الدخول السريع بالمعادلة أولاً من الإعدادات');
+      return err('فعّل البصمة للدخول السريع أولاً من الإعدادات');
     }
 
-    // التحقق الحيوي بالبصمة (محلي داخل المتصفح)
-    if (typeof OfflineAuthService === 'undefined') {
-      return err('خدمة المصادقة غير محمّلة');
-    }
     const bio = await OfflineAuthService.verifyWithWebAuthn(userId);
     if (!isOk(bio)) return bio;
 
@@ -897,6 +1013,7 @@ async function disableQuickLogin() {
 
     // ✅ الخادم تحدّث بنجاح → نظّف الحالة المحلية
     localStorage.removeItem(`ahu_quick_${uid}`);
+    try { localStorage.removeItem(`ahu_bio_${uid}`); } catch { /* تجاهل */ }
     _vault()?.remove(uid); // حذف الخزنة المشفّرة (كل الأنواع: معادلة/PIN/بصمة)
     _qlBfReset(uid); // 3.3: إعادة تعيين عداد المحاولات عند الإلغاء
     AuthState.currentUser.quick_equation_hash = null;
@@ -1422,7 +1539,7 @@ async function signOutAllDevices() {
 // ============================================================
 const AuthService = {
   login, logout, checkSession, refreshSession,
-  enableQuickLogin, quickLogin, quickLoginWithWebAuthn, disableQuickLogin,
+  enableQuickLogin, quickLogin, quickLoginWithWebAuthn, enableBiometricQuickLogin, disableQuickLogin,
   getDeviceToken, getCurrentUser, getCurrentRole, getCurrentUserId,
   isAdmin, isAgent, isAdminAssistant, isAdminOrAssistant,
   getAllowedCompanies, getAllowedBanks, getAllowedUsers,
