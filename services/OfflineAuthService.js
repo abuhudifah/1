@@ -384,19 +384,8 @@ const OfflineAuthService = {
       if (raw) qData = JSON.parse(raw);
     } catch { /* تجاهل */ }
 
-    // إذا لا توجد معادلة → أنشئ token مستقل للبصمة بعد تأكيد كلمة المرور مرة واحدة
+    // إذا لا توجد معادلة → أنشئ token مستقل للبصمة (الـ JWT الحالي يُثبت الهوية)
     if (!qData?.token) {
-      const password = await window.PasswordDialog?.show({
-        title  : 'تأكيد هويتك لتفعيل البصمة',
-        subtitle: 'مطلوب مرة واحدة فقط لإنشاء رمز الجهاز الآمن',
-      });
-      if (!password) return err('تم إلغاء تفعيل البصمة');
-
-      const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
-        email   : window.AuthState?.authUser?.email || window.AuthState?.currentUser?.username,
-        password,
-      });
-      if (verifyError) return err('كلمة المرور غير صحيحة');
 
       const waHash    = await hashSHA256('_webauthn_only_' + userId, userId);
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
