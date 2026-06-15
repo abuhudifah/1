@@ -342,8 +342,16 @@ const UsersComponent = {
             (فارغة = بدون تغيير)
           </span>
         </label>
-        <input id="uc-password" type="password" class="form-control"
-          placeholder="6 أحرف على الأقل" dir="ltr" autocomplete="new-password" />
+        <div style="position:relative;">
+          <input id="uc-password" type="text" class="form-control"
+            placeholder="6 أحرف على الأقل" dir="ltr" autocomplete="new-password"
+            style="padding-left:38px;" />
+          <button type="button" id="uc-pass-toggle"
+            style="position:absolute;left:8px;top:50%;transform:translateY(-50%);
+                   background:none;border:none;cursor:pointer;color:var(--text-muted);
+                   font-size:.95rem;line-height:1;padding:0;"
+            title="إخفاء/إظهار كلمة المرور">👁</button>
+        </div>
       </div>
 
       <div class="form-group">
@@ -398,6 +406,14 @@ const UsersComponent = {
     box.querySelector('#uc-close-btn').addEventListener('click',  () => this._closeForm());
     box.querySelector('#uc-cancel-btn').addEventListener('click', () => this._closeForm());
     box.querySelector('#uc-save-btn').addEventListener('click',   () => this._save());
+    const passToggle = box.querySelector('#uc-pass-toggle');
+    if (passToggle) {
+      passToggle.addEventListener('click', () => {
+        const inp = box.querySelector('#uc-password');
+        if (inp.type === 'text')     { inp.type = 'password'; passToggle.textContent = '👁'; }
+        else                         { inp.type = 'text';     passToggle.textContent = '🙈'; }
+      });
+    }
     box.querySelector('#uc-role').addEventListener('change', e => {
       const role = e.target.value;
       box.querySelector('#uc-tabs-section').style.display   = role === ROLES.ADMIN_ASSISTANT ? 'block' : 'none';
