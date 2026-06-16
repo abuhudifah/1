@@ -522,6 +522,61 @@ const PrintService = (() => {
   }
 
   /* ══════════════════════════════════════════════════════
+     buildStatementPrintDataFromLedger — محوّل قيود دفتر الأستاذ
+     entries : صفوف account_ledger { date, time, label, credit, debit, details }
+  ══════════════════════════════════════════════════════ */
+  function buildStatementPrintDataFromLedger(entries, { date, userName, accountId } = {}) {
+    const fmt = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+    const list = Array.isArray(entries) ? entries : [];
+
+    let totalLakum = 0, totalAlaykum = 0;
+
+    const rows = list.map(e => {
+      const credit = Math.round(parseFloat(e.credit || 0));
+      const debit  = Math.round(parseFloat(e.debit  || 0));
+      totalLakum   += credit;
+      totalAlaykum += debit;
+      return [
+        e.date  || date || '—',
+        e.time  ? String(e.time).substring(0, 5) : '—',
+        e.label || '—',
+        credit > 0 ? credit.toLocaleString('en-US') : '0',
+        debit  > 0 ? debit.toLocaleString('en-US')  : '0',
+        e.details || '—',
+      ];
+    });
+
+    const net      = totalAlaykum - totalLakum;
+    const netSign  = net >= 0 ? 'عليكم' : 'لكم';
+    const netColor = net >= 0 ? '#dc2626' : '#059669';
+
+    const totalsLine = [
+      `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
+      `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
+      `<span>صافي الحركة: <b style="color:${netColor}">${fmt(net)} ${netSign} ر.س</b></span>`,
+    ].join('');
+
+    const totalsText = `لكم: ${fmt(totalLakum)} | عليكم: ${fmt(totalAlaykum)} | الصافي: ${fmt(net)} ${netSign}`;
+
+    const shareText = [
+      date      ? `📅 ${date}`        : '',
+      userName  ? `👤 ${userName}`     : '',
+      accountId ? `🔑 ${accountId}`   : '',
+      '────────────────',
+      `✅ لكم:    ${fmt(totalLakum)} ر.س`,
+      `❌ عليكم:  ${fmt(totalAlaykum)} ر.س`,
+      `💰 الصافي: ${fmt(net)} ${netSign} ر.س`,
+      `📋 عدد القيود: ${list.length}`,
+    ].filter(Boolean).join('\n');
+
+    return {
+      columns: ['التاريخ', 'الوقت', 'البيان', 'لكم (ر.س)', 'عليكم (ر.س)', 'التفاصيل'],
+      rows, totalsLine, totalsText, shareText,
+      totalLakum, totalAlaykum, net, netSign,
+    };
+  }
+
+  /* ══════════════════════════════════════════════════════
      exportToExcel — SheetJS
   ══════════════════════════════════════════════════════ */
   async function exportToExcel(headers, rows, sheetName, filename) {
@@ -625,7 +680,7 @@ const PrintService = (() => {
   return {
     print, share, copyText, buildTable,
     printStatementAdvanced, printHTML,
-    exportToExcel, buildStatementPrintData,
+    exportToExcel, buildStatementPrintData, buildStatementPrintDataFromLedger,
   };
 })();
 
