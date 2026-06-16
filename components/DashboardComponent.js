@@ -245,9 +245,12 @@ const DashboardComponent = {
 
   _renderKPI(totals) {
     if (!totals) return;
-    // صافي عهدة المناديب: عليهم (تحصيل + سحب بنكي + استلام) − لهم (إيداع + مصروف + تسليم)
-    const net = (totals.total_collections || 0) + (totals.total_receipts || 0) + (totals.total_bank_withdrawals || 0)
-              - (totals.total_deposits || 0) - (totals.total_expenses || 0) - (totals.total_deliveries || 0);
+    // صافي عهدة المناديب: يُفضَّل من account_balances (عبر _ledger_net) إذا توفّر
+    const txNet = (totals.total_collections || 0) + (totals.total_receipts || 0) + (totals.total_bank_withdrawals || 0)
+                - (totals.total_deposits || 0) - (totals.total_expenses || 0) - (totals.total_deliveries || 0);
+    const net = (totals._ledger_net !== undefined && totals._ledger_net !== null)
+              ? totals._ledger_net
+              : txNet;
 
     const kpis = [
       { label:'التحصيلات', value: totals.total_collections || 0, icon:'💰', color:'var(--success)', bg:'rgba(5,150,105,0.10)'  },
@@ -278,7 +281,6 @@ const DashboardComponent = {
     let txs = [];
     try {
       if (isOnline()) {
-        // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
           .from(TABLES.TRANSACTIONS).select('type,amount,is_reversed')
           .gte('date', from).lte('date', to).eq('is_reversed', false);
@@ -292,6 +294,25 @@ const DashboardComponent = {
     const sum = (type) => txs.filter(t => t.type === type)
       .reduce((s, t) => s + Math.round(parseFloat(t.amount) || 0), 0);
 
+    // حساب الصافي من account_balances (أدق من مجموع transactions)
+    let ledgerNet = null;
+    try {
+      if (isOnline()) {
+        const { data: balData } = await supabaseClient
+          .from(TABLES.ACCOUNT_BALANCES).select('balance')
+          .like('account_id', 'AGT_%');
+        if (balData?.length) {
+          ledgerNet = balData.reduce((s, b) => s + Math.round(parseFloat(b.balance) || 0), 0);
+        }
+      } else if (typeof db !== 'undefined' && db.isOpen()) {
+        const balArr = await db.account_balances
+          .filter(b => b.account_id && b.account_id.startsWith('AGT_')).toArray();
+        if (balArr.length) {
+          ledgerNet = balArr.reduce((s, b) => s + Math.round(parseFloat(b.balance) || 0), 0);
+        }
+      }
+    } catch { /* استخدام حساب transactions كبديل */ }
+
     const totals = {
       total_collections      : sum('collection'),
       total_deposits         : sum('deposit'),
@@ -300,6 +321,8 @@ const DashboardComponent = {
       total_receipts         : sum('receipt'),
       total_deliveries       : sum('delivery'),
       total_tx_count         : txs.length,
+      // net من account_balances إذا توفّر، وإلا يُحسب من transactions
+      _ledger_net            : ledgerNet,
     };
     this._renderKPI(totals);
     this._renderPieChart(totals);
@@ -498,20 +521,22 @@ const DashboardComponent = {
     if (!agents.length) { el.innerHTML = `<div style="color:var(--text-muted);padding:16px;">لا يوجد مناديب</div>`; return; }
 
     let txs = [], balances = {};
+    const agentAccountIds = agents.map(a => `AGT_${a.id}`);
     try {
       if (isOnline()) {
-        // FIX-3: استخدام supabaseClient
+        // الرصيد دائماً من account_balances (المصدر الأمين) + التجميعات من transactions للعرض
         const [txRes, balRes] = await Promise.all([
           supabaseClient.from(TABLES.TRANSACTIONS).select('agent_id,type,amount')
             .gte('date',from).lte('date',to).eq('is_reversed',false),
-          supabaseClient.from('account_balances').select('account_id,balance')
-            .in('account_id', agents.map(a=>`AGT_${a.id}`)),
+          supabaseClient.from(TABLES.ACCOUNT_BALANCES).select('account_id,balance')
+            .in('account_id', agentAccountIds),
         ]);
         txs = txRes.data || [];
         (balRes.data||[]).forEach(b => { balances[b.account_id] = Math.round(parseFloat(b.balance)||0); });
       } else if (typeof db !== 'undefined' && db.isOpen()) {
         txs = await db.transactions.where('date').between(from,to,true,true).filter(t=>!t.is_reversed).toArray();
-        const balArr = await db.account_balances.where('account_id').anyOf(agents.map(a=>`AGT_${a.id}`)).toArray();
+        // الرصيد من account_balances في Dexie (أكثر دقة من تجميع transactions)
+        const balArr = await db.account_balances.where('account_id').anyOf(agentAccountIds).toArray();
         balArr.forEach(b => { balances[b.account_id] = Math.round(parseFloat(b.balance)||0); });
       }
     } catch (e) { console.warn('⚠️ Dashboard: فشل تحميل البيانات:', e.message); }
@@ -682,4 +707,4 @@ const DashboardComponent = {
 };
 
 window.DashboardComponent = DashboardComponent;
-console.log('✅ DashboardComponent v4.1 — FIX-5b: destroy() يُلغي Realtime + Charts | FIX-3: supabaseClient موحَّد');
+console.log('✅ DashboardComponent v4.2 — صافي KPI من account_balances | رصيد المناديب دائماً من account_balances');

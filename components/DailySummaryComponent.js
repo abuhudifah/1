@@ -180,33 +180,42 @@ const DailySummaryComponent = {
 
     await AppStore.refreshTransactions(date, agentId);
 
-    // الرصيد الفعلي الحالي (يشمل عمليات اليوم — يُستخدم كـ closing)
+    // رصيد الإغلاق من account_balances (المصدر الصحيح)
     let currentBalance = 0;
+    // صافي حركة اليوم من account_ledger (المصدر الأمين للأرقام المالية)
+    let ledgerNetToday = 0;
+
     if (agentId) {
-      const bal = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      if (isOk(bal)) currentBalance = bal.data;
+      const [balResult, netResult] = await Promise.all([
+        AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId)),
+        AccountingService.getAgentDailyLedgerNet(agentId, date),
+      ]);
+      if (isOk(balResult)) currentBalance = balResult.data;
+      if (isOk(netResult)) ledgerNetToday  = netResult.data;
     } else if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
-      // إجمالي المناديب: جمع أرصدة جميع المناديب النشطين
       const allAgents = AppStore.getState('users').filter(u => u.role === ROLES.AGENT && u.is_active);
       if (allAgents.length) {
-        const results = await Promise.all(
-          allAgents.map(a => AccountingService.getAccountBalance(AccountingService.AccountId.agent(a.id)))
-        );
-        currentBalance = results.reduce((sum, r) => sum + (isOk(r) ? r.data : 0), 0);
+        const [balResults, netResults] = await Promise.all([
+          Promise.all(allAgents.map(a => AccountingService.getAccountBalance(AccountingService.AccountId.agent(a.id)))),
+          Promise.all(allAgents.map(a => AccountingService.getAgentDailyLedgerNet(a.id, date))),
+        ]);
+        currentBalance = balResults.reduce((sum, r) => sum + (isOk(r) ? r.data : 0), 0);
+        ledgerNetToday = netResults.reduce((sum, r) => sum + (isOk(r) ? r.data : 0), 0);
       }
     }
 
-    this._renderStats(currentBalance, agentId);
+    this._renderStats(currentBalance, ledgerNetToday, agentId);
     this._renderTransactionsList();
   },
 
-  _renderStats(currentBalance = 0, agentId = null) {
+  _renderStats(currentBalance = 0, ledgerNetToday = 0, agentId = null) {
     const el = document.getElementById('summary-stats');
     if (!el) return;
 
     const openingEl = document.getElementById('summary-opening');
     if (openingEl) openingEl.style.display = 'none';
 
+    // تفاصيل الأنواع من transactions (للعرض والعدد فقط — ليست للأرقام المالية)
     const txs = AppStore.getState('transactions').filter(tx => !tx.is_reversed);
     const s   = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
     const cnt = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
@@ -217,14 +226,9 @@ const DailySummaryComponent = {
       }
     });
 
-    // صافي حركة اليوم
-    const todayNet = s.collection + s.receipt + s.bank_withdrawal
-                   - s.deposit   - s.expense  - s.delivery;
-
-    // الرصيد الفعلي في الصندوق = currentBalance (يشمل اليوم بالفعل)
-    const closing = currentBalance;
-    // رصيد بداية اليوم = الرصيد الحالي − صافي اليوم
-    const opening = currentBalance - todayNet;
+    // الأرقام الصحيحة من المصادر الأمينة (account_balances + account_ledger)
+    const closing = currentBalance;                  // رصيد إغلاق من account_balances
+    const opening = currentBalance - ledgerNetToday; // رصيد افتتاح = الإغلاق − صافي account_ledger
 
     const agentName = agentId
       ? (AppStore.getState('users').find(u => u.id === agentId)?.display_name || '')
@@ -444,7 +448,7 @@ const DailySummaryComponent = {
       : (AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId());
     const user     = AppStore.getState('users').find(u => u.id === agentId) || AuthService.getCurrentUser();
 
-    // نفس الدالة المشتركة المستخدمة في طباعة PDF
+    // بيانات صفوف التفاصيل من transactions (للعرض)
     const pd = PrintService.buildStatementPrintData(txs, {
       date      : formatDateArabic(date),
       userName  : user?.display_name || '',
@@ -453,18 +457,37 @@ const DailySummaryComponent = {
       users     : AppStore.getState('users')        || [],
     });
 
-    // إضافة عمود الحالة (للـ Excel فقط) وصف الإجماليات
+    // جلب الأرقام الصحيحة من account_ledger وaccount_balances
+    const [balResult, netResult] = await Promise.all([
+      agentId ? AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId)) : Promise.resolve(null),
+      agentId ? AccountingService.getAgentDailyLedgerNet(agentId, date) : Promise.resolve(null),
+    ]);
+    const closingBal  = (balResult && isOk(balResult))  ? Math.round(balResult.data)  : null;
+    const ledgerNet   = (netResult  && isOk(netResult))  ? Math.round(netResult.data)  : null;
+    const openingBal  = (closingBal !== null && ledgerNet !== null) ? closingBal - ledgerNet : null;
+
+    const fmt = n => Math.abs(Math.round(n)).toLocaleString('en-US');
+
     const headers = [...pd.columns, 'الحالة'];
     const allTxs  = AppStore.getState('transactions');
     const rows    = allTxs.map((tx, i) => {
-      const base = pd.rows[i] || ['—','—','—','—','—','—'];
+      const base   = pd.rows[i] || ['—','—','—','—','—','—'];
       const status = tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن');
       return [...base, status];
     });
-    const fmt = n => Math.abs(Math.round(n)).toLocaleString('en-US');
-    rows.push(['الإجمالي', '', `${txs.length} عملية`,
+
+    // صف الإجماليات — يُميّز بين أرقام account_ledger وأرقام transactions
+    if (openingBal !== null)
+      rows.push(['الرصيد الافتتاحي (account_ledger)', '', '', '', '', `${fmt(openingBal)} ر.س`, '']);
+    rows.push(['الإجمالي (transactions)', '', `${txs.length} عملية`,
       `لكم: ${fmt(pd.totalLakum)}`, `عليكم: ${fmt(pd.totalAlaykum)}`,
       `الصافي: ${fmt(pd.net)} ${pd.netSign}`, '']);
+    if (ledgerNet !== null)
+      rows.push(['صافي اليوم (account_ledger)', '', '', '', '',
+        `${ledgerNet >= 0 ? '' : '−'}${fmt(ledgerNet)} ر.س`, '']);
+    if (closingBal !== null)
+      rows.push(['الرصيد الختامي (account_balances)', '', '', '', '',
+        `${closingBal >= 0 ? '' : '−'}${fmt(closingBal)} ر.س`, '']);
 
     const btn = document.querySelector('[data-lucide="table-2"]')?.closest('button');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
@@ -579,7 +602,7 @@ const DailySummaryComponent = {
     if(window.lucide)lucide.createIcons();
   },
 
-  _printSummary() {
+  async _printSummary() {
     const txs      = AppStore.getState('transactions').filter(t => !t.is_reversed);
     const date     = AppStore.getState('selectedDate') || getCurrentSaudiDate();
     const logo     = AppStore.getState('logoUrl') || '';
@@ -589,7 +612,7 @@ const DailySummaryComponent = {
     const user     = AppStore.getState('users').find(u => u.id === agentId) || AuthService.getCurrentUser();
     const userName = user?.display_name || '';
 
-    // الدالة المشتركة مع كشف الحساب — نفس الأعمدة والترتيب والمنطق
+    // صفوف التفاصيل من transactions
     const pd = PrintService.buildStatementPrintData(txs, {
       date      : formatDateArabic(date),
       userName,
@@ -597,6 +620,26 @@ const DailySummaryComponent = {
       banks     : AppStore.getState('bankAccounts') || [],
       users     : AppStore.getState('users')        || [],
     });
+
+    // جلب الأرقام المالية الصحيحة من account_ledger وaccount_balances
+    const [balResult, netResult] = await Promise.all([
+      agentId ? AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId)) : Promise.resolve(null),
+      agentId ? AccountingService.getAgentDailyLedgerNet(agentId, date) : Promise.resolve(null),
+    ]);
+    const closingBal = (balResult && isOk(balResult)) ? Math.round(balResult.data) : null;
+    const ledgerNet  = (netResult  && isOk(netResult))  ? Math.round(netResult.data)  : null;
+    const openingBal = (closingBal !== null && ledgerNet !== null) ? closingBal - ledgerNet : null;
+
+    const fmt = n => `${Math.abs(n).toLocaleString('en-US')} ر.س`;
+    const ledgerTotalsLine = [
+      pd.totalsLine,
+      closingBal !== null
+        ? `<span style="border-right:1px solid #cbd5e1;">الرصيد الختامي: <b style="color:#2563eb">${fmt(closingBal)}</b></span>`
+        : '',
+      openingBal !== null
+        ? `<span style="border-right:1px solid #cbd5e1;">الرصيد الافتتاحي: <b style="color:#64748b">${fmt(openingBal)}</b></span>`
+        : '',
+    ].filter(Boolean).join('');
 
     PrintService.printStatementAdvanced({
       title      : `الملخص اليومي — ${userName}`,
@@ -606,7 +649,7 @@ const DailySummaryComponent = {
       logo,
       columns    : pd.columns,
       rows       : pd.rows,
-      totalsLine : pd.totalsLine,
+      totalsLine : ledgerTotalsLine,
       shareText  : pd.shareText,
     });
   },
@@ -685,4 +728,4 @@ const DailySummaryComponent = {
 };
 
 window.DailySummaryComponent = DailySummaryComponent;
-console.log('✅ DailySummaryComponent v3.0 — فلتر كل المناديب للمدير');
+console.log('✅ DailySummaryComponent v3.1 — توحيد مصادر البيانات: الأرقام المالية من account_ledger/account_balances');

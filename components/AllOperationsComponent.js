@@ -465,6 +465,10 @@ const AllOperationsComponent = {
 
   _openEditModal(tx) {
     if (tx.is_reversed) { showToast('لا يمكن تعديل عملية مُعكوسة', 'error'); return; }
+    if (tx.sync_status !== SYNC_STATUS.PENDING) {
+      showToast('هذه العملية مُزامنة ونهائية — للتصحيح استخدم "عكس" (قيد عكسي في دفتر الأستاذ)', 'info', 4500);
+      return;
+    }
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -529,21 +533,41 @@ const AllOperationsComponent = {
   async _handleDelete(tx) {
     if (tx.is_reversed) { showToast('لا يمكن حذف عملية مُعكوسة', 'error'); return; }
 
-    const confirmed = await confirmDialog(
-      `هل أنت متأكد من حذف هذه العملية؟\nالنوع: ${TRANSACTION_TYPE_LABELS[tx.type] || tx.type}\nالمبلغ: ${Math.round(parseFloat(tx.amount)||0).toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}\n\nلا يمكن التراجع عن هذا الإجراء.`,
-      'حذف', 'إلغاء', 'danger'
-    );
+    const isPending = tx.sync_status === SYNC_STATUS.PENDING;
+    const label     = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
+    const amtFmt    = `${Math.round(parseFloat(tx.amount)||0).toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}`;
+    const msg = isPending
+      ? `هل تريد حذف عملية "${label}" بمبلغ ${amtFmt}؟ (لم تُزامن بعد)`
+      : `هذه العملية مُزامنة ونهائية — سيتم إنشاء قيد عكسي في دفتر الأستاذ بدل الحذف المباشر.\n\nالنوع: ${label}\nالمبلغ: ${amtFmt}\n\nهل تريد المتابعة؟`;
+
+    const confirmed = await confirmDialog(msg, isPending ? 'حذف' : 'عكس', 'إلغاء', 'danger');
     if (!confirmed) return;
 
-    const result = await repo.delete(TABLES.TRANSACTIONS, tx.id);
-    if (isOk(result)) {
-      showToast('✅ تم حذف العملية', 'success');
-      await this._load();
+    if (isPending) {
+      // معاملة لم تُزامن: حذف مباشر (لا قيود في account_ledger على الخادم)
+      const result = await repo.delete(TABLES.TRANSACTIONS, tx.id);
+      if (isOk(result)) {
+        // حذف القيود المحلية من Dexie أيضاً
+        if (typeof db !== 'undefined' && db.isOpen()) {
+          await db.account_ledger.where('reference_id').equals(tx.id).delete().catch(() => {});
+        }
+        showToast('✅ تم حذف العملية', 'success');
+        await this._load();
+      } else {
+        showToast(`❌ ${result.error}`, 'error');
+      }
     } else {
-      showToast(`❌ ${result.error}`, 'error');
+      // معاملة مزامنة: قيد عكسي يحفظ سجل التدقيق ويعكس account_ledger
+      const result = await AccountingService.reverseEntries(tx.id);
+      if (isOk(result)) {
+        showToast('✅ تم عكس العملية وتسجيل القيد العكسي', 'success');
+        await this._load();
+      } else {
+        showToast(`❌ ${result.error}`, 'error');
+      }
     }
   },
 };
 
 window.AllOperationsComponent = AllOperationsComponent;
-console.log('✅ AllOperationsComponent v2.0 محمّل — مع بيانات مفهومة وكاملة');
+console.log('✅ AllOperationsComponent v2.1 — الحذف: reverseEntries للمزامَن | تعديل: مقيّد للمعلّق فقط');
