@@ -158,10 +158,47 @@ const OfflineAuthService = {
       return err('PIN يجب أن يكون من 4 إلى 6 أرقام');
     }
 
-    const pinHash  = await hashSHA256(pinStr, userId);
     const deviceId = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
                      || localStorage.getItem(`ahu_device_${userId}`)
                      || null;
+
+    // ── المسار الجديد: خزنة PIN مشفّرة (PBKDF2 + AES-GCM) — يعمل أوفلاين ──
+    const V = (typeof SessionVault !== 'undefined') ? SessionVault
+            : (typeof window !== 'undefined' ? window.SessionVault : null);
+    if (V?.isSupported?.()) {
+      try {
+        const u = (typeof window !== 'undefined' && window.AuthState) ? window.AuthState.currentUser : null;
+        const profile = u ? {
+          id            : u.id,
+          username      : u.username,
+          display_name  : u.display_name,
+          role          : u.role,
+          is_active     : u.is_active,
+          allowed_tabs  : u.allowed_tabs || [],
+          account_number: u.account_number,
+        } : { id: userId };
+
+        await V.create({
+          userId, secretType: V.SECRET.PIN, secret: pinStr,
+          payload: { profile, deviceId, savedAt: new Date().toISOString() },
+        });
+
+        // علامة محلية للتوافق مع كاشفات الواجهة (بلا hash ولا سرّ)
+        try {
+          localStorage.setItem(`ahu_offline_session_${userId}`, JSON.stringify({
+            userId, deviceId, hasPin: true, hasWebAuthn: false,
+            source: 'vault', createdAt: new Date().toISOString(),
+          }));
+        } catch { /* localStorage غير متاح */ }
+
+        return ok(true);
+      } catch (e) {
+        return err('تعذّر حفظ PIN المشفّر: ' + e.message);
+      }
+    }
+
+    // ── المسار القديم (متصفّح بلا WebCrypto): hash + Dexie + RPC ──
+    const pinHash = await hashSHA256(pinStr, userId);
 
     // ── محاولة الإنشاء عبر الخادم أولاً ──────────────────
     if (isOnline() && window.AuthState?.authUser) {
@@ -237,6 +274,22 @@ const OfflineAuthService = {
     const bfCheck = _checkPinBruteForce(userId);
     if (!isOk(bfCheck)) return bfCheck;
 
+    // ── المسار الجديد: فكّ خزنة PIN المشفّرة (يعمل أوفلاين) ──
+    const V = (typeof SessionVault !== 'undefined') ? SessionVault
+            : (typeof window !== 'undefined' ? window.SessionVault : null);
+    if (V?.has?.(userId, V.SECRET.PIN)) {
+      try {
+        const payload = await V.unlock({ userId, secretType: V.SECRET.PIN, secret: String(pin).trim() });
+        _resetPinAttempts(userId);
+        return ok({ payload });
+      } catch {
+        // فشل الفكّ (auth-tag) = PIN خاطئ
+        _recordPinFailure(userId);
+        return err('PIN غير صحيح', { remaining: _remainingPinAttempts(userId) });
+      }
+    }
+
+    // ── المسار القديم (PINات legacy قبل الهجرة): hash + Dexie/RPC ──
     const pinHash  = await hashSHA256(String(pin).trim(), userId);
     const deviceId = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
                      || localStorage.getItem(`ahu_device_${userId}`)
@@ -309,6 +362,12 @@ const OfflineAuthService = {
    */
   getOfflineSession(userId) {
     try {
+      // المسار الجديد: وجود خزنة PIN مشفّرة
+      const V = (typeof SessionVault !== 'undefined') ? SessionVault
+              : (typeof window !== 'undefined' ? window.SessionVault : null);
+      if (V?.has?.(userId, V.SECRET.PIN)) {
+        return { userId, hasPin: true, source: 'vault' };
+      }
       const raw = localStorage.getItem(`ahu_offline_session_${userId}`);
       if (!raw) return null;
       return JSON.parse(raw);
@@ -328,6 +387,13 @@ const OfflineAuthService = {
    */
   async endOfflineSession(userId) {
     localStorage.removeItem(`ahu_offline_session_${userId}`);
+
+    // المسار الجديد: حذف خزنة PIN المشفّرة
+    try {
+      const V = (typeof SessionVault !== 'undefined') ? SessionVault
+              : (typeof window !== 'undefined' ? window.SessionVault : null);
+      V?.remove?.(userId, V.SECRET.PIN);
+    } catch { /* تجاهل */ }
 
     if (typeof db !== 'undefined' && db.isOpen()) {
       try {

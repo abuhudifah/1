@@ -684,6 +684,9 @@ const ProfileSettingsComponent = {
   // بطاقة المصادقة بدون إنترنت (PIN + البصمة أو Face ID)
   // ────────────────────────────────────────────────────────
   _buildOfflineAuthCard(user) {
+    // حارس وجود: لا نُحطّم الواجهة إن لم تُحمّل خدمة المصادقة بعد
+    if (typeof OfflineAuthService === 'undefined') return document.createElement('div');
+
     const session = OfflineAuthService.getOfflineSession(user.id);
     const hasPin  = !!session?.hasPin;
 
