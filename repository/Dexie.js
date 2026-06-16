@@ -213,6 +213,38 @@ db.version(3).stores({
 });
 
 // ============================================================
+// إصدار 4 (Phase 3): إضافة idempotency_key + local_timestamp
+// - sync_queue: فهرسة idempotency_key (تجنّب التكرار) و local_timestamp (FIFO)
+// - transactions: فهرسة idempotency_key (مطابقة مع id في المسارات الجديدة)
+// ============================================================
+db.version(4).stores({
+  sync_queue: [
+    '++id',
+    'action',
+    'table_name',
+    'record_id',
+    'idempotency_key',
+    'sync_status',
+    'retries',
+    'created_at',
+    'last_retry_at',
+    'local_timestamp',
+  ].join(','),
+  transactions: [
+    'id',
+    'date',
+    'type',
+    'agent_id',
+    'sync_status',
+    'idempotency_key',
+    '[date+agent_id]',
+    '[date+type]',
+    'bank_account_id',
+    'created_at',
+  ].join(','),
+});
+
+// ============================================================
 // معالج الخطأ العام لـ Dexie
 // ============================================================
 

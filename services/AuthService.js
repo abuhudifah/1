@@ -189,6 +189,9 @@ async function login(email, password) {
       });
     } catch (e) { console.warn('[login] register_device فشل:', e?.message); }
 
+    // ✅ مزامنة خزنة البصمة بالتوكن الجديد (مرونة بعد أي دوران سابق)
+    try { await _resyncVaults(authData.session); } catch { /* تجاهل */ }
+
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
@@ -215,9 +218,17 @@ async function logout(clearLocalData = false) {
     }
 
     sessionStorage.setItem('ahu_intentional_logout', '1'); // ✅ علامة logout صريح
+
+    // ✅ احفظ أحدث توكن في الخزنة قبل الخروج (يمنع تعطّل الدخول السريع بعد الدوران)
+    try {
+      const { data: { session: cur } } = await supabaseClient.auth.getSession();
+      if (cur) await _resyncVaults(cur);
+    } catch { /* تجاهل */ }
+
     // خروج محلّي فقط: لا نُبطل refresh_token على الخادم حتى تبقى الخزنة المشفّرة
     // قادرة على فتح الجلسة بسرعة (المعادلة/البصمة) دون إعادة إدخال كلمة المرور.
     await supabaseClient.auth.signOut({ scope: 'local' });
+    _forgetVaultSecrets(); // مسح أسرار المعرفة من الذاكرة
     clearSession();
 
     AuthState.currentUser   = null;
@@ -242,36 +253,19 @@ async function logout(clearLocalData = false) {
 // ============================================================
 async function checkSession() {
   try {
-    // 1. تحقق من sessionStorage (مسار سريع للجلسات القائمة)
+    // 1. جلسة محلية من localStorage (تبقى بعد إغلاق المتصفح)
     const localSession = getSession();
 
-    // 2. فحص انتهاء الصلاحية المحلية (8 ساعات) — فقط إذا كانت موجودة
+    // 2. فحص انتهاء الصلاحية (8 ساعات للجلسات الدائمة فقط)
     if (localSession?.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
       await logout();
       return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
     }
 
-    // 3. ✅ FIX: التحقق من JWT في Supabase (المصدر الحقيقي — يُخزَّن في localStorage)
+    // 3. التحقق من JWT في Supabase (المصدر الحقيقي — محفوظ في localStorage)
     const { data: { session }, error } = await supabaseClient.auth.getSession();
 
     if (!error && session) {
-      // JWT صالح — إذا كانت الجلسة المحلية مفقودة (أُغلق المتصفح) أعد بناءها
-      if (!localSession) {
-        const uid = session.user.id;
-        // devPref='temporary' يعني فقط "لا تمدّد ahu_sess_exp" — لا يعني رمي JWT الصالح.
-        // ما دام JWT موجود وصالح نبني منه الجلسة دائماً بغض النظر عن devPref.
-        const devPref = localStorage.getItem(`ahu_device_pref_${uid}`);
-        if (devPref !== 'temporary') {
-          // فحص مهلة الجلسة الدائمة فقط للجلسات غير المؤقتة
-          const persistedExpiry = localStorage.getItem(`ahu_sess_exp_${uid}`);
-          if (persistedExpiry && Date.now() > parseInt(persistedExpiry, 10)) {
-            await logout();
-            return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
-          }
-        }
-        // JWT صالح في كلتا الحالتين → نكمل ببناء الجلسة من JWT أدناه
-      }
-
       const profileResult = await _fetchUserProfile(session.user.id);
       if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
 
@@ -300,7 +294,7 @@ async function checkSession() {
       return ok({ user: session.user, profile });
     }
 
-    // 4. لا يوجد JWT صالح — تحقق من جلسة offline (Quick Login)
+    // 4. لا يوجد JWT صالح — تحقق من جلسة offline (PIN/Vault)
     const offlineResult = await _checkOfflineSessionFallback();
     if (offlineResult) return offlineResult;
 
@@ -381,6 +375,55 @@ async function refreshSession() {
 function _vault() {
   if (typeof SessionVault !== 'undefined') return SessionVault;
   return (typeof window !== 'undefined' && window.SessionVault) || null;
+}
+
+// ── مزامنة توكن الخزنة مع دوران Supabase ──────────────────────────────
+// نُبقي أسرار المعرفة (معادلة/PIN) في الذاكرة أثناء الجلسة فقط، فنعيد
+// تشفير الخزنة بالتوكن الأحدث عند كل تجديد وعند الخروج. البصمة لا تحتاج
+// ذاكرة لأن مفتاحها (bioKey) محفوظ محليّاً في ahu_bio_.
+const _activeVaultSecrets = {}; // { equation: '…', pin: '…' }
+
+function _rememberVaultSecret(secretType, secret) {
+  if (secretType && secret) _activeVaultSecrets[secretType] = secret;
+}
+function _forgetVaultSecrets() {
+  for (const k of Object.keys(_activeVaultSecrets)) delete _activeVaultSecrets[k];
+}
+
+// يعيد إنشاء كل الخزائن المتاحة بالتوكن الجديد (يُبقيها صالحة بعد الدوران)
+async function _resyncVaults(session) {
+  const V = _vault();
+  const uid = AuthState.currentUser?.id;
+  if (!V?.isSupported() || !session?.refresh_token || !uid) return;
+  const payload = _buildVaultPayload(AuthState.currentUser, session);
+
+  // البصمة: مفتاحها متاح في ahu_bio_ → نزامنها دائماً إن وُجدت
+  try {
+    const raw = localStorage.getItem(`ahu_bio_${uid}`);
+    if (raw) {
+      const bio = JSON.parse(raw);
+      if (bio?.bioKey) {
+        await V.create({ userId: uid, secretType: V.SECRET.BIOMETRIC, secret: bio.bioKey, payload });
+      }
+    }
+  } catch (e) { console.warn('[vault] resync بصمة فشل:', e?.message); }
+
+  // المعادلة/PIN: من ذاكرة أسرار الجلسة فقط
+  for (const [secretType, secret] of Object.entries(_activeVaultSecrets)) {
+    try {
+      await V.create({ userId: uid, secretType, secret, payload });
+    } catch (e) { console.warn(`[vault] resync ${secretType} فشل:`, e?.message); }
+  }
+}
+
+// الاستماع لتجديد التوكن لإبقاء الخزنة محدّثة طوال الجلسة
+if (typeof window !== 'undefined') {
+  window.addEventListener('supabase:authChange', (e) => {
+    const { event, session } = e.detail || {};
+    if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') && session) {
+      _resyncVaults(session);
+    }
+  });
 }
 
 // بناء حمولة الخزنة من الملف والجلسة الحالية (refresh_token + لقطة الملف)
@@ -1015,6 +1058,7 @@ async function disableQuickLogin() {
     localStorage.removeItem(`ahu_quick_${uid}`);
     try { localStorage.removeItem(`ahu_bio_${uid}`); } catch { /* تجاهل */ }
     _vault()?.remove(uid); // حذف الخزنة المشفّرة (كل الأنواع: معادلة/PIN/بصمة)
+    _forgetVaultSecrets(); // مسح أسرار الجلسة من الذاكرة
     _qlBfReset(uid); // 3.3: إعادة تعيين عداد المحاولات عند الإلغاء
     AuthState.currentUser.quick_equation_hash = null;
 

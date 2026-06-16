@@ -401,16 +401,25 @@ async function createTransactionWithEntries(txData) {
 
     await _updateLocalBalances(enrichedEntries);
 
-    await SyncQueue.add(SYNC_ACTIONS.BATCH, 'batch', transaction.id, {
-      operations: [
-        { action: SYNC_ACTIONS.CREATE, table: TABLES.TRANSACTIONS,   data: cleanTransaction },
+    const _batchPayload = {
+      id         : transaction.id,    // id === idempotency_key (Phase 3)
+      operations : [
+        { action: SYNC_ACTIONS.CREATE, table: TABLES.TRANSACTIONS, data: cleanTransaction },
         ...enrichedEntries.map(e => ({
-          action: SYNC_ACTIONS.CREATE,
-          table : TABLES.ACCOUNT_LEDGER,
-          data  : { ...e, reference_id: transaction.id },
+          action : SYNC_ACTIONS.CREATE,
+          table  : TABLES.ACCOUNT_LEDGER,
+          data   : { ...e, reference_id: transaction.id },
         })),
       ],
-    });
+    };
+
+    if (typeof OutboxService !== 'undefined') {
+      // Phase 3: OutboxService يضمن 23505=نجاح + FIFO + id===idempotency_key
+      await OutboxService.addToOutbox(_batchPayload, SYNC_ACTIONS.BATCH, 'batch');
+    } else {
+      // LEGACY: To be removed in Phase 6
+      await SyncQueue.add(SYNC_ACTIONS.BATCH, 'batch', transaction.id, _batchPayload);
+    }
 
     window.dispatchEvent(new CustomEvent('accounting:transactionCreated', {
       detail: { transaction: pendingTransaction, entries: enrichedEntries, pending: true },

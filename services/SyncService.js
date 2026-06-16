@@ -52,11 +52,22 @@ async function _triggerSync(reason = 'manual') {
   try {
     console.log(`🔄 SyncService: مزامنة (${reason})...`);
 
-    const queueResult = await SyncQueue.processQueue();
-    if (isOk(queueResult)) {
-      const { processed, failed } = queueResult.data;
-      if (processed > 0 || failed > 0)
-        console.log(`   ✓ طابور: ${processed} ناجحة, ${failed} فاشلة`);
+    // Phase 3: OutboxService.processOutbox — id===idempotency_key + 23505=نجاح + FIFO
+    if (typeof OutboxService !== 'undefined') {
+      const outboxResult = await OutboxService.processOutbox();
+      if (isOk(outboxResult)) {
+        const { processed, failed } = outboxResult.data;
+        if (processed > 0 || failed > 0)
+          console.log(`   ✓ Outbox: ${processed} ناجحة, ${failed} فاشلة`);
+      }
+    } else {
+      // LEGACY: To be removed in Phase 6
+      const queueResult = await SyncQueue.processQueue();
+      if (isOk(queueResult)) {
+        const { processed, failed } = queueResult.data;
+        if (processed > 0 || failed > 0)
+          console.log(`   ✓ طابور: ${processed} ناجحة, ${failed} فاشلة`);
+      }
     }
 
     await _syncPendingRecords();

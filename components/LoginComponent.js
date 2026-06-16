@@ -1684,7 +1684,9 @@ const LoginComponent = {
       const result = await OfflineAuthService.verifyOfflineSession(pendingPinUserId, currentPinInput);
 
       if (isOk(result)) {
-        await this._enterOfflineMode(pendingPinUserId);
+        // لقطة الملف من خزنة PIN كاحتياط إن لم يوجد في Dexie
+        const vaultProfile = result?.data?.payload?.profile || null;
+        await this._enterOfflineMode(pendingPinUserId, vaultProfile);
       } else {
         this._state.currentPinInput = '';
         this._state.pinVerifying    = false;
@@ -1706,7 +1708,7 @@ const LoginComponent = {
   // ─────────────────────────────────────────────────────────
   // دخول وضع Offline بعد التحقق الناجح
   // ─────────────────────────────────────────────────────────
-  async _enterOfflineMode(userId) {
+  async _enterOfflineMode(userId, fallbackProfile = null) {
     AuthState.isOffline = true; // ✅ يُضبط فوراً قبل أي await لتجنب race condition
 
     // جلب بروفايل المستخدم من Dexie
@@ -1714,6 +1716,9 @@ const LoginComponent = {
     if (typeof db !== 'undefined' && db.isOpen()) {
       try { user = await db.users.get(userId); } catch { }
     }
+
+    // احتياط: لقطة الملف من خزنة PIN إن تعذّر جلبه من Dexie
+    if (!user && fallbackProfile) user = fallbackProfile;
 
     if (!user) {
       AuthState.isOffline = false; // ✅ تراجع عند الفشل
@@ -2425,11 +2430,6 @@ const LoginComponent = {
     const proceed = (pref) => {
       overlay.remove();
       localStorage.setItem(`ahu_device_pref_${uid}`, pref);
-      if (pref === 'temporary') {
-        // إزالة وقت انتهاء الجلسة الدائمة
-        localStorage.removeItem(`ahu_sess_exp_${uid}`);
-      }
-      // البانر داخل التطبيق (QuickLoginBanner) يتولى الإعداد
       setTimeout(() => this._onSuccess?.(profile), 300);
     };
 

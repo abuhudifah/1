@@ -53,6 +53,7 @@ const IdleTimer = (function () {
   let _warningShown    = false;              // هل ظهر التحذير؟
   let _warningToastEl  = null;              // عنصر التنبيه المعروض
   let _timeoutMs       = AGENT_IDLE_TIMEOUT_MS; // المهلة النشطة حالياً
+  let _isAdmin         = false;             // مدير/مساعد: تحذير فقط بلا خروج
 
   // ============================================================
   // دوال المؤقتات
@@ -160,43 +161,49 @@ const IdleTimer = (function () {
   function _scheduleTimers() {
     _clearTimers();
 
-    // مؤقت التحذير المسبق (قبل 60 ثانية من انتهاء المهلة)
-    _warningTimer = setTimeout(() => {
-      if (_running) {
-        _showWarning();
-      }
-    }, _timeoutMs - WARNING_BEFORE_MS);
+    // مؤقت التحذير المسبق — للمندوب فقط (المدير لا يُطرد)
+    if (!_isAdmin) {
+      _warningTimer = setTimeout(() => {
+        if (_running) _showWarning();
+      }, _timeoutMs - WARNING_BEFORE_MS);
+    }
 
-    // المؤقت الرئيسي للخروج
+    // المؤقت الرئيسي
     _idleTimer = setTimeout(async () => {
       if (!_running) return;
+
+      if (_isAdmin) {
+        // مدير / مساعد: تحذير فقط + إعادة جدولة (لا خروج)
+        console.log('⏱️  IdleTimer: خمول المدير — تحذير فقط');
+        if (typeof showToast === 'function') {
+          showToast('تنبيه: لا يوجد نشاط منذ فترة. انقر أي مكان للاستمرار.', 'warning', 8000);
+        }
+        _scheduleTimers();
+        return;
+      }
+
+      // مندوب: تسجيل خروج تلقائي
       console.log('⏱️  IdleTimer: انتهت مهلة الخمول — تسجيل خروج تلقائي');
       _hideWarning();
       _running = false;
       _clearTimers();
       _removeActivityListeners();
 
-      // إظهار رسالة قبل الخروج
       if (typeof showToast === 'function') {
         showToast('تم تسجيل خروجك تلقائياً بسبب عدم النشاط', 'warning', 4000);
       }
 
-      // تأخير قصير لتظهر الرسالة قبل تحميل شاشة الدخول
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      // تسجيل الخروج وإعادة التوجيه
       try {
         if (window.AuthService && typeof AuthService.logout === 'function') {
           await AuthService.logout();
         }
-        // AppStore سيُطلق 'store:userCleared' الذي يُشغّل _showLoginScreen في App.js
-        // كضمان إضافي نُطلق الحدث مباشرة
         if (window.AppStore) {
           AppStore.dispatchEvent(new CustomEvent('store:userCleared'));
         }
       } catch (e) {
         console.error('❌ IdleTimer: خطأ أثناء تسجيل الخروج:', e);
-        // حتى لو فشل، أعد تحميل الصفحة للأمان
         window.location.reload();
       }
     }, _timeoutMs);
@@ -255,6 +262,10 @@ const IdleTimer = (function () {
       ? timeoutMs
       : AGENT_IDLE_TIMEOUT_MS;
 
+    // تحديد السلوك بناءً على الدور: مدير/مساعد → تحذير فقط، مندوب → خروج
+    const role = (typeof AuthService !== 'undefined') ? AuthService.getCurrentRole?.() : null;
+    _isAdmin = role === 'admin' || role === 'admin_assistant';
+
     if (_running) {
       reset();
       return;
@@ -267,7 +278,7 @@ const IdleTimer = (function () {
     _running = true;
     _scheduleTimers();
 
-    console.log(`✅ IdleTimer: بدأ — مهلة الخمول ${_timeoutMs / 60000} دقيقة`);
+    console.log(`✅ IdleTimer: بدأ — ${_timeoutMs / 60000} دقيقة${_isAdmin ? ' (مدير — تحذير فقط)' : ''}`);
   }
 
   /**

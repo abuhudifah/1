@@ -419,6 +419,46 @@ function _pinHandleKeyboard(e) {
 }
 
 // ============================================================
+// قوة الـ PIN — كشف الأنماط الضعيفة (تكرار / تسلسل)
+// ============================================================
+
+/**
+ * يقيّم قوة الـ PIN دون كشف قيمته. لا يطبع الـ PIN إطلاقاً.
+ * @param {string} pin
+ * @returns {{ weak: boolean, reason?: string }}
+ */
+function _pinStrength(pin) {
+  const s = String(pin || '');
+  if (s.length < 4) return { weak: true, reason: 'short' };
+  // كل الأرقام متطابقة (1111, 0000)
+  if (/^(\d)\1+$/.test(s)) return { weak: true, reason: 'repeated' };
+  // تسلسل تصاعدي/تنازلي (1234 / 654321) — فرق ثابت ±1
+  let asc = true, desc = true;
+  for (let i = 1; i < s.length; i++) {
+    const diff = s.charCodeAt(i) - s.charCodeAt(i - 1);
+    if (diff !== 1)  asc  = false;
+    if (diff !== -1) desc = false;
+  }
+  if (asc || desc) return { weak: true, reason: 'sequence' };
+  return { weak: false };
+}
+
+/**
+ * يُحدّث تلميح القوة في العنوان الفرعي — غير مانع، وكل قراءات DOM محميّة.
+ * يظهر فقط في وضع الإنشاء، الخطوة الأولى، وبعد بلوغ الحد الأدنى للطول.
+ */
+function _pinUpdateStrength() {
+  const el = document.getElementById('pin-subtitle-text');
+  if (!el) return;
+  if (_pinMode !== 'create' || _pinFirst !== null) return;
+  if (_pinValue.length < _pinMin) return; // لا تلميح قبل اكتمال الطول الأدنى
+  const st = _pinStrength(_pinValue);
+  el.textContent = st.weak
+    ? '⚠️ PIN ضعيف — تجنّب التكرار أو التسلسل'
+    : '✅ PIN جيّد';
+}
+
+// ============================================================
 // PinDialog — الكائن العام
 // ============================================================
 

@@ -129,7 +129,10 @@ const ProfileSettingsComponent = {
   // بطاقة الدخول السريع
   // ────────────────────────────────────────────────────────
   _buildQuickLoginCard(user) {
-    const hasQuick = !!user.quick_equation_hash;
+    // التفعيل في نموذج الخزنة محلّي (لا يُكتب على الخادم) → نكشفه من الخزنة المحلية
+    const hasQuick = (typeof SessionVault !== 'undefined'
+        && SessionVault.has(user.id, SessionVault.SECRET.EQUATION))
+      || !!user.quick_equation_hash;
     const supportsWA = !!window.PublicKeyCredential;
     let hasQuickWebAuthn = false;
     try {
@@ -681,6 +684,9 @@ const ProfileSettingsComponent = {
   // بطاقة المصادقة بدون إنترنت (PIN + البصمة أو Face ID)
   // ────────────────────────────────────────────────────────
   _buildOfflineAuthCard(user) {
+    // حارس وجود: لا نُحطّم الواجهة إن لم تُحمّل خدمة المصادقة بعد
+    if (typeof OfflineAuthService === 'undefined') return document.createElement('div');
+
     const session = OfflineAuthService.getOfflineSession(user.id);
     const hasPin  = !!session?.hasPin;
 

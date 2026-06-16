@@ -474,10 +474,15 @@ const SyncQueue = {
       const savedItemId = item.id;
       const timer = setTimeout(async () => {
         _queueState.retryTimers.delete(savedItemId);
-        // إعادة تفعيل العنصر إلى 'pending' قبل استئناف المعالجة
         await db.sync_queue.update(savedItemId, { sync_status: 'pending' }).catch(() => {});
         if (isOnline() && !_queueState.isProcessing) {
-          await SyncQueue.processQueue();
+          // Phase 3: OutboxService يعالج 23505 كنجاح ويضمن FIFO
+          if (typeof OutboxService !== 'undefined') {
+            await OutboxService.processOutbox();
+          } else {
+            // LEGACY: To be removed in Phase 6
+            await SyncQueue.processQueue();
+          }
         }
       }, delay);
 
@@ -837,8 +842,14 @@ window.addEventListener('app:onlineStatusChange', async (e) => {
     const stats = await SyncQueue.getStats();
     if (isOk(stats) && stats.data.pending > 0) {
       console.log(`🌐 الاتصال عاد — بدء مزامنة ${stats.data.pending} عملية معلقة`);
-      await sleep(500); // تأخير قصير لاستقرار الاتصال
-      SyncQueue.processQueue();
+      await sleep(500);
+      // Phase 3: OutboxService يعالج 23505 كنجاح ويضمن id===idempotency_key
+      if (typeof OutboxService !== 'undefined') {
+        OutboxService.processOutbox();
+      } else {
+        // LEGACY: To be removed in Phase 6
+        SyncQueue.processQueue();
+      }
     }
   }
 });
