@@ -253,36 +253,19 @@ async function logout(clearLocalData = false) {
 // ============================================================
 async function checkSession() {
   try {
-    // 1. تحقق من sessionStorage (مسار سريع للجلسات القائمة)
+    // 1. جلسة محلية من localStorage (تبقى بعد إغلاق المتصفح)
     const localSession = getSession();
 
-    // 2. فحص انتهاء الصلاحية المحلية (8 ساعات) — فقط إذا كانت موجودة
+    // 2. فحص انتهاء الصلاحية (8 ساعات للجلسات الدائمة فقط)
     if (localSession?.sessionExpiresAt && Date.now() > localSession.sessionExpiresAt) {
       await logout();
       return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
     }
 
-    // 3. ✅ FIX: التحقق من JWT في Supabase (المصدر الحقيقي — يُخزَّن في localStorage)
+    // 3. التحقق من JWT في Supabase (المصدر الحقيقي — محفوظ في localStorage)
     const { data: { session }, error } = await supabaseClient.auth.getSession();
 
     if (!error && session) {
-      // JWT صالح — إذا كانت الجلسة المحلية مفقودة (أُغلق المتصفح) أعد بناءها
-      if (!localSession) {
-        const uid = session.user.id;
-        // devPref='temporary' يعني فقط "لا تمدّد ahu_sess_exp" — لا يعني رمي JWT الصالح.
-        // ما دام JWT موجود وصالح نبني منه الجلسة دائماً بغض النظر عن devPref.
-        const devPref = localStorage.getItem(`ahu_device_pref_${uid}`);
-        if (devPref !== 'temporary') {
-          // فحص مهلة الجلسة الدائمة فقط للجلسات غير المؤقتة
-          const persistedExpiry = localStorage.getItem(`ahu_sess_exp_${uid}`);
-          if (persistedExpiry && Date.now() > parseInt(persistedExpiry, 10)) {
-            await logout();
-            return err('انتهت صلاحية الجلسة. يُرجى تسجيل الدخول مجدداً');
-          }
-        }
-        // JWT صالح في كلتا الحالتين → نكمل ببناء الجلسة من JWT أدناه
-      }
-
       const profileResult = await _fetchUserProfile(session.user.id);
       if (!isOk(profileResult)) return err('لم يُعثر على ملف المستخدم');
 
@@ -311,7 +294,7 @@ async function checkSession() {
       return ok({ user: session.user, profile });
     }
 
-    // 4. لا يوجد JWT صالح — تحقق من جلسة offline (Quick Login)
+    // 4. لا يوجد JWT صالح — تحقق من جلسة offline (PIN/Vault)
     const offlineResult = await _checkOfflineSessionFallback();
     if (offlineResult) return offlineResult;
 

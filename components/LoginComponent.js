@@ -2430,11 +2430,6 @@ const LoginComponent = {
     const proceed = (pref) => {
       overlay.remove();
       localStorage.setItem(`ahu_device_pref_${uid}`, pref);
-      if (pref === 'temporary') {
-        // إزالة وقت انتهاء الجلسة الدائمة
-        localStorage.removeItem(`ahu_sess_exp_${uid}`);
-      }
-      // البانر داخل التطبيق (QuickLoginBanner) يتولى الإعداد
       setTimeout(() => this._onSuccess?.(profile), 300);
     };
 

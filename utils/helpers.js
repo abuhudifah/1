@@ -763,32 +763,42 @@ function isValidEmail(email) {
 // ============================================================
 
 /**
- * يحفظ بيانات الجلسة في sessionStorage
+ * يحفظ بيانات الجلسة في localStorage
+ * يتحقق من تفضيل الجهاز (ahu_device_pref_*):
+ *   temporary  → لا sessionExpiresAt (تنتهي بانتهاء JWT)
+ *   persistent → sessionExpiresAt لمدة 8 ساعات (محافَظ عليها عند التجديد)
  * @param {object} sessionData
  */
 function saveSession(sessionData) {
   try {
-    // ✅ S8: الحفاظ على sessionExpiresAt الأصلية عند تجديد الجلسة لمنع إعادة ضبط الـ 8 ساعات
     const existing = getSession();
-    const data = {
-      ...sessionData,
-      sessionExpiresAt: sessionData.sessionExpiresAt
+    const userId   = sessionData.userId || sessionData.user?.id || existing?.userId;
+    const devPref  = userId ? localStorage.getItem(`ahu_device_pref_${userId}`) : null;
+    const isTemp   = devPref === 'temporary';
+
+    const data = { ...sessionData };
+
+    if (isTemp) {
+      delete data.sessionExpiresAt;
+    } else {
+      data.sessionExpiresAt = sessionData.sessionExpiresAt
         ?? existing?.sessionExpiresAt
-        ?? (Date.now() + 8 * 60 * 60 * 1000),
-    };
-    sessionStorage.setItem(SECURITY_CONFIG.SESSION_KEY, JSON.stringify(data));
+        ?? (Date.now() + 8 * 60 * 60 * 1000);
+    }
+
+    localStorage.setItem(SECURITY_CONFIG.SESSION_KEY, JSON.stringify(data));
   } catch (e) {
     console.error('خطأ في حفظ الجلسة:', e);
   }
 }
 
 /**
- * يجلب بيانات الجلسة من sessionStorage
+ * يجلب بيانات الجلسة من localStorage
  * @returns {object|null}
  */
 function getSession() {
   try {
-    const raw = sessionStorage.getItem(SECURITY_CONFIG.SESSION_KEY);
+    const raw = localStorage.getItem(SECURITY_CONFIG.SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch (e) {
     return null;
@@ -796,13 +806,13 @@ function getSession() {
 }
 
 /**
- * يمسح بيانات الجلسة
+ * يمسح بيانات الجلسة من localStorage
+ * token الجهاز لا يُمسح (يجب أن يبقى بين الجلسات)
  */
 function clearSession() {
   try {
-    sessionStorage.removeItem(SECURITY_CONFIG.SESSION_KEY);
-    sessionStorage.removeItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY);
-  } catch (e) { /* sessionStorage غير متاح */ }
+    localStorage.removeItem(SECURITY_CONFIG.SESSION_KEY);
+  } catch (e) { /* localStorage غير متاح */ }
 }
 
 // ============================================================
