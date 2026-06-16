@@ -210,12 +210,8 @@ async function login(email, password) {
 // ============================================================
 async function logout(clearLocalData = false) {
   // ✅ حارس إعادة الدخول: امنع أي logout متكرر/متداخل قبل اكتمال الجاري
-  if (AuthState.isLoggingOut) {
-    console.log('[DIAG logout] خروج جارٍ بالفعل — تجاهل الاستدعاء المتكرر');
-    return ok(true);
-  }
+  if (AuthState.isLoggingOut) return ok(true);
   AuthState.isLoggingOut = true;
-  console.log('[DIAG logout] بدء تسجيل الخروج — stack:', new Error().stack);
 
   try {
     if (window.unsubscribeAll) await unsubscribeAll();
@@ -238,13 +234,29 @@ async function logout(clearLocalData = false) {
       if (cur) await _resyncVaults(cur);
     } catch { /* تجاهل */ }
 
-    // خروج محلّي فقط: لا نُبطل refresh_token على الخادم حتى تبقى الخزنة المشفّرة
-    // قادرة على فتح الجلسة بسرعة (المعادلة/البصمة) دون إعادة إدخال كلمة المرور.
-    // نستدعي signOut فقط إن وُجدت جلسة — تجنّباً لحدث SIGNED_OUT زائف بلا داعٍ.
+    // ════════════════════════════════════════════════════════════════
+    // FIX-RCA: scope:'local' كان يُبطل refresh_token على الخادم فيُعطّل الدخول السريع.
+    // الحل:
+    //   1) scope:'others'  → يُبطل جلسات الأجهزة الأخرى (أمان)، ويُبقي توكن
+    //      الجهاز الحالي صالحاً على الخادم ← تبقى الخزنة قادرة على فتح الجلسة.
+    //   2) _removeSession() → يُنظّف الذاكرة الداخلية لـ GoTrue ويوقف
+    //      مؤقّت التجديد التلقائي (auto-refresh) وتخزين localStorage،
+    //      دون أي طلب API يُبطل التوكن.
+    // ════════════════════════════════════════════════════════════════
     if (hasSession) {
-      await supabaseClient.auth.signOut({ scope: 'local' });
-    } else {
-      console.log('[DIAG logout] لا توجد جلسة Supabase — تخطّي signOut (تنظيف محلي فقط)');
+      // 1) أبطل جلسات الأجهزة الأخرى
+      try { await supabaseClient.auth.signOut({ scope: 'others' }); } catch { /* تجاهل */ }
+      // 2) نظّف الحالة المحلية لـ GoTrue (لا يُبطل التوكن على الخادم)
+      try {
+        if (typeof supabaseClient.auth._removeSession === 'function') {
+          await supabaseClient.auth._removeSession();
+        } else {
+          // احتياط: أزل مفاتيح Supabase يدوياً
+          Object.keys(localStorage)
+            .filter(k => /^sb-.+-auth-token/.test(k))
+            .forEach(k => { try { localStorage.removeItem(k); } catch { /* تجاهل */ } });
+        }
+      } catch { /* تجاهل */ }
     }
 
     // ✅ التنظيف المحلي يحدث دائماً (يحمي خروج وضع Offline بلا JWT)
@@ -416,9 +428,12 @@ function _forgetVaultSecrets() {
 // يعيد إنشاء كل الخزائن المتاحة بالتوكن الجديد (يُبقيها صالحة بعد الدوران)
 async function _resyncVaults(session) {
   const V = _vault();
-  const uid = AuthState.currentUser?.id;
+  // نستخدم uid من AuthState أو من الجلسة نفسها (يسمح بالمزامنة بعد الخروج
+  // إن دوّر GoTrue التوكن تلقائياً بعد signOut({ scope: 'others' }))
+  const uid = AuthState.currentUser?.id || session?.user?.id;
   if (!V?.isSupported() || !session?.refresh_token || !uid) return;
-  const payload = _buildVaultPayload(AuthState.currentUser, session);
+  const profile = AuthState.currentUser || null;
+  const payload = _buildVaultPayload(profile || { id: uid }, session);
 
   // البصمة: مفتاحها متاح في ahu_bio_ → نزامنها دائماً إن وُجدت
   try {
@@ -443,7 +458,6 @@ async function _resyncVaults(session) {
   // بيات التوكن بعد تسجيل الخروج ثم الدخول بالبريد (تدوير سلسلة التوكن).
   if (!_activeVaultSecrets[V.SECRET.EQUATION] && V.has(uid, V.SECRET.EQUATION)) {
     const eq = await _recoverEquationSeed(uid);
-    console.log('[DIAG _resyncVaults] استرجاع بذرة المعادلة:', eq ? 'نجح — سيُعاد تشفير الخزنة' : 'فشل/غير موجود (EQ_SEED أو مفتاح الجهاز مفقود)');
     if (eq) {
       try {
         await V.create({ userId: uid, secretType: V.SECRET.EQUATION, secret: eq, payload });
@@ -625,17 +639,15 @@ async function _establishSessionFromVault(payload, userId) {
   let session = null;
   try {
     if (payload.access_token && payload.refresh_token) {
-      const { data, error } = await supabaseClient.auth.setSession({
+      const { data } = await supabaseClient.auth.setSession({
         access_token : payload.access_token,
         refresh_token: payload.refresh_token,
       });
       session = data?.session || null;
-      console.log('[DIAG _establishSession] setSession → session؟', !!session, '— error:', error?.message || 'لا يوجد');
     }
     if (!session && payload.refresh_token) {
-      const { data, error } = await supabaseClient.auth.refreshSession({ refresh_token: payload.refresh_token });
+      const { data } = await supabaseClient.auth.refreshSession({ refresh_token: payload.refresh_token });
       session = data?.session || null;
-      console.log('[DIAG _establishSession] refreshSession → session؟', !!session, '— error:', error?.message || 'لا يوجد');
     }
   } catch (e) {
     console.warn('[vault] setSession/refresh فشل:', e?.message);
@@ -856,16 +868,11 @@ async function quickLogin(equation) {
     const V = _vault();
     if (V?.isSupported()) {
       const _uids = _listVaultUserIds(V.SECRET.EQUATION);
-      console.log('[DIAG quickLogin] vault supported. EQUATION vault uids:', _uids);
       for (const uid of _uids) {
         let payload = null;
         try {
           payload = await V.unlock({ userId: uid, secretType: V.SECRET.EQUATION, secret: normalized });
-          console.log('[DIAG quickLogin] unlock نجح للمستخدم:', uid, '— refresh_token موجود؟', !!payload?.refresh_token);
-        } catch (err) {
-          console.log('[DIAG quickLogin] unlock فشل للمستخدم:', uid, '—', err?.message);
-          continue;
-        } // سرّ خاطئ لهذا المستخدم — جرّب التالي
+        } catch { continue; } // سرّ خاطئ لهذا المستخدم — جرّب التالي
 
         // تشخيص (غير مانع): المتوقع ألا توجد جلسة حالية قبل الإنشاء — ظهور
         // جلسة أو حدث SIGNED_OUT هنا يكشف تدخّلاً خارجياً أثناء الدخول.
@@ -876,16 +883,13 @@ async function quickLogin(equation) {
 
         // نجح الفكّ → أنشئ جلسة Supabase حقيقية من refresh_token المخزّن
         let res = await _establishSessionFromVault(payload, uid);
-        console.log('[DIAG quickLogin] _establishSessionFromVault نتيجة ok؟', isOk(res), isOk(res) ? '' : res.error);
 
         // On-the-fly Recovery: رفض الخادم لتوكن المعادلة؟ جرّب توكناً أحدث من خزنة
         // البصمة الشقيقة (تُجدَّد على كل دخول، فقد تحمل توكناً صالحاً).
         if (!isOk(res)) {
           const sibPayload = await _unlockSiblingBiometricPayload(uid);
           if (sibPayload?.refresh_token) {
-            console.log('[DIAG quickLogin] محاولة استرداد عبر خزنة البصمة الشقيقة...');
             const res2 = await _establishSessionFromVault(sibPayload, uid);
-            console.log('[DIAG quickLogin] استرداد البصمة الشقيقة نتيجة ok؟', isOk(res2));
             if (isOk(res2)) res = res2; // نجح الاسترداد → أكمل الدخول
           }
         }
