@@ -4,13 +4,12 @@
  * طابور المزامنة الذكي (Offline-First Sync Engine)
  *
  * المسؤوليات:
- * - إدارة طابور العمليات المعلقة (sync_queue في Dexie)
- * - معالجة العمليات بترتيب FIFO
- * - إعادة المحاولة بتأخير تصاعدي (exponential backoff + jitter)
- * - استبدال المعرفات المؤقتة (TEMP_) بالمعرفات الحقيقية
- * - اكتشاف التعارضات وحفظها للحل اليدوي
- * - نقل العمليات المتجاوزة لـ sync_conflicts
+ * - إدارة طابور العمليات المعلقة (sync_queue في Dexie): add / handleFailure
+ * - اكتشاف التعارضات وحفظها للحل اليدوي + إحصائيات الطابور
  * - إعلام AppStore بتغيرات حالة الطابور
+ *
+ * Phase 6: محرك المعالجة النشط هو OutboxService.processOutbox. تبقى دوال
+ * المعالجة القديمة (processQueue/getPending) مُعلَّمة DEPRECATED للتوافق فقط.
  *
  * القواعد الصارمة:
  * - لا يُستخدم eval() مطلقاً
@@ -59,7 +58,7 @@ const SyncQueue = {
    * يُضيف عملية جديدة لطابور المزامنة
    * @param {string} action - create | update | delete | batch
    * @param {string} tableName - اسم الجدول المستهدف
-   * @param {string} recordId - معرف السجل (قد يكون TEMP_)
+   * @param {string} recordId - معرف السجل (UUID حقيقي)
    * @param {object} data - البيانات الكاملة
    * @returns {Promise<{ok: boolean, queueId?: number, error?: string}>}
    */
@@ -150,6 +149,10 @@ const SyncQueue = {
   /**
    * يُشغّل معالجة طابور المزامنة
    * يُعالج العمليات في دفعات (chunks) مع تأخير بينها
+   *
+   * DEPRECATED: المحرك النشط هو OutboxService.processOutbox منذ المرحلة 3.
+   * تبقى هذه الدالة + getPending للتوافق فقط (لا يُستدعَيان في أي مسار نشط).
+   *
    * @returns {Promise<{ok: boolean, processed: number, failed: number}>}
    */
   async processQueue() {
@@ -237,7 +240,7 @@ const SyncQueue = {
 
       switch (item.action) {
         case SYNC_ACTIONS.CREATE:
-          result = await this._executeCreate(item.table_name, data, item.record_id);
+          result = await this._executeCreate(item.table_name, data);
           break;
 
         case SYNC_ACTIONS.UPDATE:
@@ -269,9 +272,10 @@ const SyncQueue = {
 
   /**
    * تنفيذ عملية CREATE على Supabase
+   * Phase 6: لا TEMP_ID — كل id حقيقي UUID منذ المرحلة 3، فلا حاجة لـ replaceTempId
    * @private
    */
-  async _executeCreate(tableName, data, tempId) {
+  async _executeCreate(tableName, data) {
     try {
       // إزالة الحقول الداخلية قبل الإرسال
       const cleanData = this._cleanRecord(data, tableName);
@@ -284,10 +288,7 @@ const SyncQueue = {
 
       if (error) return err(error.message);
 
-      // استبدال المعرف المؤقت بالمعرف الحقيقي إن كان مختلفاً
-      if (isTempId(tempId) && saved?.id && saved.id !== tempId) {
-        await this.replaceTempId(tableName, tempId, saved.id);
-      } else if (saved) {
+      if (saved) {
         const dexieTable = db[tableName];
         if (dexieTable) {
           await dexieTable.put({ ...saved, sync_status: SYNC_STATUS.SYNCED });
@@ -407,12 +408,7 @@ const SyncQueue = {
 
         if (!isOk(result)) return result;
 
-        // استبدال المعرف المؤقت للمعاملة إن وجد
-        const realTxId = result.data?.transaction_id;
-        if (realTxId && isTempId(txOp.data?.id)) {
-          await this.replaceTempId(TABLES.TRANSACTIONS, txOp.data.id, realTxId);
-        }
-
+        // Phase 6: لا TEMP_ID — المعرف الحقيقي UUID يُرسَل مباشرةً، فلا استبدال
         return result;
       }
 
@@ -420,7 +416,7 @@ const SyncQueue = {
       for (const op of operations) {
         let res;
         if (op.action === SYNC_ACTIONS.CREATE) {
-          res = await this._executeCreate(op.table, op.data, op.data?.id);
+          res = await this._executeCreate(op.table, op.data);
         } else if (op.action === SYNC_ACTIONS.UPDATE) {
           res = await this._executeUpdate(op.table, op.id || op.data?.id, op.data);
         } else if (op.action === SYNC_ACTIONS.DELETE) {
@@ -475,14 +471,9 @@ const SyncQueue = {
       const timer = setTimeout(async () => {
         _queueState.retryTimers.delete(savedItemId);
         await db.sync_queue.update(savedItemId, { sync_status: 'pending' }).catch(() => {});
-        if (isOnline() && !_queueState.isProcessing) {
-          // Phase 3: OutboxService يعالج 23505 كنجاح ويضمن FIFO
-          if (typeof OutboxService !== 'undefined') {
-            await OutboxService.processOutbox();
-          } else {
-            // LEGACY: To be removed in Phase 6
-            await SyncQueue.processQueue();
-          }
+        if (isOnline() && !_queueState.isProcessing && typeof OutboxService !== 'undefined') {
+          // OutboxService هو المحرك الوحيد (id===idempotency_key + 23505=نجاح + FIFO)
+          await OutboxService.processOutbox();
         }
       }, delay);
 
@@ -490,85 +481,6 @@ const SyncQueue = {
 
     } catch (e) {
       console.error('❌ SyncQueue.handleFailure():', e);
-    }
-  },
-
-  // ==========================================================
-  // REPLACE TEMP ID — استبدال المعرف المؤقت
-  // ==========================================================
-
-  /**
-   * يستبدل المعرف المؤقت (TEMP_) بالمعرف الحقيقي
-   * في كل الجداول التي تشير إليه
-   * ✅ إصلاح: تغليف كل العمليات في db.transaction() لضمان
-   * الاتساق — إذا فشلت أي عملية تُلغى جميع العمليات تلقائياً
-   * @param {string} primaryTable - الجدول الرئيسي للسجل
-   * @param {string} tempId - المعرف المؤقت
-   * @param {string} realId - المعرف الحقيقي من Supabase
-   * @returns {Promise<void>}
-   */
-  async replaceTempId(primaryTable, tempId, realId) {
-    try {
-      console.log(`🔄 SyncQueue: استبدال ${tempId} بـ ${realId} في ${primaryTable}`);
-
-      // تحديد الجداول المشاركة في المعاملة
-      const tables = [db[primaryTable], db.account_ledger, db.sync_queue].filter(Boolean);
-
-      // ✅ الإصلاح: تغليف كل العمليات في معاملة Dexie ذرية
-      await db.transaction('rw', tables, async () => {
-
-        // 1. تحديث الجدول الرئيسي
-        const primaryDexie = db[primaryTable];
-        if (primaryDexie) {
-          const record = await primaryDexie.get(tempId);
-          if (record) {
-            await primaryDexie.delete(tempId);
-            await primaryDexie.put({ ...record, id: realId, sync_status: SYNC_STATUS.SYNCED });
-          }
-        }
-
-        // 2. تحديث جداول تشير للمعرف المؤقت كـ reference_id
-        if (primaryTable === TABLES.TRANSACTIONS) {
-          const ledgerRecords = await db.account_ledger
-            .where('reference_id')
-            .equals(tempId)
-            .toArray();
-
-          for (const lr of ledgerRecords) {
-            await db.account_ledger.update(lr.id, { reference_id: realId });
-          }
-        }
-
-        // 3. تحديث sync_queue نفسه إن كان يشير للمعرف المؤقت
-        const queueItems = await db.sync_queue
-          .where('record_id')
-          .equals(tempId)
-          .toArray();
-
-        for (const qi of queueItems) {
-          // BR-040: تحديث reference_id داخل JSON أيضاً لمنع FK violation عند مزامنة قيود account_ledger
-          let updatedFields = { record_id: realId };
-          try {
-            const parsed = typeof qi.data === 'string' ? JSON.parse(qi.data) : qi.data;
-            if (parsed && parsed.reference_id === tempId) {
-              parsed.reference_id = realId;
-              updatedFields.data  = JSON.stringify(parsed);
-            }
-          } catch { /* إذا فشل parse نُحدِّث record_id فقط */ }
-          await db.sync_queue.update(qi.id, updatedFields);
-        }
-
-      }); // نهاية db.transaction()
-
-      // 4. إعلام AppStore بالاستبدال (خارج المعاملة — حدث UI فقط)
-      window.dispatchEvent(new CustomEvent('sync:tempIdReplaced', {
-        detail: { tempId, realId, table: primaryTable },
-      }));
-
-    } catch (e) {
-      // إذا فشلت المعاملة، تُلغى جميع العمليات تلقائياً
-      console.error('❌ SyncQueue.replaceTempId():', e);
-      throw e;
     }
   },
 
@@ -843,12 +755,9 @@ window.addEventListener('app:onlineStatusChange', async (e) => {
     if (isOk(stats) && stats.data.pending > 0) {
       console.log(`🌐 الاتصال عاد — بدء مزامنة ${stats.data.pending} عملية معلقة`);
       await sleep(500);
-      // Phase 3: OutboxService يعالج 23505 كنجاح ويضمن id===idempotency_key
+      // OutboxService هو المحرك الوحيد (id===idempotency_key + 23505=نجاح + FIFO)
       if (typeof OutboxService !== 'undefined') {
         OutboxService.processOutbox();
-      } else {
-        // LEGACY: To be removed in Phase 6
-        SyncQueue.processQueue();
       }
     }
   }

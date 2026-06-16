@@ -334,7 +334,7 @@ const AccountManagementComponent = {
   // إضافة قسم أرصدة الشركات المحسوبة (باستخدام RPC)
   // ─────────────────────────────────────────────────────────
   async _renderCompanyBalancesSection(containerEl) {
-    if (!this._isOnline()) return;
+    if (!isOnline()) return;
     try {
       const { data, error } = await supabaseClient.rpc('get_company_balances');
       if (error || !data || !data.length) return;
@@ -438,7 +438,7 @@ const AccountManagementComponent = {
   // عرض كشف حساب الشركة (تحصيلات + إيداعات + سحوبات)
   async _showCompanyStatement(companyId, companyName) {
     let transactions = [];
-    if (this._isOnline()) {
+    if (isOnline()) {
       const { data, error } = await supabaseClient
         .from('transactions')
         .select('*, bank_accounts(name), users(display_name)')
@@ -780,7 +780,7 @@ const AccountManagementComponent = {
     if (!confirmed) return;
 
     try {
-      if (this._isOnline()) {
+      if (isOnline()) {
         const { error: ledgerErr } = await supabaseClient
           .from('account_ledger')
           .delete()
@@ -839,14 +839,14 @@ const AccountManagementComponent = {
         if (typeof db !== 'undefined' && db.isOpen()) {
           const existing = await db.account_balances.get(accId);
           if (existing) continue;
-        } else if (this._isOnline()) {
+        } else if (isOnline()) {
           const { data } = await supabaseClient.from('account_balances').select('account_id').eq('account_id', accId);
           if (data?.length) continue;
         }
 
         const record = { account_id: accId, balance: 0, last_updated: new Date().toISOString() };
 
-        if (this._isOnline()) {
+        if (isOnline()) {
           const { error } = await supabaseClient
             .from('account_balances')
             .upsert(record, { onConflict: 'account_id' });
@@ -876,7 +876,7 @@ const AccountManagementComponent = {
     // ── الأرصدة التراكمية من account_balances (متصل: Supabase، أوفلاين: Dexie) ──
     let balances = [];
     try {
-      if (this._isOnline()) {
+      if (isOnline()) {
         const { data } = await supabaseClient.from('account_balances').select('account_id, balance');
         balances = data || [];
       } else if (typeof db !== 'undefined' && db.isOpen()) {
@@ -890,7 +890,7 @@ const AccountManagementComponent = {
     let companies = (typeof AppStore !== 'undefined') ? (AppStore.getState('companies') || []) : [];
     try {
       if (!users.length) {
-        if (this._isOnline()) {
+        if (isOnline()) {
           const { data } = await supabaseClient.from('users').select('id, display_name, is_active, account_number');
           users = data || [];
         } else if (typeof db !== 'undefined' && db.isOpen()) {
@@ -898,7 +898,7 @@ const AccountManagementComponent = {
         }
       }
       if (!companies.length) {
-        if (this._isOnline()) {
+        if (isOnline()) {
           const { data } = await supabaseClient.from('companies').select('id, name, account_number');
           companies = data || [];
         } else if (typeof db !== 'undefined' && db.isOpen()) {
@@ -996,9 +996,9 @@ const AccountManagementComponent = {
 
     try {
       let entries = [];
-      let useLocal = !this._isOnline();
+      let useLocal = !isOnline();
 
-      if (this._isOnline()) {
+      if (isOnline()) {
         try {
           const { data, error } = await supabaseClient
             .from('account_ledger').select('*')
@@ -1133,9 +1133,9 @@ const AccountManagementComponent = {
 
     try {
       let txns = [];
-      let useLocal = !this._isOnline();
+      let useLocal = !isOnline();
 
-      if (this._isOnline()) {
+      if (isOnline()) {
         try {
           const { data, error } = await supabaseClient.from('transactions')
             .select('id,date,time,type,amount,details,created_at, agent:users!transactions_agent_id_fkey(display_name)')
@@ -1268,7 +1268,7 @@ const AccountManagementComponent = {
     const txMap = new Map();
     if (!refIds.length) return txMap;
 
-    if (this._isOnline()) {
+    if (isOnline()) {
       try {
         const { data } = await supabaseClient.from('transactions')
           .select('id,time,type,details,agent_id,company_id,customer_id,customer_name,from_agent_id,to_agent_id,expense_type,bank_account_id,created_at,'
@@ -1364,7 +1364,7 @@ const AccountManagementComponent = {
     let banks = (typeof AppStore !== 'undefined' ? (AppStore.getState('bankAccounts') || []) : []);
     if (!banks.length) {
       try {
-        if (this._isOnline()) {
+        if (isOnline()) {
           const { data } = await supabaseClient.from('bank_accounts')
             .select('id, name, company_id')
             .limit(QUERY_LIMITS.BANK_ACCOUNTS);
@@ -1951,7 +1951,7 @@ const AccountManagementComponent = {
   // ✅ إصلاح جوهري: ترحيل القيود باستخدام RPC الموجودة مع Fallback
   async _postEntries(entries, errEl) {
     try {
-      if (this._isOnline()) {
+      if (isOnline()) {
         try {
           const { data, error } = await supabaseClient.rpc('post_manual_journal_entries', {
             p_entries: entries,
@@ -2118,7 +2118,7 @@ const AccountManagementComponent = {
     const restore = setButtonLoading(btn);
 
     try {
-      if (!this._isOnline()) {
+      if (!isOnline()) {
         errEl.textContent = 'لا يمكن إضافة حسابات جديدة حالياً (غير متصل بالإنترنت)';
         restore();
         return;
@@ -2347,10 +2347,6 @@ const AccountManagementComponent = {
   // ─────────────────────────────────────────────────────────
   // دوال مساعدة
   // ─────────────────────────────────────────────────────────
-  _isOnline() {
-    return typeof isOnline === 'function' ? isOnline() : (navigator.onLine === true);
-  },
-
   _getShortId(id) {
     if (!id) return '—';
     if (id.length <= 10) return id;

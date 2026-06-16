@@ -143,8 +143,8 @@ const OfflineAuthService = {
 
   /**
    * ينشئ جلسة Offline لمستخدم وجهاز محددين.
-   * يحسب PIN hash ويخزّنه في Supabase (إن اتصل) + Dexie.
-   * لا يُخزَّن PIN نفسه في أي مكان.
+   * Phase 6: المصدر الوحيد هو SessionVault (PBKDF2 + AES-GCM) — لا hash، لا RPC،
+   * لا جدول offline_sessions. يعمل أوفلاين بالكامل ولا يُخزَّن PIN كنص أو hash.
    *
    * @param {string} userId - UUID المستخدم
    * @param {string} pin    - PIN رقمي (4-6 خانات)
@@ -158,100 +158,45 @@ const OfflineAuthService = {
       return err('PIN يجب أن يكون من 4 إلى 6 أرقام');
     }
 
+    const V = (typeof SessionVault !== 'undefined') ? SessionVault
+            : (typeof window !== 'undefined' ? window.SessionVault : null);
+    if (!V?.isSupported?.()) {
+      return err('هذا المتصفح لا يدعم تشفير PIN الآمن (WebCrypto)');
+    }
+
     const deviceId = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
                      || localStorage.getItem(`ahu_device_${userId}`)
                      || null;
 
-    // ── المسار الجديد: خزنة PIN مشفّرة (PBKDF2 + AES-GCM) — يعمل أوفلاين ──
-    const V = (typeof SessionVault !== 'undefined') ? SessionVault
-            : (typeof window !== 'undefined' ? window.SessionVault : null);
-    if (V?.isSupported?.()) {
-      try {
-        const u = (typeof window !== 'undefined' && window.AuthState) ? window.AuthState.currentUser : null;
-        const profile = u ? {
-          id            : u.id,
-          username      : u.username,
-          display_name  : u.display_name,
-          role          : u.role,
-          is_active     : u.is_active,
-          allowed_tabs  : u.allowed_tabs || [],
-          account_number: u.account_number,
-        } : { id: userId };
+    try {
+      const u = (typeof window !== 'undefined' && window.AuthState) ? window.AuthState.currentUser : null;
+      const profile = u ? {
+        id            : u.id,
+        username      : u.username,
+        display_name  : u.display_name,
+        role          : u.role,
+        is_active     : u.is_active,
+        allowed_tabs  : u.allowed_tabs || [],
+        account_number: u.account_number,
+      } : { id: userId };
 
-        await V.create({
-          userId, secretType: V.SECRET.PIN, secret: pinStr,
-          payload: { profile, deviceId, savedAt: new Date().toISOString() },
-        });
-
-        // علامة محلية للتوافق مع كاشفات الواجهة (بلا hash ولا سرّ)
-        try {
-          localStorage.setItem(`ahu_offline_session_${userId}`, JSON.stringify({
-            userId, deviceId, hasPin: true, hasWebAuthn: false,
-            source: 'vault', createdAt: new Date().toISOString(),
-          }));
-        } catch { /* localStorage غير متاح */ }
-
-        return ok(true);
-      } catch (e) {
-        return err('تعذّر حفظ PIN المشفّر: ' + e.message);
-      }
-    }
-
-    // ── المسار القديم (متصفّح بلا WebCrypto): hash + Dexie + RPC ──
-    const pinHash = await hashSHA256(pinStr, userId);
-
-    // ── محاولة الإنشاء عبر الخادم أولاً ──────────────────
-    if (isOnline() && window.AuthState?.authUser) {
-      try {
-        const { data: sessionId, error } = await supabaseClient.rpc(
-          'create_offline_session',
-          { p_user_id: userId, p_device_id: deviceId, p_pin_hash: pinHash }
-        );
-
-        if (error) return err('فشل إنشاء جلسة Offline: ' + error.message);
-
-        await this._saveSessionToDexie({
-          id        : sessionId,
-          user_id   : userId,
-          device_id : deviceId,
-          pin_hash  : pinHash,
-          is_active : true,
-        });
-
-      } catch (e) {
-        return err('خطأ في الشبكة أثناء إنشاء الجلسة: ' + e.message);
-      }
-
-    } else {
-      // ── Offline: إنشاء محلي فقط — ستُزامن عند عودة الاتصال ──
-      if (typeof db === 'undefined' || !db.isOpen()) {
-        return err('قاعدة البيانات المحلية غير متاحة — تعذّر إنشاء جلسة Offline');
-      }
-
-      const localId = crypto.randomUUID();
-      await this._saveSessionToDexie({
-        id          : localId,
-        user_id     : userId,
-        device_id   : deviceId,
-        pin_hash    : pinHash,
-        is_active   : true,
-        _local_only : true,
+      await V.create({
+        userId, secretType: V.SECRET.PIN, secret: pinStr,
+        payload: { profile, deviceId, savedAt: new Date().toISOString() },
       });
+
+      // علامة محلية للتوافق مع كاشفات الواجهة (بلا hash ولا سرّ)
+      try {
+        localStorage.setItem(`ahu_offline_session_${userId}`, JSON.stringify({
+          userId, deviceId, hasPin: true, hasWebAuthn: false,
+          source: 'vault', createdAt: new Date().toISOString(),
+        }));
+      } catch { /* localStorage غير متاح */ }
+
+      return ok(true);
+    } catch (e) {
+      return err('تعذّر حفظ PIN المشفّر: ' + e.message);
     }
-
-    // خزّن بيانات الجلسة (بدون PIN أو hash) في localStorage
-    localStorage.setItem(
-      `ahu_offline_session_${userId}`,
-      JSON.stringify({
-        userId,
-        deviceId,
-        hasPin      : true,
-        hasWebAuthn : false,
-        createdAt   : new Date().toISOString(),
-      })
-    );
-
-    return ok(true);
   },
 
   // ==========================================================
@@ -260,7 +205,8 @@ const OfflineAuthService = {
 
   /**
    * يتحقق من صحة PIN لجلسة Offline نشطة.
-   * يستخدم الخادم إن توفّر الاتصال + JWT، وإلا يتحقق محلياً من Dexie.
+   * Phase 6: المصدر الوحيد هو SessionVault — فكّ الخزنة المشفّرة محليّاً (يعمل
+   * أوفلاين بالكامل). فشل الفكّ (auth-tag) = PIN خاطئ.
    *
    * @param {string} userId
    * @param {string} pin
@@ -274,80 +220,20 @@ const OfflineAuthService = {
     const bfCheck = _checkPinBruteForce(userId);
     if (!isOk(bfCheck)) return bfCheck;
 
-    // ── المسار الجديد: فكّ خزنة PIN المشفّرة (يعمل أوفلاين) ──
     const V = (typeof SessionVault !== 'undefined') ? SessionVault
             : (typeof window !== 'undefined' ? window.SessionVault : null);
-    if (V?.has?.(userId, V.SECRET.PIN)) {
-      try {
-        const payload = await V.unlock({ userId, secretType: V.SECRET.PIN, secret: String(pin).trim() });
-        _resetPinAttempts(userId);
-        return ok({ payload });
-      } catch {
-        // فشل الفكّ (auth-tag) = PIN خاطئ
-        _recordPinFailure(userId);
-        return err('PIN غير صحيح', { remaining: _remainingPinAttempts(userId) });
-      }
+    if (!V?.has?.(userId, V.SECRET.PIN)) {
+      return err('لم يتم تفعيل PIN على هذا الجهاز');
     }
 
-    // ── المسار القديم (PINات legacy قبل الهجرة): hash + Dexie/RPC ──
-    const pinHash  = await hashSHA256(String(pin).trim(), userId);
-    const deviceId = sessionStorage.getItem(SECURITY_CONFIG.DEVICE_TOKEN_KEY)
-                     || localStorage.getItem(`ahu_device_${userId}`)
-                     || null;
-
-    // ── محاولة التحقق عبر الخادم (إن كان متصلاً ولديه JWT) ──
-    if (isOnline() && window.AuthState?.authUser) {
-      try {
-        const { data: valid, error } = await supabaseClient.rpc(
-          'verify_offline_session',
-          { p_user_id: userId, p_device_id: deviceId, p_pin_hash: pinHash }
-        );
-
-        if (!error && valid === true) {
-          _resetPinAttempts(userId);
-          return ok(true);
-        }
-
-        // RPC أعاد false بدون خطأ = PIN خاطئ
-        if (!error && valid !== true) {
-          _recordPinFailure(userId);
-          return err('PIN غير صحيح', {
-            remaining: _remainingPinAttempts(userId),
-          });
-        }
-        // خطأ شبكة → ننتقل للتحقق المحلي
-      } catch { /* الشبكة فاشلة → تحقق محلي */ }
-    }
-
-    // ── التحقق المحلي من Dexie ────────────────────────────
-    return this._verifyLocal(userId, deviceId, pinHash);
-  },
-
-  /** تحقق محلي (Dexie) — مشترك بين verify وWebAuthn fallback */
-  async _verifyLocal(userId, deviceId, pinHash) {
     try {
-      if (typeof db === 'undefined' || !db.isOpen()) {
-        return err('قاعدة البيانات المحلية غير متاحة');
-      }
-
-      const session = await db.offline_sessions
-        .where('[user_id+device_id]')
-        .equals([userId, deviceId])
-        .filter(s => s.is_active === true)
-        .first();
-
-      if (!session || session.pin_hash !== pinHash) {
-        _recordPinFailure(userId);
-        return err('PIN غير صحيح', {
-          remaining: _remainingPinAttempts(userId),
-        });
-      }
-
+      const payload = await V.unlock({ userId, secretType: V.SECRET.PIN, secret: String(pin).trim() });
       _resetPinAttempts(userId);
-      return ok(true);
-
-    } catch (e) {
-      return err('خطأ في التحقق المحلي: ' + e.message);
+      return ok({ payload });
+    } catch {
+      // فشل الفكّ (auth-tag) = PIN خاطئ
+      _recordPinFailure(userId);
+      return err('PIN غير صحيح', { remaining: _remainingPinAttempts(userId) });
     }
   },
 
@@ -381,44 +267,19 @@ const OfflineAuthService = {
   // ==========================================================
 
   /**
-   * ينهي جلسة Offline: يمسح localStorage ويُعيّن is_active=false في Dexie.
+   * ينهي جلسة Offline: يمسح علامة localStorage ويحذف خزنة PIN المشفّرة.
+   * Phase 6: لا تفاعل مع جدول offline_sessions أو RPC (المصدر الوحيد SessionVault).
    * @param {string} userId
    * @returns {Promise<{ok: boolean}>}
    */
   async endOfflineSession(userId) {
     localStorage.removeItem(`ahu_offline_session_${userId}`);
 
-    // المسار الجديد: حذف خزنة PIN المشفّرة
     try {
       const V = (typeof SessionVault !== 'undefined') ? SessionVault
               : (typeof window !== 'undefined' ? window.SessionVault : null);
       V?.remove?.(userId, V.SECRET.PIN);
     } catch { /* تجاهل */ }
-
-    if (typeof db !== 'undefined' && db.isOpen()) {
-      try {
-        const deviceId = getDeviceToken();
-        const sessions = await db.offline_sessions
-          .where('[user_id+device_id]')
-          .equals([userId, deviceId])
-          .toArray();
-
-        for (const s of sessions) {
-          await db.offline_sessions.update(s.id, { is_active: false });
-        }
-      } catch (e) {
-        console.warn('[OfflineAuth] endOfflineSession — Dexie:', e.message);
-      }
-    }
-
-    if (isOnline() && window.AuthState?.authUser) {
-      try {
-        await supabaseClient.rpc('end_offline_session', {
-          p_user_id  : userId,
-          p_device_id: getDeviceToken(),
-        });
-      } catch { /* الشبكة غير متاحة — الجلسة انتهت محلياً */ }
-    }
 
     return ok(true);
   },
@@ -660,22 +521,6 @@ const OfflineAuthService = {
         return err('تم رفض طلب التحقق بالبصمة أو انتهت المهلة');
       }
       return err('خطأ في البصمة أو Face ID: ' + e.message);
-    }
-  },
-
-  // ==========================================================
-  // مساعد داخلي: حفظ الجلسة في Dexie
-  // ==========================================================
-
-  async _saveSessionToDexie(sessionData) {
-    if (typeof db === 'undefined' || !db.isOpen()) return;
-    try {
-      await db.offline_sessions.put({
-        ...sessionData,
-        created_at : sessionData.created_at || new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn('[OfflineAuth] _saveSessionToDexie:', e.message);
     }
   },
 

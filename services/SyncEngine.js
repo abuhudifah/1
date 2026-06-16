@@ -29,7 +29,9 @@ const SyncEngine = {
 
   /**
    * يمزج كل العمليات ذات sync_status='pending' في Dexie مع Supabase.
-   * يُشغَّل عند عودة الاتصال أو بطلب يدوي.
+   *
+   * DEPRECATED: المحرك النشط هو OutboxService.processOutbox منذ المرحلة 3.
+   * تبقى syncAll/syncOperation للتوافق ولتغطية الاختبارات (لا تُستدعى في مسار نشط).
    *
    * @returns {Promise<{ok: boolean, data?: {synced, failed, total}, error?: string}>}
    */
@@ -194,51 +196,27 @@ const SyncEngine = {
 
   /**
    * يُشغَّل عند عودة الاتصال أو بطلب يدوي.
-   * Phase 3: يُفوَّض لـ OutboxService.processOutbox إن كان محمّلاً.
+   * Phase 6: المحرك الوحيد هو OutboxService.processOutbox.
    *
    * @returns {Promise<{ok: boolean, data?: *, error?: string}>}
    */
   async startAutoSync() {
     if (!isOnline()) return err('لا يوجد اتصال بالإنترنت');
 
-    // Phase 3: تفويض لـ OutboxService (id===idempotency_key + 23505=نجاح)
-    if (typeof OutboxService !== 'undefined') {
-      console.log('🔄 SyncEngine.startAutoSync: تفويض لـ OutboxService...');
-      const result = await OutboxService.processOutbox();
-      if (isOk(result) && result.data.total > 0 && typeof showToast === 'function') {
-        const { processed, failed, total } = result.data;
-        showToast(
-          `تمت مزامنة ${processed} عملية بنجاح` +
-          (failed > 0 ? ` (${failed} فاشلة)` : ''),
-          failed > 0 ? 'warning' : 'success'
-        );
-      }
-      return result;
+    if (typeof OutboxService === 'undefined') {
+      return err('محرك المزامنة (OutboxService) غير متاح');
     }
 
-    // LEGACY: To be removed in Phase 6
-    console.log('🔄 SyncEngine.startAutoSync: بدء المزامنة التلقائية (legacy)...');
-
-    const result = await this.syncAll();
-
-    if (isOk(result)) {
-      const { synced, failed, total } = result.data;
-      if (total === 0) {
-        console.log('[SyncEngine] لا توجد عمليات معلقة');
-      } else if (synced > 0 && typeof showToast === 'function') {
-        showToast(
-          `تمت مزامنة ${synced} عملية بنجاح` +
-          (failed > 0 ? ` (${failed} فاشلة)` : ''),
-          failed > 0 ? 'warning' : 'success'
-        );
-      }
-    } else {
-      console.error('[SyncEngine] فشل المزامنة التلقائية:', result.error);
-      if (typeof showToast === 'function') {
-        showToast('فشل المزامنة التلقائية: ' + result.error, 'error', 5000);
-      }
+    console.log('🔄 SyncEngine.startAutoSync: تفويض لـ OutboxService...');
+    const result = await OutboxService.processOutbox();
+    if (isOk(result) && result.data.total > 0 && typeof showToast === 'function') {
+      const { processed, failed } = result.data;
+      showToast(
+        `تمت مزامنة ${processed} عملية بنجاح` +
+        (failed > 0 ? ` (${failed} فاشلة)` : ''),
+        failed > 0 ? 'warning' : 'success'
+      );
     }
-
     return result;
   },
 

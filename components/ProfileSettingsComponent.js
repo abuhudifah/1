@@ -93,7 +93,7 @@ const ProfileSettingsComponent = {
         ${this._infoItem('الدخول السريع', hasQuick
           ? '<span style="color:#16a34a;font-weight:600;">⚡ مفعّل</span>'
           : '<span style="color:var(--text-muted);">غير مفعّل</span>')}
-        ${user.last_login ? this._infoItem('آخر دخول', `<span style="font-size:.82rem;color:var(--text-secondary);">${this._timeAgo(user.last_login)}</span>`) : ''}
+        ${user.last_login ? this._infoItem('آخر دخول', `<span style="font-size:.82rem;color:var(--text-secondary);">${timeAgo(user.last_login)}</span>`) : ''}
       </div>`;
     
     return card;
@@ -827,16 +827,6 @@ const ProfileSettingsComponent = {
   _hideErr(id) {
     const el = document.getElementById(id);
     if (el) { el.textContent = ''; el.style.display = 'none'; }
-  },
-  _timeAgo(iso) {
-    try {
-      const d = Math.floor((Date.now() - new Date(iso)) / 1000);
-      if (d < 60)     return 'الآن';
-      if (d < 3600)   return `منذ ${Math.floor(d/60)} دقيقة`;
-      if (d < 86400)  return `منذ ${Math.floor(d/3600)} ساعة`;
-      if (d < 2592000)return `منذ ${Math.floor(d/86400)} يوم`;
-      return `منذ ${Math.floor(d/2592000)} شهر`;
-    } catch { return '—'; }
   },
 };
 

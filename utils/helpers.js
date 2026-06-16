@@ -97,23 +97,8 @@ function generateUUID() {
   });
 }
 
-/**
- * ينشئ معرفاً مؤقتاً للعمليات دون اتصال
- * يبدأ بـ TEMP_ ليتم استبداله بعد المزامنة
- * @returns {string}
- */
-function generateTempId() {
-  return `TEMP_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-/**
- * يتحقق هل المعرف مؤقت (لم يُزامن بعد)
- * @param {string} id
- * @returns {boolean}
- */
-function isTempId(id) {
-  return typeof id === 'string' && id.startsWith('TEMP_');
-}
+// Phase 6: حُذف generateTempId/isTempId — لم تعد هناك معرفات مؤقتة
+// (id === idempotency_key UUID حقيقي منذ المرحلة 3)
 
 // ============================================================
 // 4. التنسيق — أرقام وعملات
@@ -815,6 +800,20 @@ function clearSession() {
   } catch (e) { /* localStorage غير متاح */ }
 }
 
+/**
+ * يحلّل JSON بأمان دون رمي استثناء.
+ * يُعيد المصفوفة كما هي، ويُعيد fallback عند الفشل أو القيم الفارغة.
+ * @param {*} value
+ * @param {*} [fallback=[]]
+ * @returns {*}
+ */
+function safeJsonParse(value, fallback = []) {
+  if (Array.isArray(value)) return value;
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return fallback;
+  try { return JSON.parse(value) ?? fallback; } catch { return fallback; }
+}
+
 // ============================================================
 // 14. أدوات الأداء
 // ============================================================
@@ -975,7 +974,7 @@ Object.assign(window, {
   escapeHtml, createElement,
 
   // معرفات
-  generateUUID, generateTempId, isTempId,
+  generateUUID,
 
   // تنسيق
   formatCurrency, formatInt, roundAmount, toNumber, formatPercent,
@@ -1002,6 +1001,7 @@ Object.assign(window, {
   // أداء
   sleep, calcBackoffDelay,
   withDexie, fetchOnlineFirst,
+  safeJsonParse,
   Logger,
 
   // أزرار
