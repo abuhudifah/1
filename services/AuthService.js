@@ -409,24 +409,23 @@ async function _resyncVaults(session) {
     }
   } catch (e) { console.warn('[vault] resync بصمة فشل:', e?.message); }
 
-  // المعادلة/PIN: من ذاكرة أسرار الجلسة فقط
+  // المعادلة/PIN: من ذاكرة أسرار الجلسة (متاحة خلال الجلسة النشطة)
   for (const [secretType, secret] of Object.entries(_activeVaultSecrets)) {
     try {
       await V.create({ userId: uid, secretType, secret, payload });
     } catch (e) { console.warn(`[vault] resync ${secretType} فشل:`, e?.message); }
   }
 
-  // ملاحظة: خزنة المعادلة/PIN مشفّرة بمفتاح مُشتقّ من السرّ نفسه (PBKDF2)،
-  // لذا لا يمكن إعادة تشفيرها بـ payload محدّث دون معرفة السرّ الصريح.
-  // بعد تسجيل الخروج يكون _activeVaultSecrets فارغاً، فلا تُحدَّث هنا.
-  // المسار الفعلي لتجديد توكن خزنة المعادلة هو quickLogin: عند نجاح الفكّ
-  // تُعاد كتابة الخزنة فوراً بالتوكن المُدوَّر (انظر quickLogin).
-  if (Object.keys(_activeVaultSecrets).length === 0) {
-    try {
-      if (V.has(uid, V.SECRET.EQUATION)) {
-        console.debug('[vault] resync: خزنة المعادلة موجودة لكن السرّ غير متاح في الذاكرة — ستُحدَّث عند الدخول التالي بالمعادلة');
-      }
-    } catch { /* تجاهل */ }
+  // المعادلة بعد الخروج: السرّ غير متاح في الذاكرة، فنستعيده من بذرة الاسترجاع
+  // المشفّرة (EQ_SEED) ونعيد تشفير خزنة المعادلة بالتوكن المُدوَّر. هذا يمنع
+  // بيات التوكن بعد تسجيل الخروج ثم الدخول بالبريد (تدوير سلسلة التوكن).
+  if (!_activeVaultSecrets[V.SECRET.EQUATION] && V.has(uid, V.SECRET.EQUATION)) {
+    const eq = await _recoverEquationSeed(uid);
+    if (eq) {
+      try {
+        await V.create({ userId: uid, secretType: V.SECRET.EQUATION, secret: eq, payload });
+      } catch (e) { console.warn('[vault] resync المعادلة من البذرة فشل:', e?.message); }
+    }
   }
 }
 
@@ -476,6 +475,52 @@ function _listVaultUserIds(secretType) {
     }
   } catch { /* تجاهل */ }
   return ids;
+}
+
+// ── بذرة استرجاع المعادلة ───────────────────────────────────────────────
+// خزنة المعادلة مشفّرة بمفتاح مُشتقّ من المعادلة نفسها، فلا يمكن إعادة تشفيرها
+// بتوكن مُدوَّر دون معرفة المعادلة الصريحة (وهي تُمسح من الذاكرة عند الخروج).
+// الحل: نحفظ نسخة من المعادلة مشفّرة (EQ_SEED) بمفتاح ثابت للجهاز يُخزَّن في
+// localStorage — نفس نموذج أمان البصمة (bioKey). هذا يسمح لـ _resyncVaults
+// بتجديد توكن خزنة المعادلة تلقائياً بعد الخروج/الدخول بالبريد.
+function _eqDeviceKeyName(uid) { return `ahu_eqdk_${uid}`; }
+
+function _getOrCreateEqDeviceKey(uid) {
+  if (!uid) return null;
+  const k = _eqDeviceKeyName(uid);
+  try {
+    let v = localStorage.getItem(k);
+    if (!v) {
+      const buf = crypto.getRandomValues(new Uint8Array(32));
+      let bin = '';
+      for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+      v = btoa(bin);
+      localStorage.setItem(k, v);
+    }
+    return v;
+  } catch { return null; }
+}
+
+async function _storeEquationSeed(uid, equation) {
+  const V = _vault();
+  if (!V?.isSupported() || !uid || !equation) return;
+  const dk = _getOrCreateEqDeviceKey(uid);
+  if (!dk) return;
+  try {
+    await V.create({ userId: uid, secretType: V.SECRET.EQ_SEED, secret: dk, payload: { equation } });
+  } catch (e) { console.warn('[vault] حفظ بذرة المعادلة فشل:', e?.message); }
+}
+
+async function _recoverEquationSeed(uid) {
+  const V = _vault();
+  if (!V?.isSupported() || !uid || !V.has(uid, V.SECRET.EQ_SEED)) return null;
+  let dk = null;
+  try { dk = localStorage.getItem(_eqDeviceKeyName(uid)); } catch { /* تجاهل */ }
+  if (!dk) return null;
+  try {
+    const payload = await V.unlock({ userId: uid, secretType: V.SECRET.EQ_SEED, secret: dk });
+    return payload?.equation || null;
+  } catch { return null; }
 }
 
 // التحقق أن الجهاز غير ملغى عن بُعد
@@ -606,6 +651,9 @@ async function enableQuickLogin(equation) {
         // إغلاق المسار القديم: حذف توكن الخادم القديم إن وُجد على هذا الجهاز
         try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
 
+        // بذرة استرجاع المعادلة — تتيح تجديد التوكن تلقائياً بعد الخروج
+        await _storeEquationSeed(uid, normalized);
+
         // تحديث quick_equation_hash في Supabase/Dexie/AuthState (للتوافق مع المسار القديم والواجهة)
         try {
           const hash = await hashSHA256(normalized, uid);
@@ -733,7 +781,7 @@ async function quickLogin(equation) {
           _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
           // إغلاق المسار القديم: حذف توكن الخادم القديم لهذا الجهاز نهائياً
           try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
-          // أعد تخزين الخزنة بالتوكن المُدوَّر للاستخدام التالي
+          // أعد تخزين الخزنة بالتوكن المُدوَّر للاستخدام التالي + جدّد بذرة الاسترجاع
           try {
             const { data: { session: cur } } = await supabaseClient.auth.getSession();
             if (cur) {
@@ -745,6 +793,7 @@ async function quickLogin(equation) {
               });
             }
           } catch { /* تجاهل */ }
+          await _storeEquationSeed(uid, normalized);
         }
         return res;
       }
@@ -1076,7 +1125,8 @@ async function disableQuickLogin() {
     // ✅ الخادم تحدّث بنجاح → نظّف الحالة المحلية
     localStorage.removeItem(`ahu_quick_${uid}`);
     try { localStorage.removeItem(`ahu_bio_${uid}`); } catch { /* تجاهل */ }
-    _vault()?.remove(uid); // حذف الخزنة المشفّرة (كل الأنواع: معادلة/PIN/بصمة)
+    try { localStorage.removeItem(_eqDeviceKeyName(uid)); } catch { /* تجاهل */ } // مفتاح بذرة المعادلة
+    _vault()?.remove(uid); // حذف الخزنة المشفّرة (كل الأنواع: معادلة/PIN/بصمة/بذرة)
     _forgetVaultSecrets(); // مسح أسرار الجلسة من الذاكرة
     _qlBfReset(uid); // 3.3: إعادة تعيين عداد المحاولات عند الإلغاء
     AuthState.currentUser.quick_equation_hash = null;
