@@ -2302,8 +2302,8 @@ const LoginComponent = {
         setTimeout(() => this._onSuccess?.(res.data.profile), 400);
       } else {
         if (rEl)    { rEl.style.color = '#f87171'; }
-        // عرض رسالة خطأ واضحة — رسالة "لا إنترنت" تُعرض كاملة لتوجيه المستخدم
-        const errMsg = res.error?.includes('قفل') || res.error?.includes('محاولات') || res.error?.includes('🔌')
+        // عرض رسالة خطأ واضحة — رسالة "لا إنترنت" أو "انتهت صلاحية" تُعرض كاملة لتوجيه المستخدم
+        const errMsg = res.error?.includes('قفل') || res.error?.includes('محاولات') || res.error?.includes('🔌') || res.error?.includes('انتهت صلاحية')
           ? res.error
           : 'المعادلة غير صحيحة، حاول مرة أخرى';
         if (statEl) {

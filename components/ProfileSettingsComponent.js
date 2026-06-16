@@ -81,7 +81,9 @@ const ProfileSettingsComponent = {
     const roleColor  = roleColors[user.role] || '#6366f1';
     const roleIcon   = roleIcons[user.role]  || '👤';
     
-    const hasQuick = !!user.quick_equation_hash;
+    const hasQuick = (typeof SessionVault !== 'undefined'
+        && SessionVault.has(user.id, SessionVault.SECRET.EQUATION))
+      || !!user.quick_equation_hash;
 
     const card = this._card('🪪 بيانات الحساب');
 

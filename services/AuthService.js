@@ -288,6 +288,7 @@ async function checkSession() {
       });
 
       await _setupDeviceToken(profile.id);
+      try { await _resyncVaults(session); } catch { /* تجاهل */ }
       _saveToDexieBackground(profile);
       _preloadEssentialData(profile);
       _migrateQuickLoginStorage();
@@ -591,6 +592,15 @@ async function enableQuickLogin(equation) {
 
         // إغلاق المسار القديم: حذف توكن الخادم القديم إن وُجد على هذا الجهاز
         try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
+
+        // تحديث quick_equation_hash في Supabase/Dexie/AuthState (للتوافق مع المسار القديم والواجهة)
+        try {
+          const hash = await hashSHA256(normalized, uid);
+          if (AuthState.currentUser) AuthState.currentUser.quick_equation_hash = hash;
+          await supabaseClient.from(TABLES.USERS).update({ quick_equation_hash: hash }).eq('id', uid);
+          if (typeof db !== 'undefined' && db.isOpen())
+            await db.users.update(uid, { quick_equation_hash: hash });
+        } catch (e) { console.warn('[enableQuickLogin] تحديث quick_equation_hash فشل:', e?.message); }
 
         _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
         saveSession({ ...getSession(), quickLoginEnabled: true });
