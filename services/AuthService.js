@@ -21,6 +21,7 @@ const AuthState = {
   authUser      : null,
   isInitialized : false,
   isOffline     : false,   // true أثناء وضع Offline (بدون JWT)
+  isLoggingOut  : false,   // حارس إعادة الدخول: يمنع تنفيذ logout المتكرر/المتداخل
 };
 
 // ── تطبيع المعادلة ─────────────────────────────────────────────────────────
@@ -208,6 +209,14 @@ async function login(email, password) {
 // 2. تسجيل الخروج
 // ============================================================
 async function logout(clearLocalData = false) {
+  // ✅ حارس إعادة الدخول: امنع أي logout متكرر/متداخل قبل اكتمال الجاري
+  if (AuthState.isLoggingOut) {
+    console.log('[DIAG logout] خروج جارٍ بالفعل — تجاهل الاستدعاء المتكرر');
+    return ok(true);
+  }
+  AuthState.isLoggingOut = true;
+  console.log('[DIAG logout] بدء تسجيل الخروج — stack:', new Error().stack);
+
   try {
     if (window.unsubscribeAll) await unsubscribeAll();
     if (window.SyncQueue) SyncQueue.clearRetryTimers();
@@ -221,14 +230,24 @@ async function logout(clearLocalData = false) {
     sessionStorage.setItem('ahu_intentional_logout', '1'); // ✅ علامة logout صريح
 
     // ✅ احفظ أحدث توكن في الخزنة قبل الخروج (يمنع تعطّل الدخول السريع بعد الدوران)
+    //    ونتحقّق من وجود جلسة Supabase فعلاً قبل استدعاء signOut.
+    let hasSession = false;
     try {
       const { data: { session: cur } } = await supabaseClient.auth.getSession();
+      hasSession = !!cur;
       if (cur) await _resyncVaults(cur);
     } catch { /* تجاهل */ }
 
     // خروج محلّي فقط: لا نُبطل refresh_token على الخادم حتى تبقى الخزنة المشفّرة
     // قادرة على فتح الجلسة بسرعة (المعادلة/البصمة) دون إعادة إدخال كلمة المرور.
-    await supabaseClient.auth.signOut({ scope: 'local' });
+    // نستدعي signOut فقط إن وُجدت جلسة — تجنّباً لحدث SIGNED_OUT زائف بلا داعٍ.
+    if (hasSession) {
+      await supabaseClient.auth.signOut({ scope: 'local' });
+    } else {
+      console.log('[DIAG logout] لا توجد جلسة Supabase — تخطّي signOut (تنظيف محلي فقط)');
+    }
+
+    // ✅ التنظيف المحلي يحدث دائماً (يحمي خروج وضع Offline بلا JWT)
     _forgetVaultSecrets(); // مسح أسرار المعرفة من الذاكرة
     clearSession();
 
@@ -246,6 +265,8 @@ async function logout(clearLocalData = false) {
     AuthState.authUser    = null;
     AuthState.isOffline   = false;
     return ok(true);
+  } finally {
+    AuthState.isLoggingOut = false;
   }
 }
 
@@ -600,6 +621,7 @@ async function _isDeviceRevoked(deviceId) {
 // إنشاء جلسة Supabase حقيقية من حمولة خزنة مفكوكة (مشترك: معادلة/بصمة).
 // بلا أي لمس لكلمة المرور — نستعيد الجلسة من refresh_token المخزّن فقط.
 async function _establishSessionFromVault(payload, userId) {
+  console.log('[DIAG _establishSession] بدء — refresh_token في الحمولة؟', !!payload?.refresh_token, '| access_token؟', !!payload?.access_token);
   let session = null;
   try {
     if (payload.access_token && payload.refresh_token) {
@@ -844,6 +866,13 @@ async function quickLogin(equation) {
           console.log('[DIAG quickLogin] unlock فشل للمستخدم:', uid, '—', err?.message);
           continue;
         } // سرّ خاطئ لهذا المستخدم — جرّب التالي
+
+        // تشخيص (غير مانع): المتوقع ألا توجد جلسة حالية قبل الإنشاء — ظهور
+        // جلسة أو حدث SIGNED_OUT هنا يكشف تدخّلاً خارجياً أثناء الدخول.
+        try {
+          const { data: { session: _cs } } = await supabaseClient.auth.getSession();
+          console.log('[DIAG quickLogin] قبل الإنشاء — جلسة حالية؟', !!_cs, '| isLoggingOut؟', AuthState.isLoggingOut);
+        } catch { /* تجاهل */ }
 
         // نجح الفكّ → أنشئ جلسة Supabase حقيقية من refresh_token المخزّن
         let res = await _establishSessionFromVault(payload, uid);
