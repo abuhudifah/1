@@ -421,6 +421,7 @@ async function _resyncVaults(session) {
   // بيات التوكن بعد تسجيل الخروج ثم الدخول بالبريد (تدوير سلسلة التوكن).
   if (!_activeVaultSecrets[V.SECRET.EQUATION] && V.has(uid, V.SECRET.EQUATION)) {
     const eq = await _recoverEquationSeed(uid);
+    console.log('[DIAG _resyncVaults] استرجاع بذرة المعادلة:', eq ? 'نجح — سيُعاد تشفير الخزنة' : 'فشل/غير موجود (EQ_SEED أو مفتاح الجهاز مفقود)');
     if (eq) {
       try {
         await V.create({ userId: uid, secretType: V.SECRET.EQUATION, secret: eq, payload });
@@ -540,15 +541,17 @@ async function _establishSessionFromVault(payload, userId) {
   let session = null;
   try {
     if (payload.access_token && payload.refresh_token) {
-      const { data } = await supabaseClient.auth.setSession({
+      const { data, error } = await supabaseClient.auth.setSession({
         access_token : payload.access_token,
         refresh_token: payload.refresh_token,
       });
       session = data?.session || null;
+      console.log('[DIAG _establishSession] setSession → session؟', !!session, '— error:', error?.message || 'لا يوجد');
     }
     if (!session && payload.refresh_token) {
-      const { data } = await supabaseClient.auth.refreshSession({ refresh_token: payload.refresh_token });
+      const { data, error } = await supabaseClient.auth.refreshSession({ refresh_token: payload.refresh_token });
       session = data?.session || null;
+      console.log('[DIAG _establishSession] refreshSession → session؟', !!session, '— error:', error?.message || 'لا يوجد');
     }
   } catch (e) {
     console.warn('[vault] setSession/refresh فشل:', e?.message);
@@ -768,14 +771,21 @@ async function quickLogin(equation) {
     // ✅ المسار الجديد: فكّ خزنة المعادلة المشفّرة محليّاً (بلا لمس كلمة المرور)
     const V = _vault();
     if (V?.isSupported()) {
-      for (const uid of _listVaultUserIds(V.SECRET.EQUATION)) {
+      const _uids = _listVaultUserIds(V.SECRET.EQUATION);
+      console.log('[DIAG quickLogin] vault supported. EQUATION vault uids:', _uids);
+      for (const uid of _uids) {
         let payload = null;
         try {
           payload = await V.unlock({ userId: uid, secretType: V.SECRET.EQUATION, secret: normalized });
-        } catch { continue; } // سرّ خاطئ لهذا المستخدم — جرّب التالي
+          console.log('[DIAG quickLogin] unlock نجح للمستخدم:', uid, '— refresh_token موجود؟', !!payload?.refresh_token);
+        } catch (err) {
+          console.log('[DIAG quickLogin] unlock فشل للمستخدم:', uid, '—', err?.message);
+          continue;
+        } // سرّ خاطئ لهذا المستخدم — جرّب التالي
 
         // نجح الفكّ → أنشئ جلسة Supabase حقيقية من refresh_token المخزّن
         const res = await _establishSessionFromVault(payload, uid);
+        console.log('[DIAG quickLogin] _establishSessionFromVault نتيجة ok؟', isOk(res), isOk(res) ? '' : res.error);
         if (isOk(res)) {
           _resetAttempts('quick_login');
           _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
