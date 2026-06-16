@@ -415,6 +415,19 @@ async function _resyncVaults(session) {
       await V.create({ userId: uid, secretType, secret, payload });
     } catch (e) { console.warn(`[vault] resync ${secretType} فشل:`, e?.message); }
   }
+
+  // ملاحظة: خزنة المعادلة/PIN مشفّرة بمفتاح مُشتقّ من السرّ نفسه (PBKDF2)،
+  // لذا لا يمكن إعادة تشفيرها بـ payload محدّث دون معرفة السرّ الصريح.
+  // بعد تسجيل الخروج يكون _activeVaultSecrets فارغاً، فلا تُحدَّث هنا.
+  // المسار الفعلي لتجديد توكن خزنة المعادلة هو quickLogin: عند نجاح الفكّ
+  // تُعاد كتابة الخزنة فوراً بالتوكن المُدوَّر (انظر quickLogin).
+  if (Object.keys(_activeVaultSecrets).length === 0) {
+    try {
+      if (V.has(uid, V.SECRET.EQUATION)) {
+        console.debug('[vault] resync: خزنة المعادلة موجودة لكن السرّ غير متاح في الذاكرة — ستُحدَّث عند الدخول التالي بالمعادلة');
+      }
+    } catch { /* تجاهل */ }
+  }
 }
 
 // الاستماع لتجديد التوكن لإبقاء الخزنة محدّثة طوال الجلسة
