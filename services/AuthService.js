@@ -189,6 +189,9 @@ async function login(email, password) {
       });
     } catch (e) { console.warn('[login] register_device فشل:', e?.message); }
 
+    // ✅ مزامنة خزنة البصمة بالتوكن الجديد (مرونة بعد أي دوران سابق)
+    try { await _resyncVaults(authData.session); } catch { /* تجاهل */ }
+
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
@@ -215,9 +218,17 @@ async function logout(clearLocalData = false) {
     }
 
     sessionStorage.setItem('ahu_intentional_logout', '1'); // ✅ علامة logout صريح
+
+    // ✅ احفظ أحدث توكن في الخزنة قبل الخروج (يمنع تعطّل الدخول السريع بعد الدوران)
+    try {
+      const { data: { session: cur } } = await supabaseClient.auth.getSession();
+      if (cur) await _resyncVaults(cur);
+    } catch { /* تجاهل */ }
+
     // خروج محلّي فقط: لا نُبطل refresh_token على الخادم حتى تبقى الخزنة المشفّرة
     // قادرة على فتح الجلسة بسرعة (المعادلة/البصمة) دون إعادة إدخال كلمة المرور.
     await supabaseClient.auth.signOut({ scope: 'local' });
+    _forgetVaultSecrets(); // مسح أسرار المعرفة من الذاكرة
     clearSession();
 
     AuthState.currentUser   = null;
@@ -381,6 +392,55 @@ async function refreshSession() {
 function _vault() {
   if (typeof SessionVault !== 'undefined') return SessionVault;
   return (typeof window !== 'undefined' && window.SessionVault) || null;
+}
+
+// ── مزامنة توكن الخزنة مع دوران Supabase ──────────────────────────────
+// نُبقي أسرار المعرفة (معادلة/PIN) في الذاكرة أثناء الجلسة فقط، فنعيد
+// تشفير الخزنة بالتوكن الأحدث عند كل تجديد وعند الخروج. البصمة لا تحتاج
+// ذاكرة لأن مفتاحها (bioKey) محفوظ محليّاً في ahu_bio_.
+const _activeVaultSecrets = {}; // { equation: '…', pin: '…' }
+
+function _rememberVaultSecret(secretType, secret) {
+  if (secretType && secret) _activeVaultSecrets[secretType] = secret;
+}
+function _forgetVaultSecrets() {
+  for (const k of Object.keys(_activeVaultSecrets)) delete _activeVaultSecrets[k];
+}
+
+// يعيد إنشاء كل الخزائن المتاحة بالتوكن الجديد (يُبقيها صالحة بعد الدوران)
+async function _resyncVaults(session) {
+  const V = _vault();
+  const uid = AuthState.currentUser?.id;
+  if (!V?.isSupported() || !session?.refresh_token || !uid) return;
+  const payload = _buildVaultPayload(AuthState.currentUser, session);
+
+  // البصمة: مفتاحها متاح في ahu_bio_ → نزامنها دائماً إن وُجدت
+  try {
+    const raw = localStorage.getItem(`ahu_bio_${uid}`);
+    if (raw) {
+      const bio = JSON.parse(raw);
+      if (bio?.bioKey) {
+        await V.create({ userId: uid, secretType: V.SECRET.BIOMETRIC, secret: bio.bioKey, payload });
+      }
+    }
+  } catch (e) { console.warn('[vault] resync بصمة فشل:', e?.message); }
+
+  // المعادلة/PIN: من ذاكرة أسرار الجلسة فقط
+  for (const [secretType, secret] of Object.entries(_activeVaultSecrets)) {
+    try {
+      await V.create({ userId: uid, secretType, secret, payload });
+    } catch (e) { console.warn(`[vault] resync ${secretType} فشل:`, e?.message); }
+  }
+}
+
+// الاستماع لتجديد التوكن لإبقاء الخزنة محدّثة طوال الجلسة
+if (typeof window !== 'undefined') {
+  window.addEventListener('supabase:authChange', (e) => {
+    const { event, session } = e.detail || {};
+    if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') && session) {
+      _resyncVaults(session);
+    }
+  });
 }
 
 // بناء حمولة الخزنة من الملف والجلسة الحالية (refresh_token + لقطة الملف)
@@ -552,6 +612,7 @@ async function enableQuickLogin(equation) {
         // إغلاق المسار القديم: حذف توكن الخادم القديم إن وُجد على هذا الجهاز
         try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
 
+        _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
         saveSession({ ...getSession(), quickLoginEnabled: true });
         console.log('[enableQuickLogin] ✅ تم التفعيل عبر الخزنة المشفّرة');
         return ok(true);
@@ -669,6 +730,7 @@ async function quickLogin(equation) {
         const res = await _establishSessionFromVault(payload, uid);
         if (isOk(res)) {
           _resetAttempts('quick_login');
+          _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
           // إغلاق المسار القديم: حذف توكن الخادم القديم لهذا الجهاز نهائياً
           try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
           // أعد تخزين الخزنة بالتوكن المُدوَّر للاستخدام التالي
@@ -1015,6 +1077,7 @@ async function disableQuickLogin() {
     localStorage.removeItem(`ahu_quick_${uid}`);
     try { localStorage.removeItem(`ahu_bio_${uid}`); } catch { /* تجاهل */ }
     _vault()?.remove(uid); // حذف الخزنة المشفّرة (كل الأنواع: معادلة/PIN/بصمة)
+    _forgetVaultSecrets(); // مسح أسرار الجلسة من الذاكرة
     _qlBfReset(uid); // 3.3: إعادة تعيين عداد المحاولات عند الإلغاء
     AuthState.currentUser.quick_equation_hash = null;
 
