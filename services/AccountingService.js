@@ -801,6 +801,32 @@ async function rejectTransaction(transactionId, reason = '') {
 
     if (typeof db !== 'undefined' && db.isOpen()) {
       await db.transactions.update(transactionId, { approval_status: APPROVAL_STATUS.REJECTED });
+
+      // BND-3.2.3: عكس قيود SUSPENSE_ (وأي قيود مرتبطة) محلياً في Dexie
+      // الخادم نفّذ العكس عبر RPC — هنا نعكس الأثر على account_balances المحلي
+      try {
+        const linkedEntries = await db.account_ledger
+          .filter(e => e.reference_id === transactionId)
+          .toArray();
+        if (linkedEntries.length > 0) {
+          const reversalEntries = linkedEntries.map(e => ({
+            id             : generateUUID(),
+            voucher_number : `REJ_${transactionId.slice(0, 8)}`,
+            date           : getCurrentSaudiDate(),
+            account_id     : e.account_id,
+            debit          : parseFloat(e.credit) || 0,
+            credit         : parseFloat(e.debit)  || 0,
+            description    : `[مرفوض] ${e.description || ''}`,
+            reference_id   : transactionId,
+            created_at     : new Date().toISOString(),
+            sync_status    : SYNC_STATUS.SYNCED,
+          }));
+          await db.account_ledger.bulkPut(reversalEntries);
+          await _updateLocalBalances(reversalEntries);
+        }
+      } catch (rejErr) {
+        console.warn('⚠️ rejectTransaction: فشل عكس القيود محلياً:', rejErr.message);
+      }
     }
 
     window.dispatchEvent(new CustomEvent('accounting:transactionRejected', { detail: { transactionId, reason } }));

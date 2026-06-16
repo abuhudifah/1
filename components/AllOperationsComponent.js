@@ -238,16 +238,16 @@ const AllOperationsComponent = {
             const amt    = Math.round(parseFloat(tx.amount)||0);
             const label  = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
 
-            // التفاصيل حسب نوع العملية
+            // BND-3.5: التفاصيل حسب نوع العملية (محسّن)
             let details = '';
             if (tx.type==='collection' || tx.type==='refund_settlement') {
               const cust = det.debtor_name||tx.customer_name||'—';
               const comp = det.company_name||companies.find(c=>c.id===tx.company_id)?.name||'';
               details = `<div style="font-weight:600;font-size:0.82rem;">${escapeHtml(cust)}</div>
                 ${comp?`<div style="font-size:0.72rem;color:var(--text-muted);">${escapeHtml(comp)}</div>`:''}`;
-            } else if (tx.type==='deposit') {
+            } else if (tx.type==='deposit' || tx.type==='bank_withdrawal') {
               const bank = det.bank_account_name||bankAccounts.find(b=>b.id===tx.bank_account_id)?.name||'—';
-              const co   = det.bank_company_name||'';
+              const co   = det.bank_company_name||companies.find(c=>c.id===tx.company_id)?.name||'';
               details = `<div style="font-weight:600;font-size:0.82rem;">${escapeHtml(bank)}</div>
                 ${co?`<div style="font-size:0.72rem;color:var(--text-muted);">${escapeHtml(co)}</div>`:''}`;
             } else if (tx.type==='expense') {
@@ -255,9 +255,14 @@ const AllOperationsComponent = {
               const expDet  = tx.details||'';
               details = `<div style="font-weight:600;font-size:0.82rem;">${escapeHtml(expName)}</div>
                 ${expDet?`<div style="font-size:0.72rem;color:var(--text-muted);">${escapeHtml(expDet)}</div>`:''}`;
-            } else if (tx.type==='receipt'||tx.type==='delivery') {
-              const comp = det.company_name||companies.find(c=>c.id===tx.company_id)?.name||'—';
-              details = `<div style="font-size:0.82rem;">${escapeHtml(comp)}</div>`;
+            } else if (tx.type==='receipt') {
+              const fromName = users.find(u=>u.id===tx.from_agent_id)?.display_name
+                            || det.agent_name || tx.customer_name || '—';
+              details = `<div style="font-size:0.82rem;">من: <b>${escapeHtml(fromName)}</b></div>`;
+            } else if (tx.type==='delivery') {
+              const toName = users.find(u=>u.id===tx.to_agent_id)?.display_name
+                          || tx.customer_name || '—';
+              details = `<div style="font-size:0.82rem;">إلى: <b>${escapeHtml(toName)}</b></div>`;
             } else {
               details = `<div style="font-size:0.82rem;color:var(--text-muted);">${escapeHtml(tx.details||'—')}</div>`;
             }

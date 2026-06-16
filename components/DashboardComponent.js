@@ -369,25 +369,29 @@ const DashboardComponent = {
       return d.toLocaleDateString('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
     });
 
-    let cData = [], dData = [];
+    // BND-3.1.2: قراءة من account_ledger (AGT_) بدلاً من transactions
+    // مدين = دخل إجمالي للمناديب | دائن = خروج إجمالي من المناديب
+    let debitData = [], creditData = [];
     try {
       if (isOnline()) {
-        // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
-          .from(TABLES.TRANSACTIONS).select('date,type,amount').in('date', days7).eq('is_reversed', false);
-        cData = days7.map(d => (data||[]).filter(t=>t.date===d&&t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
-        dData = days7.map(d => (data||[]).filter(t=>t.date===d&&t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
+          .from(TABLES.ACCOUNT_LEDGER)
+          .select('date,debit,credit')
+          .in('date', days7)
+          .like('account_id', 'AGT_%');
+        debitData  = days7.map(d => (data||[]).filter(e=>e.date===d).reduce((s,e)=>s+Math.round(parseFloat(e.debit) ||0),0));
+        creditData = days7.map(d => (data||[]).filter(e=>e.date===d).reduce((s,e)=>s+Math.round(parseFloat(e.credit)||0),0));
       } else if (typeof db !== 'undefined' && db.isOpen()) {
         const weekStart = days7[0];
         const weekEnd   = days7[days7.length - 1];
-        const allTxs    = await db.transactions
+        const entries   = await db.account_ledger
           .where('date').between(weekStart, weekEnd, true, true)
-          .filter(t => !t.is_reversed)
+          .filter(e => e.account_id && e.account_id.startsWith('AGT_'))
           .toArray();
-        cData = days7.map(d => allTxs.filter(t=>t.date===d&&t.type==='collection').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
-        dData = days7.map(d => allTxs.filter(t=>t.date===d&&t.type==='deposit').reduce((s,t)=>s+Math.round(parseFloat(t.amount)||0),0));
+        debitData  = days7.map(d => entries.filter(e=>e.date===d).reduce((s,e)=>s+Math.round(parseFloat(e.debit) ||0),0));
+        creditData = days7.map(d => entries.filter(e=>e.date===d).reduce((s,e)=>s+Math.round(parseFloat(e.credit)||0),0));
       }
-    } catch { cData = days7.map(()=>0); dData = days7.map(()=>0); }
+    } catch { debitData = days7.map(()=>0); creditData = days7.map(()=>0); }
 
     if (this._chart1) { this._chart1.destroy(); this._chart1 = null; }
     this._chart1 = new Chart(lineCtx, {
@@ -395,8 +399,8 @@ const DashboardComponent = {
       data: {
         labels: days7.map(d => { const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('ar-SA',{weekday:'short',day:'numeric'}); }),
         datasets: [
-          { label:'تحصيل', data:cData, borderColor:'#059669', backgroundColor:'rgba(5,150,105,0.08)', tension:0.4, fill:true, pointRadius:3, pointHoverRadius:5 },
-          { label:'إيداع',  data:dData, borderColor:'#0284c7', backgroundColor:'rgba(2,132,199,0.08)', tension:0.4, fill:true, pointRadius:3, pointHoverRadius:5 },
+          { label:'دخل العهدة (مدين)', data:debitData,  borderColor:'#059669', backgroundColor:'rgba(5,150,105,0.08)', tension:0.4, fill:true, pointRadius:3, pointHoverRadius:5 },
+          { label:'خروج العهدة (دائن)', data:creditData, borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,0.08)', tension:0.4, fill:true, pointRadius:3, pointHoverRadius:5 },
         ],
       },
       options: {
