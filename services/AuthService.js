@@ -234,11 +234,29 @@ async function logout(clearLocalData = false) {
       if (cur) await _resyncVaults(cur);
     } catch { /* تجاهل */ }
 
-    // خروج محلّي فقط: لا نُبطل refresh_token على الخادم حتى تبقى الخزنة المشفّرة
-    // قادرة على فتح الجلسة بسرعة (المعادلة/البصمة) دون إعادة إدخال كلمة المرور.
-    // نستدعي signOut فقط إن وُجدت جلسة — تجنّباً لحدث SIGNED_OUT زائف بلا داعٍ.
+    // ════════════════════════════════════════════════════════════════
+    // FIX-RCA: scope:'local' كان يُبطل refresh_token على الخادم فيُعطّل الدخول السريع.
+    // الحل:
+    //   1) scope:'others'  → يُبطل جلسات الأجهزة الأخرى (أمان)، ويُبقي توكن
+    //      الجهاز الحالي صالحاً على الخادم ← تبقى الخزنة قادرة على فتح الجلسة.
+    //   2) _removeSession() → يُنظّف الذاكرة الداخلية لـ GoTrue ويوقف
+    //      مؤقّت التجديد التلقائي (auto-refresh) وتخزين localStorage،
+    //      دون أي طلب API يُبطل التوكن.
+    // ════════════════════════════════════════════════════════════════
     if (hasSession) {
-      await supabaseClient.auth.signOut({ scope: 'local' });
+      // 1) أبطل جلسات الأجهزة الأخرى
+      try { await supabaseClient.auth.signOut({ scope: 'others' }); } catch { /* تجاهل */ }
+      // 2) نظّف الحالة المحلية لـ GoTrue (لا يُبطل التوكن على الخادم)
+      try {
+        if (typeof supabaseClient.auth._removeSession === 'function') {
+          await supabaseClient.auth._removeSession();
+        } else {
+          // احتياط: أزل مفاتيح Supabase يدوياً
+          Object.keys(localStorage)
+            .filter(k => /^sb-.+-auth-token/.test(k))
+            .forEach(k => { try { localStorage.removeItem(k); } catch { /* تجاهل */ } });
+        }
+      } catch { /* تجاهل */ }
     }
 
     // ✅ التنظيف المحلي يحدث دائماً (يحمي خروج وضع Offline بلا JWT)
@@ -410,9 +428,12 @@ function _forgetVaultSecrets() {
 // يعيد إنشاء كل الخزائن المتاحة بالتوكن الجديد (يُبقيها صالحة بعد الدوران)
 async function _resyncVaults(session) {
   const V = _vault();
-  const uid = AuthState.currentUser?.id;
+  // نستخدم uid من AuthState أو من الجلسة نفسها (يسمح بالمزامنة بعد الخروج
+  // إن دوّر GoTrue التوكن تلقائياً بعد signOut({ scope: 'others' }))
+  const uid = AuthState.currentUser?.id || session?.user?.id;
   if (!V?.isSupported() || !session?.refresh_token || !uid) return;
-  const payload = _buildVaultPayload(AuthState.currentUser, session);
+  const profile = AuthState.currentUser || null;
+  const payload = _buildVaultPayload(profile || { id: uid }, session);
 
   // البصمة: مفتاحها متاح في ahu_bio_ → نزامنها دائماً إن وُجدت
   try {
