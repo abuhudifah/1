@@ -194,14 +194,30 @@ const SyncEngine = {
 
   /**
    * يُشغَّل عند عودة الاتصال أو بطلب يدوي.
-   * يُظهر Toast بنتيجة المزامنة.
+   * Phase 3: يُفوَّض لـ OutboxService.processOutbox إن كان محمّلاً.
    *
    * @returns {Promise<{ok: boolean, data?: *, error?: string}>}
    */
   async startAutoSync() {
     if (!isOnline()) return err('لا يوجد اتصال بالإنترنت');
 
-    console.log('🔄 SyncEngine.startAutoSync: بدء المزامنة التلقائية...');
+    // Phase 3: تفويض لـ OutboxService (id===idempotency_key + 23505=نجاح)
+    if (typeof OutboxService !== 'undefined') {
+      console.log('🔄 SyncEngine.startAutoSync: تفويض لـ OutboxService...');
+      const result = await OutboxService.processOutbox();
+      if (isOk(result) && result.data.total > 0 && typeof showToast === 'function') {
+        const { processed, failed, total } = result.data;
+        showToast(
+          `تمت مزامنة ${processed} عملية بنجاح` +
+          (failed > 0 ? ` (${failed} فاشلة)` : ''),
+          failed > 0 ? 'warning' : 'success'
+        );
+      }
+      return result;
+    }
+
+    // LEGACY: To be removed in Phase 6
+    console.log('🔄 SyncEngine.startAutoSync: بدء المزامنة التلقائية (legacy)...');
 
     const result = await this.syncAll();
 

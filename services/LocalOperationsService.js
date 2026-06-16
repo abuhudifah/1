@@ -89,28 +89,25 @@ const LocalOperationsService = {
     }
 
     // 3. بناء السجل المحلي
+    //    Phase 3: id === idempotency_key (UUID واحد لكليهما — لا TEMP_ID)
+    const _opId = operation.id || crypto.randomUUID();
     const localOp = {
       ...operation,
-      id               : operation.id || crypto.randomUUID(),
-      idempotency_key  : crypto.randomUUID(),     // فريد لمنع التكرار
-      local_timestamp  : new Date().toISOString(), // وقت الجهاز
+      id               : _opId,
+      idempotency_key  : _opId,                    // ← id === idempotency_key
+      local_timestamp  : new Date().toISOString(),
       device_id        : getDeviceToken(),
       sync_status      : SYNC_STATUS.PENDING,
       created_at       : operation.created_at || new Date().toISOString(),
     };
 
     try {
-      // 4. الحفظ في Dexie (جدول transactions الموحَّد)
+      // 4. الحفظ في Dexie (جدول transactions الموحَّد) — Dexie أولاً دائماً
       await db.transactions.add(localOp);
 
-      // 5. إضافة لطابور المزامنة (سيعمل عند عودة الاتصال)
+      // 5. تسجيل في طابور المزامنة (سيُعالَج بـ OutboxService.processOutbox عند الاتصال)
       if (typeof SyncQueue !== 'undefined') {
-        await SyncQueue.add(
-          SYNC_ACTIONS.CREATE,
-          TABLES.TRANSACTIONS,
-          localOp.id,
-          localOp
-        );
+        await SyncQueue.add(SYNC_ACTIONS.CREATE, TABLES.TRANSACTIONS, localOp.id, localOp);
       }
 
       window.dispatchEvent(new CustomEvent('app:localOpSaved'));
