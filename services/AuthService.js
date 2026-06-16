@@ -635,6 +635,7 @@ async function _isDeviceRevoked(deviceId) {
 // إنشاء جلسة Supabase حقيقية من حمولة خزنة مفكوكة (مشترك: معادلة/بصمة).
 // بلا أي لمس لكلمة المرور — نستعيد الجلسة من refresh_token المخزّن فقط.
 async function _establishSessionFromVault(payload, userId) {
+  console.log('[DIAG _establishSession] بدء — refresh_token في الحمولة؟', !!payload?.refresh_token, '| access_token؟', !!payload?.access_token);
   let session = null;
   try {
     if (payload.access_token && payload.refresh_token) {
@@ -872,6 +873,13 @@ async function quickLogin(equation) {
         try {
           payload = await V.unlock({ userId: uid, secretType: V.SECRET.EQUATION, secret: normalized });
         } catch { continue; } // سرّ خاطئ لهذا المستخدم — جرّب التالي
+
+        // تشخيص (غير مانع): المتوقع ألا توجد جلسة حالية قبل الإنشاء — ظهور
+        // جلسة أو حدث SIGNED_OUT هنا يكشف تدخّلاً خارجياً أثناء الدخول.
+        try {
+          const { data: { session: _cs } } = await supabaseClient.auth.getSession();
+          console.log('[DIAG quickLogin] قبل الإنشاء — جلسة حالية؟', !!_cs, '| isLoggingOut؟', AuthState.isLoggingOut);
+        } catch { /* تجاهل */ }
 
         // نجح الفكّ → أنشئ جلسة Supabase حقيقية من refresh_token المخزّن
         let res = await _establishSessionFromVault(payload, uid);
