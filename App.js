@@ -528,7 +528,11 @@ async function _navigateTo(tabId) {
   }
 
   if (!AuthService.canAccessTab(tabId)) {
-    showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
+    if (AuthState.isOffline) {
+      showToast('هذا التبويب غير متاح في وضع Offline — أدخل بياناتك واتصل بالإنترنت لمزامنتها', 'warning');
+    } else {
+      showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
+    }
     return;
   }
 
@@ -797,12 +801,16 @@ async function _handleReconnectionConfirm() {
  * @param {boolean} isSyncing - هل المزامنة جارية الآن
  * @returns {string}
  */
-function _renderSyncWidgetHTML(count, isSyncing) {
+function _renderSyncWidgetHTML(count, isSyncing, failedCount = 0) {
   if (isSyncing) {
     return `<span class="sqw-dot"></span><span>جاري المزامنة...</span>
             <button class="sqw-btn" disabled>🔄</button>`;
   }
-  return `<span class="sqw-dot"></span><span>⏳ ${count} عملية معلقة</span>
+  const parts = [];
+  if (count > 0)       parts.push(`⏳ ${count} معلقة`);
+  if (failedCount > 0) parts.push(`❌ ${failedCount} فاشلة`);
+  const label = parts.length ? parts.join(' · ') : '⏳ عملية معلقة';
+  return `<span class="sqw-dot"></span><span>${label}</span>
           <button id="sqw-sync-btn" class="sqw-btn">مزامنة الآن</button>`;
 }
 
@@ -815,14 +823,25 @@ async function _updateSyncWidget() {
     ? await LocalOperationsService.getPendingCount().catch(() => 0)
     : 0;
 
-  if (count === 0) {
+  // عمليات فاشلة: معلقة ولديها رسالة خطأ مسجّلة
+  let failedCount = 0;
+  try {
+    if (typeof db !== 'undefined' && db.isOpen()) {
+      failedCount = await db.transactions
+        .where('sync_status').equals(SYNC_STATUS.PENDING)
+        .filter(tx => !!tx.error_message)
+        .count();
+    }
+  } catch { /* تجاهل */ }
+
+  if (count === 0 && failedCount === 0) {
     pill.style.display = 'none';
     return;
   }
 
-  pill.className     = 'sqw-pill';
+  pill.className     = 'sqw-pill' + (failedCount > 0 ? ' sqw-pill--has-failed' : '');
   pill.style.display = 'flex';
-  pill.innerHTML     = _renderSyncWidgetHTML(count, false);
+  pill.innerHTML     = _renderSyncWidgetHTML(count, false, failedCount);
 
   document.getElementById('sqw-sync-btn')
     ?.addEventListener('click', _handleManualSync, { once: true });

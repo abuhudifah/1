@@ -1202,7 +1202,7 @@ const DataEntryComponent = {
     frag.appendChild(recentWrap);
 
     const refreshBeneficiariesList = () => {
-      const beneficiaries = AppStore.getState('beneficiaries') || [];
+      const beneficiaries = AppStore.getState('beneficiaryUsers') || [];
       recentList.innerHTML = '';
       if (beneficiaries.length === 0) {
         recentList.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);">لا يوجد مستفيدون محفوظون</span>';
@@ -1307,6 +1307,7 @@ const DataEntryComponent = {
     }
 
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+    if (!agentId) { showToast('يجب تسجيل الدخول أولاً', 'error'); return; }
     const btn     = document.getElementById('col-save-btn');
     const restore = setButtonLoading(btn);
 
@@ -1357,6 +1358,7 @@ const DataEntryComponent = {
 
     const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+    if (!agentId) { showToast('يجب تسجيل الدخول أولاً', 'error'); return; }
     const btn     = document.getElementById('wd-save-btn');
     const restore = setButtonLoading(btn);
 
@@ -1389,6 +1391,7 @@ const DataEntryComponent = {
 
     const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+    if (!agentId) { showToast('يجب تسجيل الدخول أولاً', 'error'); return; }
 
     if (bank) {
       const prevTotal = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
@@ -1444,6 +1447,7 @@ const DataEntryComponent = {
     const rounded = roundAmount(amount);
     const txDate  = AppStore.getState('selectedDate') || getCurrentSaudiDate();
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+    if (!agentId) { showToast('يجب تسجيل الدخول أولاً', 'error'); return; }
     const btn     = document.getElementById('exp-save-btn');
     const restore = setButtonLoading(btn);
 
@@ -1482,8 +1486,9 @@ const DataEntryComponent = {
 
     try {
       const myUserId = AuthService.getCurrentUserId();
+      if (!myUserId) { restore(); return; }
       const myName = AuthService.getCurrentUser()?.display_name || 'مستخدم';
-      const recipient = AppStore.getState('users').find(u => u.id === recipientId);
+      const recipient = (AppStore.getState('users') || []).find(u => u.id === recipientId);
       const recipientName = recipient?.display_name || 'المستخدم الآخر';
 
       if (saveBeneficiary && mode === 'transfer') {
@@ -1532,7 +1537,7 @@ const DataEntryComponent = {
           body     : `قام ${myName} بتحويل ${formatCurrency(amount)} إلى حسابك مباشرةً. العملية ${txStatus}.`,
           type     : 'success',
           target   : JSON.stringify([recipientId]),
-          metadata : { transaction_id: result.data.transaction.id, type: 'direct_transfer', amount },
+          metadata : { transaction_id: result.data?.transaction?.id, type: 'direct_transfer', amount },
           sender_id: myUserId,
           read_by  : '[]',
           hidden_by: '[]',

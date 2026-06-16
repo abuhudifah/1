@@ -287,9 +287,11 @@ const AllOperationsComponent = {
               <td>
                 ${tx.is_reversed
                   ? '<span class="badge badge-danger" style="font-size:0.72rem;">مُعكوس</span>'
-                  : tx.sync_status===SYNC_STATUS.PENDING
-                    ? '<span class="sync-dot pending" title="معلق مزامنة" style="width:10px;height:10px;"></span>'
-                    : '<span class="sync-dot synced" title="مزامَن" style="width:10px;height:10px;"></span>'}
+                  : tx.sync_status===SYNC_STATUS.PENDING && tx.error_message
+                    ? '<span style="font-size:0.72rem;color:var(--danger);font-weight:700;" title="فشل المزامنة — سيُعاد المحاولة تلقائياً">❌ فشل</span>'
+                    : tx.sync_status===SYNC_STATUS.PENDING
+                      ? '<span class="sync-dot pending" title="معلق مزامنة" style="width:10px;height:10px;"></span>'
+                      : '<span class="sync-dot synced" title="مزامَن" style="width:10px;height:10px;"></span>'}
               </td>
               <td style="white-space:nowrap;">
                 ${showActions ? `

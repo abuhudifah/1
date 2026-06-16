@@ -343,7 +343,8 @@ const DailySummaryComponent = {
     const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'🔄'}[tx.type]||'📋';
     const isToday  = tx.date===getCurrentSaudiDate();
     const canEdit  = AuthService.isAdmin()||isToday;
-    const isPending       = tx.sync_status===SYNC_STATUS.PENDING;
+    const isFailed        = tx.sync_status===SYNC_STATUS.PENDING && !!tx.error_message;
+    const isPending       = tx.sync_status===SYNC_STATUS.PENDING && !tx.error_message;
     const isApprovalPending = tx.approval_status === 'pending';
     const isRejected      = tx.approval_status === 'rejected';
     const agent    = users.find(u=>u.id===tx.agent_id);
@@ -365,7 +366,8 @@ const DailySummaryComponent = {
               ${tx.is_reversed?'<span class="badge badge-danger" style="font-size:0.68rem;">مُعكوس</span>':''}
               ${isApprovalPending?'<span class="badge" style="font-size:0.68rem;background:rgba(217,119,6,0.15);color:var(--warning);">⏳ بانتظار الموافقة</span>':''}
               ${isRejected?'<span class="badge badge-danger" style="font-size:0.68rem;">مرفوض</span>':''}
-              ${isPending?'<span class="sync-dot pending" title="معلق مزامنة"></span>':''}
+              ${isFailed  ? '<span style="font-size:0.7rem;color:var(--danger);font-weight:700;" title="فشل المزامنة — سيُعاد المحاولة تلقائياً">❌</span>' : ''}
+              ${isPending ? '<span class="sync-dot pending" title="معلق مزامنة — بانتظار الاتصال"></span>' : ''}
             </div>
             <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
               ${tx.customer_name?escapeHtml(tx.customer_name)+' · ':''}
