@@ -595,7 +595,6 @@ async function enableQuickLogin(equation) {
         // إغلاق المسار القديم: حذف توكن الخادم القديم إن وُجد على هذا الجهاز
         try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
 
-        _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
         saveSession({ ...getSession(), quickLoginEnabled: true });
         console.log('[enableQuickLogin] ✅ تم التفعيل عبر الخزنة المشفّرة');
         return ok(true);
@@ -713,7 +712,6 @@ async function quickLogin(equation) {
         const res = await _establishSessionFromVault(payload, uid);
         if (isOk(res)) {
           _resetAttempts('quick_login');
-          _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
           // إغلاق المسار القديم: حذف توكن الخادم القديم لهذا الجهاز نهائياً
           try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
           // أعد تخزين الخزنة بالتوكن المُدوَّر للاستخدام التالي
