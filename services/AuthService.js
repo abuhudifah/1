@@ -170,6 +170,10 @@ async function login(email, password) {
 
     await _setupDeviceToken(profile.id);
 
+    // ✅ Force Refresh: نجدّد خزنة الدخول السريع فوراً بتوكن البريد الصالح قبل
+    //    حفظ الجلسة — هذا يُصلح أي خزنة تالفة/بائتة تلقائياً عند أول دخول بالبريد.
+    try { await forceResyncVaults(profile, authData.session); } catch { /* تجاهل */ }
+
     saveSession({
       userId      : profile.id,
       role        : profile.role,
@@ -188,9 +192,6 @@ async function login(email, password) {
         p_user_agent: (typeof navigator !== 'undefined' ? navigator.userAgent : null),
       });
     } catch (e) { console.warn('[login] register_device فشل:', e?.message); }
-
-    // ✅ مزامنة خزنة البصمة بالتوكن الجديد (مرونة بعد أي دوران سابق)
-    try { await _resyncVaults(authData.session); } catch { /* تجاهل */ }
 
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
@@ -524,6 +525,67 @@ async function _recoverEquationSeed(uid) {
   } catch { return null; }
 }
 
+// ── Force Refresh Strategy ───────────────────────────────────────────────
+// تجديد استباقي قسري للخزائن عند أي دخول ناجح بالبريد: نضمن أن خزنة المعادلة
+// (والبصمة) تحمل دائماً refresh_token صالحاً وحديثاً، فلا تبقى تالفة. يأخذ
+// userProfile و session صراحةً (لا يعتمد على AuthState فقط) ويُعيد عدد الخزائن
+// التي جُدِّدت بنجاح.
+async function forceResyncVaults(userProfile, session) {
+  const V = _vault();
+  const uid = userProfile?.id;
+  if (!V?.isSupported() || !session?.refresh_token || !uid) return 0;
+
+  const payload = _buildVaultPayload(userProfile, session);
+  let refreshed = 0;
+
+  // 1) البصمة: مفتاحها (bioKey) محفوظ محليّاً → نجدّدها دائماً إن وُجدت
+  try {
+    const raw = localStorage.getItem(`ahu_bio_${uid}`);
+    if (raw) {
+      const bio = JSON.parse(raw);
+      if (bio?.bioKey) {
+        await V.create({ userId: uid, secretType: V.SECRET.BIOMETRIC, secret: bio.bioKey, payload });
+        refreshed++;
+      }
+    }
+  } catch (e) { console.warn('[vault] forceResync بصمة فشل:', e?.message); }
+
+  // 2) المعادلة: نستعيد السرّ من الذاكرة أولاً، وإلا من بذرة الاسترجاع EQ_SEED
+  let eq = _activeVaultSecrets[V.SECRET.EQUATION] || null;
+  if (!eq) eq = await _recoverEquationSeed(uid);
+  if (eq) {
+    try {
+      await V.create({ userId: uid, secretType: V.SECRET.EQUATION, secret: eq, payload });
+      await _storeEquationSeed(uid, eq);              // يضمن وجود البذرة (هجرة القدامى)
+      _rememberVaultSecret(V.SECRET.EQUATION, eq);    // لمزامنة الدوران لاحقاً
+      refreshed++;
+      console.log('[vault] forceResync: خزنة المعادلة جُدِّدت بتوكن صالح ✅');
+    } catch (e) { console.warn('[vault] forceResync معادلة فشل:', e?.message); }
+  } else if (userProfile?.quick_equation_hash) {
+    // مستخدم قديم: المعادلة مُفعّلة (hash موجود) لكن لا بذرة ولا سرّ في الذاكرة.
+    // لا يمكن إعادة تشفير الخزنة دون المعادلة الصريحة → يلزم إعادة تفعيل مرة واحدة.
+    console.warn('[vault] forceResync: المعادلة مُفعّلة بلا بذرة استرجاع — يلزم إعادة التفعيل مرة واحدة لإصلاح الخزنة');
+  }
+
+  return refreshed;
+}
+
+// On-the-fly: محاولة استرداد توكن صالح من خزنة شقيقة (البصمة) عند رفض توكن المعادلة.
+// خزنة البصمة تُجدَّد على كل دخول/تجديد (bioKey محلي)، فقد تحمل توكناً أحدث.
+async function _unlockSiblingBiometricPayload(uid) {
+  const V = _vault();
+  if (!V?.isSupported() || !uid || !V.has(uid, V.SECRET.BIOMETRIC)) return null;
+  let bioKey = null;
+  try {
+    const raw = localStorage.getItem(`ahu_bio_${uid}`);
+    if (raw) bioKey = JSON.parse(raw)?.bioKey || null;
+  } catch { /* تجاهل */ }
+  if (!bioKey) return null;
+  try {
+    return await V.unlock({ userId: uid, secretType: V.SECRET.BIOMETRIC, secret: bioKey });
+  } catch { return null; }
+}
+
 // التحقق أن الجهاز غير ملغى عن بُعد
 async function _isDeviceRevoked(deviceId) {
   try {
@@ -784,14 +846,27 @@ async function quickLogin(equation) {
         } // سرّ خاطئ لهذا المستخدم — جرّب التالي
 
         // نجح الفكّ → أنشئ جلسة Supabase حقيقية من refresh_token المخزّن
-        const res = await _establishSessionFromVault(payload, uid);
+        let res = await _establishSessionFromVault(payload, uid);
         console.log('[DIAG quickLogin] _establishSessionFromVault نتيجة ok؟', isOk(res), isOk(res) ? '' : res.error);
+
+        // On-the-fly Recovery: رفض الخادم لتوكن المعادلة؟ جرّب توكناً أحدث من خزنة
+        // البصمة الشقيقة (تُجدَّد على كل دخول، فقد تحمل توكناً صالحاً).
+        if (!isOk(res)) {
+          const sibPayload = await _unlockSiblingBiometricPayload(uid);
+          if (sibPayload?.refresh_token) {
+            console.log('[DIAG quickLogin] محاولة استرداد عبر خزنة البصمة الشقيقة...');
+            const res2 = await _establishSessionFromVault(sibPayload, uid);
+            console.log('[DIAG quickLogin] استرداد البصمة الشقيقة نتيجة ok؟', isOk(res2));
+            if (isOk(res2)) res = res2; // نجح الاسترداد → أكمل الدخول
+          }
+        }
+
         if (isOk(res)) {
           _resetAttempts('quick_login');
           _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
           // إغلاق المسار القديم: حذف توكن الخادم القديم لهذا الجهاز نهائياً
           try { localStorage.removeItem(`ahu_quick_${uid}`); } catch { /* تجاهل */ }
-          // أعد تخزين الخزنة بالتوكن المُدوَّر للاستخدام التالي + جدّد بذرة الاسترجاع
+          // أعد تشفير خزنة المعادلة بالتوكن الصالح الحالي + جدّد بذرة الاسترجاع
           try {
             const { data: { session: cur } } = await supabaseClient.auth.getSession();
             if (cur) {
