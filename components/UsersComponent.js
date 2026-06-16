@@ -78,7 +78,7 @@ const UsersComponent = {
     // الجدول
     const tableWrap = document.createElement('div');
     tableWrap.id = 'uc-table-wrap';
-    tableWrap.innerHTML = this._skeleton(5);
+    tableWrap.innerHTML = renderSkeleton('card', 5);
     wrap.appendChild(tableWrap);
 
     // المودال
@@ -240,7 +240,7 @@ const UsersComponent = {
                   </span>
                 </td>
                 <td style="padding:12px;font-size:.82rem;color:var(--text-secondary);">
-                  ${u.last_login ? this._timeAgo(u.last_login) : '<span style="opacity:.45;">لم يسجّل بعد</span>'}
+                  ${u.last_login ? timeAgo(u.last_login) : '<span style="opacity:.45;">لم يسجّل بعد</span>'}
                 </td>
                 <td style="padding:12px;">
                   <button class="uc-toggle-btn"
@@ -449,7 +449,7 @@ const UsersComponent = {
 
     const savedTabs = Array.isArray(user?.allowed_tabs)
       ? user.allowed_tabs
-      : this._safeJson(user?.allowed_tabs, []);
+      : safeJsonParse(user?.allowed_tabs, []);
     box.querySelectorAll('.uc-tab-cb').forEach(cb => { cb.checked = savedTabs.includes(cb.value); });
 
     if (user?.role === ROLES.AGENT) {
@@ -628,9 +628,9 @@ const UsersComponent = {
   // _loadAgentPermissionLists — يملأ قوائم الشركات/البنوك/المستخدمين
   // ────────────────────────────────────────────────────────────
   async _loadAgentPermissionLists(box, editUser = null) {
-    const savedCompanies = editUser ? this._safeJson(editUser.allowed_companies, []) : [];
-    const savedBanks     = editUser ? this._safeJson(editUser.allowed_banks,     []) : [];
-    const savedUsers     = editUser ? this._safeJson(editUser.allowed_users,     []) : [];
+    const savedCompanies = editUser ? safeJsonParse(editUser.allowed_companies, []) : [];
+    const savedBanks     = editUser ? safeJsonParse(editUser.allowed_banks,     []) : [];
+    const savedUsers     = editUser ? safeJsonParse(editUser.allowed_users,     []) : [];
 
     const [companiesRes, banksRes] = await Promise.allSettled([
       supabaseClient.from(TABLES.COMPANIES).select('id,name').order('name').limit(QUERY_LIMITS.COMPANIES),
@@ -746,25 +746,6 @@ const UsersComponent = {
     if (!el) return;
     el.textContent = msg;
     el.style.display = msg ? 'block' : 'none';
-  },
-  _safeJson(v, fb) {
-    if (Array.isArray(v)) return v;
-    try { return JSON.parse(v || '[]'); } catch { return fb; }
-  },
-  _skeleton(n) {
-    return Array(n).fill(0).map(() =>
-      `<div class="skeleton" style="height:62px;border-radius:10px;margin-bottom:8px;"></div>`
-    ).join('');
-  },
-  _timeAgo(iso) {
-    try {
-      const d = Math.floor((Date.now() - new Date(iso)) / 1000);
-      if (d < 60)     return 'الآن';
-      if (d < 3600)   return `منذ ${Math.floor(d/60)} دقيقة`;
-      if (d < 86400)  return `منذ ${Math.floor(d/3600)} ساعة`;
-      if (d < 2592000)return `منذ ${Math.floor(d/86400)} يوم`;
-      return `منذ ${Math.floor(d/2592000)} شهر`;
-    } catch { return '—'; }
   },
 };
 

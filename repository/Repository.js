@@ -624,7 +624,8 @@ const repo = {
       if (!pending.length) return ok({ synced: 0, failed: 0 });
 
       const pkColumn = _getPKColumn(tableName);
-      const realRecords = pending.filter(r => !isTempId(r[pkColumn] || r.id));
+      // Phase 6: لا TEMP_ID — كل المعرفات حقيقية (UUID) منذ المرحلة 3
+      const realRecords = pending;
       if (!realRecords.length) return ok({ synced: 0, failed: pending.length });
 
       let synced = 0, failed = 0;

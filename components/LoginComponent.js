@@ -2284,11 +2284,11 @@ const LoginComponent = {
     if (rEl)    rEl.style.color = '#60a5fa';
     if (statEl) statEl.textContent = '⚡ جاري التحقق...';
 
-    console.log(`[LoginComponent v5] _tryQuickLogin: eq="${equation}"`);
+    console.log('[LoginComponent v5] _tryQuickLogin: بدء التحقق');
 
     try {
       const res = await AuthService.quickLogin(equation);
-      console.log('[LoginComponent v5] quickLogin result:', JSON.stringify(res));
+      console.log('[LoginComponent v5] quickLogin result ok:', isOk(res));
 
       if (isOk(res)) {
         if (rEl)    { rEl.style.color = '#10b981'; rEl.textContent = '✓'; }

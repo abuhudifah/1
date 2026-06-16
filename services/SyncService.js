@@ -19,7 +19,6 @@ function initSyncService() {
   window.addEventListener('app:onlineStatusChange', _onOnlineStatusChange);
   window.addEventListener('sync:queueCountChanged', _onQueueCountChanged);
   window.addEventListener('sync:conflict',          _onConflictDetected);
-  window.addEventListener('sync:tempIdReplaced',    _onTempIdReplaced);
 
   if (isOnline()) {
     setTimeout(() => _triggerSync('startup'), 2000);
@@ -52,21 +51,13 @@ async function _triggerSync(reason = 'manual') {
   try {
     console.log(`🔄 SyncService: مزامنة (${reason})...`);
 
-    // Phase 3: OutboxService.processOutbox — id===idempotency_key + 23505=نجاح + FIFO
+    // Phase 6: OutboxService هو المحرك الوحيد — id===idempotency_key + 23505=نجاح + FIFO
     if (typeof OutboxService !== 'undefined') {
       const outboxResult = await OutboxService.processOutbox();
       if (isOk(outboxResult)) {
         const { processed, failed } = outboxResult.data;
         if (processed > 0 || failed > 0)
           console.log(`   ✓ Outbox: ${processed} ناجحة, ${failed} فاشلة`);
-      }
-    } else {
-      // LEGACY: To be removed in Phase 6
-      const queueResult = await SyncQueue.processQueue();
-      if (isOk(queueResult)) {
-        const { processed, failed } = queueResult.data;
-        if (processed > 0 || failed > 0)
-          console.log(`   ✓ طابور: ${processed} ناجحة, ${failed} فاشلة`);
       }
     }
 
@@ -240,10 +231,6 @@ function _onConflictDetected(event) {
   window.dispatchEvent(new CustomEvent('store:conflictAdded', { detail: { item, reason } }));
 }
 
-function _onTempIdReplaced(event) {
-  window.dispatchEvent(new CustomEvent('store:tempIdReplaced', { detail: event.detail }));
-}
-
 function _notifyRunning(running) {
   window.dispatchEvent(new CustomEvent('store:syncRunning', { detail: { running, lastSyncAt: _syncState.lastSyncAt } }));
 }
@@ -282,7 +269,6 @@ function stopSyncService() {
   window.removeEventListener('app:onlineStatusChange', _onOnlineStatusChange);
   window.removeEventListener('sync:queueCountChanged', _onQueueCountChanged);
   window.removeEventListener('sync:conflict',          _onConflictDetected);
-  window.removeEventListener('sync:tempIdReplaced',    _onTempIdReplaced);
   _syncState.isRunning = false;
   _syncState.failedNotified.clear();
   console.log('🛑 SyncService: تم الإيقاف');

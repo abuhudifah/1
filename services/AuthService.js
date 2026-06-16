@@ -536,7 +536,7 @@ async function _establishSessionFromVault(payload, userId) {
 }
 
 async function enableQuickLogin(equation) {
-  console.log('[enableQuickLogin] بدء التفعيل — equation:', equation);
+  console.log('[enableQuickLogin] بدء التفعيل');
   try {
     if (!AuthState.currentUser) {
       console.error('[enableQuickLogin] فشل: لا يوجد مستخدم في AuthState.currentUser');
@@ -545,7 +545,6 @@ async function enableQuickLogin(equation) {
 
     // 3.1: تطبيع المعادلة (إزالة المسافات) قبل الهاش
     const normalized = normalizeEquation(equation);
-    console.log('[enableQuickLogin] normalized:', normalized);
     if (!normalized) {
       console.error('[enableQuickLogin] فشل: المعادلة فارغة بعد التطبيع');
       return err('المعادلة فارغة');
@@ -554,9 +553,7 @@ async function enableQuickLogin(equation) {
     try {
       const parser = new window.exprEval.Parser();
       const result = parser.evaluate(normalized);
-      console.log('[enableQuickLogin] نتيجة المعادلة:', result);
       if (typeof result !== 'number' || !isFinite(result)) {
-        console.error('[enableQuickLogin] فشل: النتيجة ليست رقماً صحيحاً، القيمة:', result);
         return err('المعادلة لا تُنتج رقماً صحيحاً');
       }
     } catch (e) {
@@ -607,7 +604,6 @@ async function enableQuickLogin(equation) {
 
     // ── المسار القديم (احتياطي لمتصفّحات بلا WebCrypto) ──────────────────
     const hash = await hashSHA256(normalized, uid);
-    console.log('[enableQuickLogin] hash:', hash, '| uid:', uid);
 
     // ✅ إنشاء Token من الخادم — لا نخزن كلمة المرور إطلاقاً
     // ملاحظة: إدارة المعادلة عملية خادم تتطلب اتصالاً حقيقياً + جلسة JWT صالحة،
@@ -620,7 +616,6 @@ async function enableQuickLogin(equation) {
 
     const expiresAt  = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوماً
     const deviceId   = getDeviceToken();
-    console.log('[enableQuickLogin] deviceId:', deviceId, '| expiresAt:', expiresAt.toISOString());
 
     if (!deviceId) {
       console.error('[enableQuickLogin] فشل: getDeviceToken() أرجع null/undefined');
@@ -636,7 +631,6 @@ async function enableQuickLogin(equation) {
         p_expires_at   : expiresAt.toISOString(),
       }
     );
-    console.log('[enableQuickLogin] RPC create_quick_login_token → token:', token, '| error:', tokenError);
 
     if (tokenError || !token) {
       console.error('[enableQuickLogin] فشل إنشاء Token:', tokenError);

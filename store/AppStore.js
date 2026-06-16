@@ -462,11 +462,6 @@ window.addEventListener('store:conflictAdded', () => {
   setState({ conflictsCount: _state.conflictsCount + 1 }, 'store:conflictsChanged');
 });
 
-window.addEventListener('store:tempIdReplaced', (e) => {
-  const { tempId, realId } = e.detail;
-  setState({ transactions: _state.transactions.map(tx => tx.id === tempId ? { ...tx, id: realId, sync_status: SYNC_STATUS.SYNCED } : tx) });
-});
-
 window.addEventListener('accounting:transactionCreated', (e) => {
   const { transaction: tx } = e.detail;
   if (tx.date === _state.selectedDate && (!_state.selectedAgentId || _state.selectedAgentId === tx.agent_id)) {
