@@ -694,10 +694,6 @@ const BankAccountsComponent = {
             <option value="23:00:00">الحادية عشرة مساءً (23:00)</option>
           </select>
         </div>
-        <div class="form-group" id="bk-opening-bal-group" style="grid-column:1/-1;">
-          <label class="form-label">الرصيد الافتتاحي (رصيد الحساب الحالي قبل البدء بالنظام)</label>
-          <input id="bk-opening-bal" type="number" class="form-control" placeholder="0" min="0">
-        </div>
       </div>
       <div id="bk-error" class="form-error"></div>
       <div style="display:flex;gap:10px;margin-top:16px;">
@@ -727,10 +723,6 @@ const BankAccountsComponent = {
     box.querySelector('#bk-ceiling').value     = bank?.financial_ceiling||'';
     box.querySelector('#bk-reset').value       = bank?.reset_time||'00:00:00';
     box.querySelector('#bk-error').textContent = '';
-    /* الرصيد الافتتاحي — يُعرض فقط عند الإنشاء، لا عند التعديل */
-    const openBalGroup = box.querySelector('#bk-opening-bal-group');
-    if (openBalGroup) openBalGroup.style.display = bank ? 'none' : '';
-    box.querySelector('#bk-opening-bal').value = '';
     this._modal.style.display = 'flex';
   },
 
@@ -745,7 +737,6 @@ const BankAccountsComponent = {
     if (!name)             { errEl.textContent='اسم الحساب مطلوب'; return; }
     if (!ceiling||ceiling<1){ errEl.textContent='السقف المالي مطلوب'; return; }
 
-    const openingBal = parseFloat(box.querySelector('#bk-opening-bal').value) || 0;
     const data = {
       name, financial_ceiling: ceiling,
       account_number : box.querySelector('#bk-acc-num').value.trim()||null,
@@ -754,7 +745,6 @@ const BankAccountsComponent = {
       card_pin       : box.querySelector('#bk-pin').value.trim()||null,
       company_id     : box.querySelector('#bk-company').value||null,
       reset_time     : box.querySelector('#bk-reset').value,
-      ...(!this._editId && openingBal > 0 ? { opening_balance: openingBal } : {}),
     };
 
     const saveBtn = box.querySelector('#bk-save-btn');

@@ -377,6 +377,17 @@ const UsersComponent = {
         <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:10px;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;">
           ⚙️ صلاحيات المندوب — اتركها فارغة للسماح بالكل
         </div>
+        <div id="uc-opening-bal-group" class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-size:.85rem;">
+            الرصيد الافتتاحي (العهدة المبدئية للمندوب)
+          </label>
+          <input id="uc-opening-bal" type="number" class="form-control"
+            placeholder="0 — اتركه فارغاً إن لم يكن للمندوب رصيد مسبق"
+            min="0" step="any" />
+          <div style="font-size:.73rem;color:var(--text-muted);margin-top:4px;">
+            سيُسجَّل كقيد افتتاحي في حساب المندوب عند إنشائه
+          </div>
+        </div>
         <div class="form-group" style="margin-bottom:10px;">
           <label class="form-label" style="font-size:.82rem;">الشركات المسموحة</label>
           <div id="uc-companies-list" style="max-height:140px;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px;"></div>
@@ -415,9 +426,12 @@ const UsersComponent = {
       });
     }
     box.querySelector('#uc-role').addEventListener('change', e => {
-      const role = e.target.value;
-      box.querySelector('#uc-tabs-section').style.display   = role === ROLES.ADMIN_ASSISTANT ? 'block' : 'none';
-      box.querySelector('#uc-agent-section').style.display  = role === ROLES.AGENT           ? 'block' : 'none';
+      const role   = e.target.value;
+      const isEdit = !!this._editId;
+      box.querySelector('#uc-tabs-section').style.display  = role === ROLES.ADMIN_ASSISTANT ? 'block' : 'none';
+      box.querySelector('#uc-agent-section').style.display = role === ROLES.AGENT           ? 'block' : 'none';
+      const obGroup = box.querySelector('#uc-opening-bal-group');
+      if (obGroup) obGroup.style.display = (!isEdit && role === ROLES.AGENT) ? '' : 'none';
       if (role === ROLES.AGENT) this._loadAgentPermissionLists(box);
     });
     return overlay;
@@ -456,6 +470,12 @@ const UsersComponent = {
       await this._loadAgentPermissionLists(box, user);
     }
 
+    /* الرصيد الافتتاحي — فقط عند إنشاء مندوب جديد */
+    const openingBalGroup = box.querySelector('#uc-opening-bal-group');
+    if (openingBalGroup) openingBalGroup.style.display = isEdit ? 'none' : '';
+    const openingBalInput = box.querySelector('#uc-opening-bal');
+    if (openingBalInput) openingBalInput.value = '';
+
     const lbl = box.querySelector('#uc-save-label');
     if (lbl) lbl.textContent = isEdit ? '💾 تحديث' : '💾 إنشاء المستخدم';
 
@@ -488,6 +508,7 @@ const UsersComponent = {
     const allowedCompanies = role === ROLES.AGENT ? this._getSelectedPermissions(box, 'uc-companies-list') : [];
     const allowedBanks     = role === ROLES.AGENT ? this._getSelectedPermissions(box, 'uc-banks-list')     : [];
     const allowedUsers     = role === ROLES.AGENT ? this._getSelectedPermissions(box, 'uc-users-list')     : [];
+    const openingBalance   = role === ROLES.AGENT ? (parseFloat(box.querySelector('#uc-opening-bal')?.value) || 0) : 0;
 
     if (!name || name.length < 2)           { this._setErr('الاسم مطلوب (حرفان على الأقل)'); return; }
     if (!username)                           { this._setErr('البريد الإلكتروني مطلوب'); return; }
@@ -507,7 +528,7 @@ const UsersComponent = {
         await this._doUpdate(username, name, role, tabs, password, allowedCompanies, allowedBanks, allowedUsers);
       } else {
         if (!isOnline()) { this._setErr('يجب الاتصال بالإنترنت لإنشاء مستخدم جديد'); return; }
-        await this._doCreate(username, name, role, tabs, password, allowedCompanies, allowedBanks, allowedUsers);
+        await this._doCreate(username, name, role, tabs, password, allowedCompanies, allowedBanks, allowedUsers, openingBalance);
       }
     } catch (e) {
       console.error('[UsersComponent] _save خطأ:', e);
@@ -521,7 +542,7 @@ const UsersComponent = {
   // ────────────────────────────────────────────────────────────
   // _doCreate — الخطوات الخمس النهائية
   // ────────────────────────────────────────────────────────────
-  async _doCreate(username, name, role, tabs, password, allowedCompanies = [], allowedBanks = [], allowedUsers = []) {
+  async _doCreate(username, name, role, tabs, password, allowedCompanies = [], allowedBanks = [], allowedUsers = [], openingBalance = 0) {
 
     // 1. حفظ جلسة المدير
     const { data: { session: adminSession } } = await supabaseClient.auth.getSession();
@@ -585,7 +606,39 @@ const UsersComponent = {
 
     console.log('[UsersComponent] ✅ تم إنشاء المستخدم بنجاح!');
 
-    // 5. إغلاق + تحديث
+    // 5. رصيد افتتاحي للمندوب (إن وُجد)
+    if (role === ROLES.AGENT && openingBalance > 0) {
+      try {
+        const today    = new Date().toISOString().split('T')[0];
+        const agentAcc = `AGT_${newUserId}`;
+        const txId     = crypto.randomUUID();
+        const vRes     = await callRPC('get_next_voucher_number', {});
+        const voucher  = (isOk(vRes) && vRes.data) ? vRes.data : `OB-${Date.now()}`;
+
+        await callRPC('create_transaction_with_entries', {
+          tx_data: {
+            id         : txId,
+            type       : 'journal',
+            amount     : openingBalance,
+            date       : today,
+            agent_id   : newUserId,
+            description: `رصيد افتتاحي — ${name}`,
+          },
+          entries_data: [
+            { voucher_number: voucher, date: today, account_id: agentAcc,
+              debit: openingBalance, credit: 0, description: `رصيد افتتاحي — ${name}` },
+            { voucher_number: voucher, date: today, account_id: 'CAPITAL_OPENING',
+              debit: 0, credit: openingBalance, description: `رصيد افتتاحي — ${name}` },
+          ],
+        });
+        console.log('[UsersComponent] ✅ قيد افتتاحي بـ', openingBalance, 'ر.س');
+      } catch (e) {
+        console.warn('[UsersComponent] ⚠️ فشل القيد الافتتاحي:', e.message);
+        showToast(`⚠️ تم إنشاء المستخدم لكن فشل تسجيل الرصيد الافتتاحي: ${e.message}`, 'warning', 6000);
+      }
+    }
+
+    // 6. إغلاق + تحديث
     this._closeForm();
     showToast(`✅ تم إنشاء "${name}" بنجاح`, 'success', 4000);
     await this._load();
