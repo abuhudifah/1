@@ -748,14 +748,15 @@ const DataEntryComponent = {
         ? allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ))
         : allDebtors.slice(0, 12);
 
-      if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ)) {
+      // BND-3.7: إنشاء عملاء جدد مقيّد للمدير فقط (RLS على debtors تمنع وصول المندوبين)
+      if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ) && !isAgent) {
         const newItem = document.createElement('div');
         newItem.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-color);color:var(--accent);font-size:0.88rem;font-weight:600;';
         newItem.innerHTML = `<span>➕</span><span>إضافة عميل جديد: <strong>${escapeHtml(q.trim())}</strong></span>`;
         newItem.addEventListener('click', async () => {
           dd.style.display = 'none';
           input.disabled = true;
-          const newDebtor = { name: q.trim(), debt_amount: 0, assigned_agents: isAgent ? [uid] : [] };
+          const newDebtor = { name: q.trim(), debt_amount: 0, assigned_agents: [] };
           try {
             const r = await repo.create(TABLES.DEBTORS, newDebtor);
             if (isOk(r)) {

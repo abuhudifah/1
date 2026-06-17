@@ -552,8 +552,10 @@ const AllOperationsComponent = {
       // معاملة لم تُزامن: حذف مباشر (لا قيود في account_ledger على الخادم)
       const result = await repo.delete(TABLES.TRANSACTIONS, tx.id);
       if (isOk(result)) {
-        // حذف القيود المحلية من Dexie أيضاً
-        if (typeof db !== 'undefined' && db.isOpen()) {
+        // BND-3.8: حذف القيود المحلية وعكس تأثيرها على account_balances في Dexie
+        if (typeof AccountingService !== 'undefined') {
+          await AccountingService.cleanupLocalTransaction(tx.id);
+        } else if (typeof db !== 'undefined' && db.isOpen()) {
           await db.account_ledger.where('reference_id').equals(tx.id).delete().catch(() => {});
         }
         showToast('✅ تم حذف العملية', 'success');
@@ -575,4 +577,4 @@ const AllOperationsComponent = {
 };
 
 window.AllOperationsComponent = AllOperationsComponent;
-console.log('✅ AllOperationsComponent v2.1 — الحذف: reverseEntries للمزامَن | تعديل: مقيّد للمعلّق فقط');
+console.log('✅ AllOperationsComponent v2.2 — BND-3.8: cleanupLocalTransaction يُحدِّث account_balances عند حذف المعلق');

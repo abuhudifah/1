@@ -621,10 +621,74 @@ async function reverseEntries(transactionId) {
       return result;
     }
 
-    return err('يجب الاتصال بالإنترنت لعكس المعاملات');
+    // Offline: إنشاء قيود عكسية محلياً في Dexie وتحديث account_balances
+    if (typeof db === 'undefined' || !db.isOpen()) {
+      return err('قاعدة البيانات المحلية غير متاحة للعكس الأوفلاين');
+    }
+
+    const localEntries = await db.account_ledger
+      .where('reference_id').equals(transactionId).toArray();
+
+    if (localEntries.length === 0) {
+      return err('لا توجد قيود محلية لهذه المعاملة — يجب الاتصال بالإنترنت للعكس');
+    }
+
+    const today = getCurrentSaudiDate();
+    const reversalEntries = localEntries.map(e => ({
+      id             : generateUUID(),
+      voucher_number : `REV_${transactionId.slice(0, 8)}`,
+      date           : today,
+      account_id     : e.account_id,
+      debit          : parseFloat(e.credit || 0),
+      credit         : parseFloat(e.debit  || 0),
+      description    : `[عكس] ${e.description || ''}`,
+      reference_id   : transactionId,
+      created_at     : new Date().toISOString(),
+      sync_status    : SYNC_STATUS.PENDING,
+    }));
+
+    await db.account_ledger.bulkPut(reversalEntries);
+    await db.transactions.update(transactionId, { is_reversed: true });
+    await _updateLocalBalances(reversalEntries);
+
+    await SyncQueue.add(
+      SYNC_ACTIONS.UPDATE,
+      TABLES.TRANSACTIONS,
+      transactionId,
+      { is_reversed: true, reversed_at: new Date().toISOString() }
+    );
+
+    showToast('✅ تم عكس المعاملة محلياً — سيُطبَّق على الخادم عند الاتصال', 'success');
+    window.dispatchEvent(new CustomEvent('accounting:transactionReversed', { detail: { transactionId } }));
+    return ok({ offlineReverse: true });
 
   } catch (e) {
     return err(`فشل عكس المعاملة: ${e.message}`);
+  }
+}
+
+// ============================================================
+// حذف معاملة محلية معلقة مع تحديث account_balances
+// ============================================================
+
+async function cleanupLocalTransaction(txId) {
+  if (typeof db === 'undefined' || !db.isOpen()) return;
+  try {
+    const entries = await db.account_ledger
+      .where('reference_id').equals(txId).toArray();
+
+    if (entries.length > 0) {
+      const reversals = entries.map(e => ({
+        account_id : e.account_id,
+        debit      : parseFloat(e.credit || 0),
+        credit     : parseFloat(e.debit  || 0),
+      }));
+      await _updateLocalBalances(reversals);
+    }
+
+    await db.account_ledger.where('reference_id').equals(txId).delete();
+  } catch (e) {
+    console.warn('⚠️ AccountingService.cleanupLocalTransaction:', e.message);
   }
 }
 
@@ -949,6 +1013,7 @@ const AccountingService = {
   rejectTransaction,
   getPendingApprovals,
   createTransferFromRequest,
+  cleanupLocalTransaction,
   AccountId,
   GENERAL_ACCOUNT_ID,
   DEBTOR_SETTLEMENT_ID,
@@ -956,4 +1021,4 @@ const AccountingService = {
 };
 
 window.AccountingService = AccountingService;
-console.log('✅ AccountingService.js v4.1 — Offline: تحديث رصيد المدين محلياً في Dexie فوراً عند التحصيل');
+console.log('✅ AccountingService.js v4.2 — BND-3.8: cleanupLocalTransaction + offline reverseEntries');
