@@ -124,14 +124,17 @@ function _buildDepositEntries(tx, companyId, voucher) {
 
 // المصروف: EXP_GENERAL مدين ← AGT_ دائن. نوع المصروف يبقى في الوصف فقط (بلا تجزئة حسابات).
 function _buildExpenseEntries(tx, voucher) {
-  const date     = tx.date || getCurrentSaudiDate();
-  const agentAcc = AccountId.agent(tx.agent_id);
+  const date      = tx.date || getCurrentSaudiDate();
+  const agentAcc  = AccountId.agent(tx.agent_id);
+  const agentName = tx.agent_name || 'المندوب';
+  const expType   = tx.expense_type || 'عام';
+  const desc      = `مصروف ${expType} من عهدة ${agentName}`;
 
   return [
     { voucher_number: voucher, date, account_id: EXPENSE_ACCOUNT_ID, debit: tx.amount, credit: 0,
-      description: `مصروف ${tx.expense_type || 'عام'}${tx.details ? ': ' + tx.details : ''}` },
+      description: desc },
     { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
-      description: 'صرف من عهدة المندوب' },
+      description: desc },
   ];
 }
 

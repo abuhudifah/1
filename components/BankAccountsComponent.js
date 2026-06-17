@@ -1,5 +1,5 @@
 /**
- * components/BankAccountsComponent.js — v2.0
+ * components/BankAccountsComponent.js — v3.0
  * بطاقات بنكية عصرية بتصميم البنك الأهلي السعودي
  * - شريط تقدم السقف الملوّن
  * - إخفاء/إظهار PIN
@@ -15,6 +15,7 @@ const BankAccountsComponent = {
   _editId    : null,
   _selectedDate: null,
   _showPins  : new Set(),
+  _companyFilter : null,
 
   async render(container) {
     this._container  = container;
@@ -39,6 +40,21 @@ const BankAccountsComponent = {
     dateInput.style.cssText = 'max-width:160px;padding:7px 12px;font-size:0.85rem;';
     dateInput.addEventListener('change', e=>{ this._selectedDate=e.target.value; this._load(); });
     topBar.appendChild(dateInput);
+
+    if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
+      const companies = AppStore.getState('companies') || [];
+      if (companies.length > 0) {
+        const compSel = document.createElement('select');
+        compSel.id = 'bank-company-filter';
+        compSel.className = 'form-control';
+        compSel.style.cssText = 'max-width:180px;padding:7px 12px;font-size:0.85rem;';
+        compSel.innerHTML = `<option value="">كل الشركات</option>` +
+          companies.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join('');
+        compSel.value = this._companyFilter || '';
+        compSel.addEventListener('change', e => { this._companyFilter = e.target.value || null; this._load(); });
+        topBar.appendChild(compSel);
+      }
+    }
 
     if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
       const addBtn = document.createElement('button');
@@ -75,30 +91,37 @@ const BankAccountsComponent = {
     let bankAccounts = [];
 
     if (isAgent) {
-      /* المندوب: فقط الحسابات التي أودع فيها في التاريخ المحدد */
-      let depositedIds = [];
+      /* المندوب: فقط الحسابات التي أودع فيها أو سحب منها في التاريخ المحدد */
+      let activeIds = [];
       try {
         if (isOnline()) {
           const { data } = await supabaseClient.from('transactions')
             .select('bank_account_id')
-            .eq('date',this._selectedDate).eq('type','deposit').eq('agent_id',uid);
-          depositedIds = [...new Set((data||[]).map(d=>d.bank_account_id).filter(Boolean))];
+            .eq('date', this._selectedDate)
+            .in('type', ['deposit', 'bank_withdrawal'])
+            .eq('agent_id', uid);
+          activeIds = [...new Set((data||[]).map(d=>d.bank_account_id).filter(Boolean))];
         } else {
-          const deps = await db.transactions.where('[date+agent_id]').equals([this._selectedDate,uid])
-            .filter(t=>t.type==='deposit'&&t.bank_account_id).toArray();
-          depositedIds = [...new Set(deps.map(d=>d.bank_account_id))];
+          const txs = await db.transactions.where('[date+agent_id]').equals([this._selectedDate, uid])
+            .filter(t => (t.type==='deposit' || t.type==='bank_withdrawal') && t.bank_account_id)
+            .toArray();
+          activeIds = [...new Set(txs.map(d=>d.bank_account_id))];
         }
-      } catch (e) { console.warn('⚠️ BankAccounts: فشل تحميل الودائع:', e.message); }
+      } catch (e) { console.warn('⚠️ BankAccounts: فشل تحميل الحسابات النشطة:', e.message); }
 
-      if (!depositedIds.length) {
+      if (!activeIds.length) {
         el.innerHTML=`<div class="empty-state" style="grid-column:1/-1;">
           <div class="empty-state-icon">🏦</div>
-          <div class="empty-state-text">لا توجد إيداعات في ${escapeHtml(formatDateArabic(this._selectedDate))}</div>
+          <div class="empty-state-text">لا توجد عمليات بنكية في ${escapeHtml(formatDateArabic(this._selectedDate))}</div>
         </div>`; return;
       }
-      bankAccounts = (AppStore.getState('bankAccounts')||[]).filter(b=>depositedIds.includes(b.id));
+      bankAccounts = (AppStore.getState('bankAccounts')||[]).filter(b=>activeIds.includes(b.id));
     } else {
       bankAccounts = AppStore.getState('bankAccounts')||[];
+      // تطبيق فلتر الشركة إن وُجد
+      if (this._companyFilter) {
+        bankAccounts = bankAccounts.filter(b => b.company_id === this._companyFilter);
+      }
     }
 
     if (!bankAccounts.length) {
@@ -108,263 +131,107 @@ const BankAccountsComponent = {
       </div>`; return;
     }
 
-    /* جلب إجماليات الإيداعات لكل حساب */
-    let dayDeposits = {};
+    /* جلب إجماليات وآخر نشاط لكل حساب (إيداع + سحب) */
+    let dayActivity = {}; // bank_id → { depositTotal, withdrawTotal, list[], lastTime }
     try {
       if (isOnline()) {
         const { data } = await supabaseClient.from('transactions')
-          .select('bank_account_id,amount,agent_id,created_at')
-          .eq('date',this._selectedDate).eq('type','deposit').eq('is_reversed',false)
-          .order('created_at',{ascending:false});
-        (data||[]).forEach(d=>{
+          .select('bank_account_id,amount,type,agent_id,created_at')
+          .eq('date', this._selectedDate)
+          .in('type', ['deposit', 'bank_withdrawal'])
+          .eq('is_reversed', false)
+          .order('created_at', {ascending: false});
+        (data||[]).forEach(d => {
           if (!d.bank_account_id) return;
-          if (!dayDeposits[d.bank_account_id]) dayDeposits[d.bank_account_id]={total:0,list:[]};
-          dayDeposits[d.bank_account_id].total += Math.round(parseFloat(d.amount)||0);
-          dayDeposits[d.bank_account_id].list.push(d);
+          if (!dayActivity[d.bank_account_id]) {
+            dayActivity[d.bank_account_id] = { depositTotal: 0, withdrawTotal: 0, list: [], lastTime: '' };
+          }
+          const amt = Math.round(parseFloat(d.amount)||0);
+          if (d.type === 'deposit')          dayActivity[d.bank_account_id].depositTotal  += amt;
+          else if (d.type === 'bank_withdrawal') dayActivity[d.bank_account_id].withdrawTotal += amt;
+          dayActivity[d.bank_account_id].list.push(d);
+          if (!dayActivity[d.bank_account_id].lastTime) {
+            dayActivity[d.bank_account_id].lastTime = d.created_at || '';
+          }
         });
       }
-    } catch (e) { console.warn('⚠️ BankAccounts: فشل تحميل إجماليات اليوم:', e.message); }
+    } catch (e) { console.warn('⚠️ BankAccounts: فشل تحميل نشاط اليوم:', e.message); }
 
     el.innerHTML = '';
     const users     = AppStore.getState('users');
     const companies = AppStore.getState('companies') || [];
 
-    // تجميع البنوك تحت شركتها الأم
-    const companyMap = {}; // company_id → { company, banks[] }
-    const noBankComp = []; // بنوك بدون شركة
+    if (isAgent) {
+      /* المندوب: عرض بسيط بدون تجميع شركات */
+      bankAccounts.forEach(bank => this._renderCard(el, bank, dayActivity, users, isAgent));
+    } else {
+      /* المدير: تجميع البنوك تحت شركتها */
+      const companyMap = {};
+      const noBankComp = [];
 
-    bankAccounts.forEach(bank => {
-      if (bank.company_id) {
-        if (!companyMap[bank.company_id]) {
-          companyMap[bank.company_id] = {
-            company : companies.find(c => c.id === bank.company_id) || { id: bank.company_id, name: '—' },
-            banks   : [],
-          };
+      bankAccounts.forEach(bank => {
+        if (bank.company_id) {
+          if (!companyMap[bank.company_id]) {
+            companyMap[bank.company_id] = {
+              company: companies.find(c => c.id === bank.company_id) || { id: bank.company_id, name: '—' },
+              banks  : [],
+            };
+          }
+          companyMap[bank.company_id].banks.push(bank);
+        } else {
+          noBankComp.push(bank);
         }
-        companyMap[bank.company_id].banks.push(bank);
-      } else {
-        noBankComp.push(bank);
-      }
-    });
+      });
 
-    // ترتيب البنوك داخل كل شركة حسب آخر نشاط
-    const sortByActivity = (arr) => [...arr].sort((a, b) => {
-      const aLast = dayDeposits[a.id]?.list?.[0]?.created_at || '';
-      const bLast = dayDeposits[b.id]?.list?.[0]?.created_at || '';
-      return bLast.localeCompare(aLast);
-    });
+      const sortByActivity = arr => [...arr].sort((a, b) => {
+        const aT = dayActivity[a.id]?.lastTime || '';
+        const bT = dayActivity[b.id]?.lastTime || '';
+        if (!aT && !bT) return 0;
+        if (!aT) return 1;
+        if (!bT) return -1;
+        return bT.localeCompare(aT);
+      });
 
-    // بناء قائمة المجموعات
-    const groups = [
-      ...Object.values(companyMap).map(g => ({
-        label  : g.company.name,
-        banks  : sortByActivity(g.banks),
-        isGroup: true,
-        total  : g.banks.reduce((s, b) => s + (dayDeposits[b.id]?.total || 0), 0),
-      })),
-      ...(noBankComp.length ? [{ label: 'بدون شركة', banks: sortByActivity(noBankComp), isGroup: true, total: 0 }] : []),
-    ];
+      const groups = [
+        ...Object.values(companyMap).map(g => ({
+          label  : g.company.name,
+          banks  : sortByActivity(g.banks),
+          depositTotal : g.banks.reduce((s,b) => s + (dayActivity[b.id]?.depositTotal || 0), 0),
+          withdrawTotal: g.banks.reduce((s,b) => s + (dayActivity[b.id]?.withdrawTotal || 0), 0),
+        })),
+        ...(noBankComp.length ? [{
+          label: 'بدون شركة',
+          banks: sortByActivity(noBankComp),
+          depositTotal: 0, withdrawTotal: 0,
+        }] : []),
+      ];
 
-    groups.forEach(group => {
-      // رأس المجموعة (اسم الشركة + إجمالي الإيداعات)
-      if (groups.length > 1 || group.label !== 'بدون شركة') {
-        const groupHeader = document.createElement('div');
-        groupHeader.style.cssText = `
-          grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;
-          padding:10px 4px 4px;border-bottom:2px solid var(--border-color);margin-bottom:4px;`;
-        groupHeader.innerHTML = `
-          <span style="font-weight:800;font-size:1rem;color:var(--text-primary);">🏢 ${escapeHtml(group.label)}</span>
-          <span style="font-size:0.82rem;color:var(--text-muted);">
-            إجمالي اليوم:
-            <strong style="color:var(--success);direction:ltr;display:inline-block;">
-              ${group.total.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
-            </strong>
-          </span>`;
-        el.appendChild(groupHeader);
-      }
-
-      group.banks.forEach(bank => {
-      const info    = dayDeposits[bank.id]||{total:0,list:[]};
-      const ceiling = Math.round(bank.financial_ceiling||0);
-      const total   = info.total;
-      const pct     = ceiling>0?Math.min(100,Math.round(total/ceiling*100)):0;
-      const remain  = Math.max(0,ceiling-total);
-      const clr     = pct>=80?'#dc2626':pct>=50?'#d97706':'#059669';
-      const showPin = this._showPins.has(bank.id);
-
-      const card = document.createElement('div');
-      card.style.cssText = `
-        border-radius:20px;overflow:hidden;
-        box-shadow:0 12px 40px rgba(0,0,0,0.18);
-        transition:transform var(--transition-normal),box-shadow var(--transition-normal);
-        cursor:default;`;
-      card.addEventListener('mouseenter',()=>{ card.style.transform='translateY(-4px)'; card.style.boxShadow='0 20px 56px rgba(0,0,0,0.25)'; });
-      card.addEventListener('mouseleave',()=>{ card.style.transform=''; card.style.boxShadow='0 12px 40px rgba(0,0,0,0.18)'; });
-
-      /* ── وجه البطاقة (تصميم البنك الأهلي) ── */
-      const front = document.createElement('div');
-      front.style.cssText = `
-        background:linear-gradient(135deg,#1a2942 0%,#243b6e 50%,#1a2942 100%);
-        padding:22px 20px 18px;color:#fff;position:relative;min-height:190px;`;
-
-      /* شبكة اللوغو */
-      front.innerHTML = `
-        <!-- خلفية شبكية ديكورية -->
-        <div style="position:absolute;inset:0;opacity:0.05;
-          background-image:repeating-linear-gradient(0deg,transparent,transparent 20px,rgba(255,255,255,0.3) 20px,rgba(255,255,255,0.3) 21px),
-                           repeating-linear-gradient(90deg,transparent,transparent 20px,rgba(255,255,255,0.3) 20px,rgba(255,255,255,0.3) 21px);
-          pointer-events:none;"></div>
-        <!-- دائرة ديكورية -->
-        <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;
-          background:rgba(255,255,255,0.04);pointer-events:none;"></div>
-        <div style="position:absolute;bottom:-30px;left:-30px;width:120px;height:120px;border-radius:50%;
-          background:rgba(255,255,255,0.03);pointer-events:none;"></div>
-
-        <!-- رأس البطاقة -->
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;position:relative;">
-          <div>
-            <div style="font-size:0.68rem;opacity:0.55;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">
-              نظام أبو حذيفة
-            </div>
-            <div style="font-size:0.9rem;font-weight:700;max-width:180px;line-height:1.3;">
-              ${escapeHtml(bank.name)}
-            </div>
-          </div>
-          <div style="text-align:left;direction:ltr;">
-            <div style="font-size:0.55rem;opacity:0.5;margin-bottom:2px;">DEBIT</div>
-            <div style="font-size:1.1rem;font-weight:900;color:#f0c040;letter-spacing:0.05em;">◈</div>
-          </div>
-        </div>
-
-        <!-- رقم الحساب -->
-        ${bank.account_number?`
-        <div style="font-size:0.88rem;letter-spacing:0.18em;direction:ltr;
-          font-family:monospace;opacity:0.75;margin-bottom:12px;">
-          •••• •••• ${escapeHtml(bank.account_number.slice(-4))}
-        </div>`:''}
-
-        <!-- رقم البطاقة -->
-        ${bank.card_number?`
-        <div style="font-size:0.75rem;letter-spacing:0.12em;direction:ltr;
-          font-family:monospace;opacity:0.6;margin-bottom:8px;">
-          ${escapeHtml(bank.card_number.replace(/(.{4})/g,'$1 ').trim())}
-        </div>`:''}
-
-        <!-- PIN + حامل البطاقة -->
-        <div style="display:flex;justify-content:space-between;align-items:center;position:relative;">
-          <div>
-            <div style="font-size:0.62rem;opacity:0.5;margin-bottom:2px;">صاحب البطاقة</div>
-            <div style="font-size:0.78rem;font-weight:600;text-transform:uppercase;">
-              ${escapeHtml(bank.card_holder||'—')}
-            </div>
-          </div>
-          ${bank.card_pin?`
-          <div style="text-align:center;">
-            <div style="font-size:0.62rem;opacity:0.5;margin-bottom:2px;">PIN</div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span id="pin-${escapeHtml(bank.id)}"
-                style="font-family:monospace;font-size:0.82rem;letter-spacing:0.12em;direction:ltr;">
-                ${showPin ? escapeHtml(bank.card_pin) : '••••'}
-              </span>
-              <button class="toggle-pin-btn" data-bankid="${escapeHtml(bank.id)}"
-                style="background:rgba(255,255,255,0.12);border:none;border-radius:6px;
-                  color:#fff;padding:2px 6px;font-size:0.65rem;cursor:pointer;
-                  transition:background var(--transition-fast);">
-                ${showPin?'إخفاء':'إظهار'}
-              </button>
-            </div>
-          </div>`:''}
-        </div>`;
-
-      card.appendChild(front);
-
-      /* ── قسم التقدم والإحصائيات ── */
-      const stats = document.createElement('div');
-      stats.style.cssText = 'background:var(--glass-bg);backdrop-filter:blur(12px);padding:14px 18px;';
-
-      /* شريط التقدم */
-      stats.innerHTML = `
-        <div style="margin-bottom:10px;">
-          <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-bottom:5px;">
-            <span>السقف اليومي</span>
-            <span style="direction:ltr;">${total.toLocaleString('en-US')} / ${ceiling.toLocaleString('en-US')} (${pct}%)</span>
-          </div>
-          <div class="progress-bar" style="height:7px;">
-            <div style="height:100%;width:${pct}%;background:${clr};border-radius:4px;
-              transition:width 0.8s ease;"></div>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-top:4px;">
-            <span style="color:${clr};font-weight:600;">${pct}%</span>
-            <span style="color:var(--text-muted);">
-              المتبقي: <strong style="color:var(--text-primary);direction:ltr;display:inline-block;">
-                ${remain.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
-              </strong>
-            </span>
-          </div>
-        </div>`;
-
-      /* آخر 5 إيداعات */
-      const depList = info.list.slice(0,5);
-      if (depList.length) {
-        const depHTML = depList.map(d=>{
-          const agent = users.find(u=>u.id===d.agent_id);
-          return `
-            <div style="display:flex;justify-content:space-between;align-items:center;
-              padding:5px 0;border-bottom:1px solid var(--border-color);font-size:0.75rem;">
-              <span style="color:var(--text-secondary);">${escapeHtml(agent?.display_name||'—')}</span>
-              <span style="font-weight:700;color:var(--info);direction:ltr;">
-                ${Math.round(parseFloat(d.amount)||0).toLocaleString('en-US')}
-              </span>
-            </div>`;
-        }).join('');
-
-        stats.innerHTML += `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px;">
-              آخر ${depList.length} إيداعات اليوم
-            </div>
-            ${depHTML}
-          </div>`;
-
-        if (info.list.length>5) {
-          stats.innerHTML += `
-            <button class="show-more-btn btn btn-secondary btn-sm"
-              data-bankid="${escapeHtml(bank.id)}"
-              style="width:100%;font-size:0.75rem;margin-bottom:8px;">
-              عرض كل الإيداعات (${info.list.length})
-            </button>`;
+      groups.forEach(group => {
+        if (groups.length > 1 || group.label !== 'بدون شركة') {
+          const groupHeader = document.createElement('div');
+          groupHeader.style.cssText = `
+            grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;
+            flex-wrap:wrap;gap:6px;
+            padding:10px 4px 4px;border-bottom:2px solid var(--border-color);margin-bottom:4px;`;
+          groupHeader.innerHTML = `
+            <span style="font-weight:800;font-size:1rem;color:var(--text-primary);">🏢 ${escapeHtml(group.label)}</span>
+            <span style="font-size:0.82rem;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap;">
+              <span>إيداعات: <strong style="color:var(--success);direction:ltr;display:inline-block;">
+                ${group.depositTotal.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
+              </strong></span>
+              ${group.withdrawTotal > 0 ? `<span>سحوبات: <strong style="color:var(--danger);direction:ltr;display:inline-block;">
+                ${group.withdrawTotal.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
+              </strong></span>` : ''}
+            </span>`;
+          el.appendChild(groupHeader);
         }
-      }
-
-      /* أزرار الإجراءات */
-      const actRow = document.createElement('div');
-      actRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
-
-      const mkBtn = (label, icon, color, fn)=>{
-        const b = document.createElement('button');
-        b.className = 'btn btn-secondary btn-sm';
-        b.style.cssText = `flex:1;min-width:70px;font-size:0.72rem;justify-content:center;${color?'color:'+color+';':''}`;
-        b.innerHTML = `<i data-lucide="${icon}" style="width:11px;height:11px;"></i> ${label}`;
-        b.addEventListener('click', fn);
-        return b;
-      };
-
-      actRow.appendChild(mkBtn('طباعة','printer','',()=>this._printStatement(bank,info.list,ceiling)));
-      actRow.appendChild(mkBtn('مشاركة','share-2','var(--success)',()=>this._shareBank(bank,total,ceiling)));
-      if (AuthService.isAdmin()||AuthService.isAdminAssistant()) {
-        actRow.appendChild(mkBtn('تعديل','pencil','var(--info)',()=>this._openModal(bank)));
-        actRow.appendChild(mkBtn('حذف','trash-2','var(--danger)',()=>this._delete(bank.id,bank.name)));
-      }
-
-      stats.appendChild(actRow);
-      card.appendChild(stats);
-      el.appendChild(card);
-      }); // نهاية group.banks.forEach
-    }); // نهاية groups.forEach
+        group.banks.forEach(bank => this._renderCard(el, bank, dayActivity, users, isAgent));
+      });
+    }
 
     /* ربط أحداث PIN و "عرض المزيد" */
-    el.querySelectorAll('.toggle-pin-btn').forEach(btn=>{
-      btn.addEventListener('click',()=>{
+    el.querySelectorAll('.toggle-pin-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
         const bid = btn.dataset.bankid;
         if (this._showPins.has(bid)) this._showPins.delete(bid);
         else this._showPins.add(bid);
@@ -372,16 +239,191 @@ const BankAccountsComponent = {
       });
     });
 
-    el.querySelectorAll('.show-more-btn').forEach(btn=>{
-      btn.addEventListener('click',()=>{
+    el.querySelectorAll('.show-more-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
         const bid  = btn.dataset.bankid;
         const bank = bankAccounts.find(b=>b.id===bid);
-        const info = dayDeposits[bid]||{list:[]};
+        const info = dayActivity[bid]||{list:[]};
         this._showAllDeposits(bank, info.list);
       });
     });
 
     if (window.lucide) lucide.createIcons();
+  },
+
+  // ─────────────────────────────────────────────
+  // رسم بطاقة بنكية واحدة
+  // ─────────────────────────────────────────────
+  _renderCard(el, bank, dayActivity, users, isAgent) {
+    const info     = dayActivity[bank.id] || { depositTotal: 0, withdrawTotal: 0, list: [], lastTime: '' };
+    const isActive = info.list.length > 0;
+    const ceiling  = Math.round(bank.financial_ceiling||0);
+    const total    = info.depositTotal;
+    const pct      = ceiling>0 ? Math.min(100, Math.round(total/ceiling*100)) : 0;
+    const remain   = Math.max(0, ceiling-total);
+    const clr      = pct>=80 ? '#dc2626' : pct>=50 ? '#d97706' : '#059669';
+    const showPin  = this._showPins.has(bank.id);
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+      border-radius:20px;overflow:hidden;
+      box-shadow:0 12px 40px rgba(0,0,0,0.18);
+      transition:transform var(--transition-normal),box-shadow var(--transition-normal);
+      cursor:default;
+      ${!isActive ? 'opacity:0.6;filter:grayscale(0.45);' : ''}`;
+    card.addEventListener('mouseenter', () => { card.style.transform='translateY(-4px)'; card.style.boxShadow='0 20px 56px rgba(0,0,0,0.25)'; });
+    card.addEventListener('mouseleave', () => { card.style.transform=''; card.style.boxShadow='0 12px 40px rgba(0,0,0,0.18)'; });
+
+    const front = document.createElement('div');
+    front.style.cssText = `
+      background:${isActive
+        ? 'linear-gradient(135deg,#1a2942 0%,#243b6e 50%,#1a2942 100%)'
+        : 'linear-gradient(135deg,#374151 0%,#4b5563 50%,#374151 100%)'};
+      padding:22px 20px 18px;color:#fff;position:relative;min-height:190px;`;
+
+    front.innerHTML = `
+      <div style="position:absolute;inset:0;opacity:0.05;
+        background-image:repeating-linear-gradient(0deg,transparent,transparent 20px,rgba(255,255,255,0.3) 20px,rgba(255,255,255,0.3) 21px),
+                         repeating-linear-gradient(90deg,transparent,transparent 20px,rgba(255,255,255,0.3) 20px,rgba(255,255,255,0.3) 21px);
+        pointer-events:none;"></div>
+      <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;
+        background:rgba(255,255,255,0.04);pointer-events:none;"></div>
+      <div style="position:absolute;bottom:-30px;left:-30px;width:120px;height:120px;border-radius:50%;
+        background:rgba(255,255,255,0.03);pointer-events:none;"></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;position:relative;">
+        <div>
+          ${!isAgent ? `<div style="font-size:0.68rem;opacity:0.55;letter-spacing:0.08em;margin-bottom:2px;">${isActive ? '● نشط' : '○ غير نشط'}</div>` : ''}
+          <div style="font-size:0.9rem;font-weight:700;max-width:180px;line-height:1.3;">
+            ${escapeHtml(bank.name)}
+          </div>
+        </div>
+        <div style="text-align:left;direction:ltr;">
+          <div style="font-size:0.55rem;opacity:0.5;margin-bottom:2px;">DEBIT</div>
+          <div style="font-size:1.1rem;font-weight:900;color:#f0c040;letter-spacing:0.05em;">◈</div>
+        </div>
+      </div>
+
+      ${bank.account_number ? `
+      <div style="font-size:0.88rem;letter-spacing:0.18em;direction:ltr;
+        font-family:monospace;opacity:0.75;margin-bottom:12px;">
+        •••• •••• ${escapeHtml(bank.account_number.slice(-4))}
+      </div>` : ''}
+
+      ${bank.card_number ? `
+      <div style="font-size:0.75rem;letter-spacing:0.12em;direction:ltr;
+        font-family:monospace;opacity:0.6;margin-bottom:8px;">
+        ${escapeHtml(bank.card_number.replace(/(.{4})/g,'$1 ').trim())}
+      </div>` : ''}
+
+      <div style="display:flex;justify-content:space-between;align-items:center;position:relative;">
+        <div>
+          <div style="font-size:0.62rem;opacity:0.5;margin-bottom:2px;">صاحب البطاقة</div>
+          <div style="font-size:0.78rem;font-weight:600;text-transform:uppercase;">
+            ${escapeHtml(bank.card_holder||'—')}
+          </div>
+        </div>
+        ${bank.card_pin ? `
+        <div style="text-align:center;">
+          <div style="font-size:0.62rem;opacity:0.5;margin-bottom:2px;">PIN</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span id="pin-${escapeHtml(bank.id)}"
+              style="font-family:monospace;font-size:0.82rem;letter-spacing:0.12em;direction:ltr;">
+              ${showPin ? escapeHtml(bank.card_pin) : '••••'}
+            </span>
+            <button class="toggle-pin-btn" data-bankid="${escapeHtml(bank.id)}"
+              style="background:rgba(255,255,255,0.12);border:none;border-radius:6px;
+                color:#fff;padding:2px 6px;font-size:0.65rem;cursor:pointer;
+                transition:background var(--transition-fast);">
+              ${showPin ? 'إخفاء' : 'إظهار'}
+            </button>
+          </div>
+        </div>` : ''}
+      </div>`;
+
+    card.appendChild(front);
+
+    const stats = document.createElement('div');
+    stats.style.cssText = `background:${isActive ? 'var(--glass-bg)' : 'rgba(156,163,175,0.08)'};backdrop-filter:blur(12px);padding:14px 18px;`;
+
+    stats.innerHTML = `
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-bottom:5px;">
+          <span>السقف اليومي</span>
+          <span style="direction:ltr;">${total.toLocaleString('en-US')} / ${ceiling.toLocaleString('en-US')} (${pct}%)</span>
+        </div>
+        <div class="progress-bar" style="height:7px;">
+          <div style="height:100%;width:${pct}%;background:${clr};border-radius:4px;
+            transition:width 0.8s ease;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-top:4px;">
+          <span style="color:${clr};font-weight:600;">${pct}%</span>
+          <span style="color:var(--text-muted);">
+            المتبقي: <strong style="color:var(--text-primary);direction:ltr;display:inline-block;">
+              ${remain.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}
+            </strong>
+          </span>
+        </div>
+      </div>
+      ${info.withdrawTotal > 0 ? `
+      <div style="font-size:0.72rem;color:var(--danger);margin-bottom:8px;">
+        سحوبات اليوم: <strong>${info.withdrawTotal.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}</strong>
+      </div>` : ''}`;
+
+    const depList = info.list.filter(d => d.type === 'deposit').slice(0, 5);
+    if (depList.length) {
+      const depHTML = depList.map(d => {
+        const agent = users.find(u=>u.id===d.agent_id);
+        return `
+          <div style="display:flex;justify-content:space-between;align-items:center;
+            padding:5px 0;border-bottom:1px solid var(--border-color);font-size:0.75rem;">
+            <span style="color:var(--text-secondary);">${escapeHtml(agent?.display_name||'—')}</span>
+            <span style="font-weight:700;color:var(--info);direction:ltr;">
+              ${Math.round(parseFloat(d.amount)||0).toLocaleString('en-US')}
+            </span>
+          </div>`;
+      }).join('');
+
+      stats.innerHTML += `
+        <div style="margin-bottom:8px;">
+          <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px;">
+            آخر ${depList.length} إيداعات اليوم
+          </div>
+          ${depHTML}
+        </div>`;
+
+      if (info.list.filter(d=>d.type==='deposit').length > 5) {
+        stats.innerHTML += `
+          <button class="show-more-btn btn btn-secondary btn-sm"
+            data-bankid="${escapeHtml(bank.id)}"
+            style="width:100%;font-size:0.75rem;margin-bottom:8px;">
+            عرض كل الإيداعات (${info.list.filter(d=>d.type==='deposit').length})
+          </button>`;
+      }
+    }
+
+    const actRow = document.createElement('div');
+    actRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+
+    const mkBtn = (label, icon, color, fn) => {
+      const b = document.createElement('button');
+      b.className = 'btn btn-secondary btn-sm';
+      b.style.cssText = `flex:1;min-width:70px;font-size:0.72rem;justify-content:center;${color?'color:'+color+';':''}`;
+      b.innerHTML = `<i data-lucide="${icon}" style="width:11px;height:11px;"></i> ${label}`;
+      b.addEventListener('click', fn);
+      return b;
+    };
+
+    actRow.appendChild(mkBtn('طباعة', 'printer', '', () => this._printStatement(bank, info.list, ceiling)));
+    actRow.appendChild(mkBtn('مشاركة', 'share-2', 'var(--success)', () => this._shareBank(bank, total, ceiling)));
+    if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
+      actRow.appendChild(mkBtn('تعديل', 'pencil', 'var(--info)', () => this._openModal(bank)));
+      actRow.appendChild(mkBtn('حذف', 'trash-2', 'var(--danger)', () => this._delete(bank.id, bank.name)));
+    }
+
+    stats.appendChild(actRow);
+    card.appendChild(stats);
+    el.appendChild(card);
   },
 
   // ─────────────────────────────────────────────
@@ -705,4 +747,4 @@ const BankAccountsComponent = {
 };
 
 window.BankAccountsComponent = BankAccountsComponent;
-console.log('✅ BankAccountsComponent v2.0 محمّل');
+console.log('✅ BankAccountsComponent v3.0 محمّل');

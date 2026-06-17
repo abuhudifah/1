@@ -753,6 +753,11 @@ const DataEntryComponent = {
         newItem.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-color);color:var(--accent);font-size:0.88rem;font-weight:600;';
         newItem.innerHTML = `<span>➕</span><span>إضافة عميل جديد: <strong>${escapeHtml(q.trim())}</strong></span>`;
         newItem.addEventListener('click', async () => {
+          const nameParts = q.trim().split(/\s+/).filter(Boolean);
+          if (nameParts.length < 3) {
+            showToast('يجب إدخال الاسم الثلاثي للعميل (ثلاث كلمات على الأقل)', 'error');
+            return;
+          }
           dd.style.display = 'none';
           input.disabled = true;
           const newDebtor = { name: q.trim(), debt_amount: 0, assigned_agents: isAgent ? [uid] : [] };
@@ -1451,12 +1456,15 @@ const DataEntryComponent = {
     const btn     = document.getElementById('exp-save-btn');
     const restore = setButtonLoading(btn);
 
+    const agentUser = (AppStore.getState('users') || []).find(u => u.id === agentId);
+    const agentName = agentUser?.display_name || agentId;
     // ✅ استخدام حساب EXP_GENERAL الثابت، مع تضمين نوع المصروف في الوصف
     const result  = await AccountingService.createTransactionWithEntries({
       type        : 'expense',
       amount      : rounded,
       date        : txDate,
       agent_id    : agentId,
+      agent_name  : agentName,
       expense_type: expenseType,
       details     : details ? `${details} (نوع: ${expenseType})` : `مصروف من نوع ${expenseType}`,
     });
