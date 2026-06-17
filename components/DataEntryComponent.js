@@ -1131,17 +1131,20 @@ const DataEntryComponent = {
     const acctField = this._field('tr-recipient-select', 'المستلم', true);
     const acctErrDiv = this._errMsg('tr-account-num-err');
 
-    // FIX: فلترة المستخدمين حسب الصلاحيات مع معالجة صريحة لحالة المدير.
-    // getAllowedUsers تُعيد null للمديرين، لكن إذا أُسيء تفسيرها تظهر القائمة فارغة.
+    // FIX: فلترة مستخدمي التحويل حسب الصلاحيات.
+    // getAllowedUsers تُعيد null للمديرين وللمندوبين غير المقيَّدين (null = لا قيود = يرى الجميع).
+    // تُعيد مصفوفة UUIDs للمندوبين المقيَّدين (فلترة صارمة على القائمة).
     const allUsers      = AppStore.getState('users') || [];
     const currentUserId = (typeof AuthService !== 'undefined') ? AuthService.getCurrentUserId() : null;
-    const isAdminUser   = (typeof AuthService !== 'undefined') && AuthService.isAdminOrAssistant?.();
+    const isAdminUser   = (typeof AuthService !== 'undefined') && typeof AuthService.isAdminOrAssistant === 'function'
+      ? AuthService.isAdminOrAssistant()
+      : false;
     let recipientUsers;
     if (isAdminUser) {
       // المدير/المساعد: يرى جميع المستخدمين النشطين (باستثناء نفسه)
       recipientUsers = allUsers.filter(u => u.id !== currentUserId && u.is_active !== false);
     } else {
-      // المندوب: يرى فقط المستخدمين المسموح لهم حسب allowed_users
+      // المندوب: null = لا قيد مُحدَّد → يرى الجميع؛ مصفوفة → فلترة صارمة
       const allowedUsers = (typeof AuthService !== 'undefined') ? AuthService.getAllowedUsers() : null;
       recipientUsers = allUsers.filter(u =>
         u.id !== currentUserId &&
