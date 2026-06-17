@@ -188,7 +188,12 @@ const PrintService = (() => {
     box-shadow:none !important;margin:0 !important;
     width:auto !important;min-height:auto !important;padding:0 !important;
   }
-  body.ps-printing .ps-report tr{page-break-inside:avoid;}
+  body.ps-printing .ps-report table{page-break-inside:auto;}
+  body.ps-printing .ps-report tr{page-break-inside:avoid;page-break-after:auto;}
+  body.ps-printing .ps-report thead{display:table-header-group;}
+  body.ps-printing .ps-report tfoot{display:table-footer-group;}
+  body.ps-printing .ps-report .bank-card-info{page-break-inside:avoid;}
+  body.ps-printing .ps-report .doc-footer{page-break-after:avoid;}
   @page{size:A4;margin:12mm 10mm;}
 }
     `;
@@ -270,9 +275,18 @@ const PrintService = (() => {
       };
     };
 
-    /* تحميل html2pdf عند الحاجة */
-    const _ensurePdfLib = () =>
-      window.html2pdf ? Promise.resolve() : _loadScript(_PDF_CDN);
+    /* تحميل html2pdf عند الحاجة — مع معالجة فشل CDN */
+    // FIX: رسالة واضحة للمستخدم عند فشل تحميل المكتبة (انقطاع الإنترنت أو حجب CDN)
+    const _ensurePdfLib = async () => {
+      if (window.html2pdf) return;
+      try {
+        await _loadScript(_PDF_CDN);
+        if (!window.html2pdf) throw new Error('المكتبة لم تُحمَّل بعد تنفيذ السكريبت');
+      } catch (e) {
+        if (window.showToast) showToast('⚠️ تعذّر تحميل مكتبة PDF — تحقق من اتصال الإنترنت أو استخدم زر الطباعة كبديل', 'warning', 6000);
+        throw e;
+      }
+    };
 
     /* زر الإغلاق */
     const _close = () => {

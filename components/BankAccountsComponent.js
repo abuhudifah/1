@@ -419,7 +419,7 @@ const BankAccountsComponent = {
     };
 
     actRow.appendChild(mkBtn('طباعة', 'printer', '', () => this._printStatement(bank, info.list, ceiling)));
-    actRow.appendChild(mkBtn('مشاركة', 'share-2', 'var(--success)', () => this._shareBank(bank, total, ceiling)));
+    actRow.appendChild(mkBtn('مشاركة', 'share-2', 'var(--success)', () => this._shareBank(bank, info.list, total, ceiling)));
     if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
       actRow.appendChild(mkBtn('تعديل', 'pencil', 'var(--info)', () => this._openModal(bank)));
       actRow.appendChild(mkBtn('حذف', 'trash-2', 'var(--danger)', () => this._delete(bank.id, bank.name)));
@@ -618,21 +618,74 @@ const BankAccountsComponent = {
   },
 
   // ─────────────────────────────────────────────
-  // مشاركة ملخص الحساب البنكي
+  // مشاركة كشف الحساب البنكي مع تفاصيل العمليات
   // ─────────────────────────────────────────────
-  _shareBank(bank, total, ceiling) {
-    const pct    = ceiling>0?Math.round(total/ceiling*100):0;
-    const remain = Math.max(0,ceiling-total);
-    const text   = `🏦 *${bank.name}*\n` +
-      `📅 ${formatDateArabic(this._selectedDate)}\n` +
-      `─────────────────\n` +
-      `💰 إجمالي الإيداعات: *${total.toLocaleString('en-US')} ر.س*\n` +
-      `📊 السقف اليومي: ${ceiling.toLocaleString('en-US')} ر.س\n` +
-      `✅ نسبة الاستخدام: ${pct}%\n` +
-      `🔹 المتبقي من السقف: *${remain.toLocaleString('en-US')} ر.س*\n` +
-      `─────────────────\n` +
-      `نظام أبو حذيفة 🔐`;
-    copyToClipboard(text,'تم نسخ ملخص الحساب البنكي');
+  // FIX: إضافة list كمعامل ثانٍ لعرض تفاصيل العمليات (المندوب، الوقت، النوع، المبلغ)
+  _shareBank(bank, list, total, ceiling) {
+    if (!list || !list.length) {
+      return this._shareBankSummary(bank, total, ceiling);
+    }
+
+    const users = AppStore.getState('users') || [];
+    const date  = formatDateArabic(this._selectedDate);
+    const tz    = APP_CONFIG.TIMEZONE || 'Asia/Riyadh';
+
+    const rows = list.map((op, i) => {
+      const time = op.created_at
+        ? new Date(op.created_at).toLocaleTimeString('ar-SA', {
+            hour: '2-digit', minute: '2-digit', hour12: true, timeZone: tz,
+          })
+        : '—';
+      const type      = op.type === 'deposit' ? 'إيداع' : 'سحب';
+      const agent     = users.find(u => u.id === op.agent_id);
+      const agentName = agent?.display_name || '—';
+      const amt       = Math.round(parseFloat(op.amount) || 0);
+      return `${String(i + 1).padStart(2, ' ')}. ${time} | ${agentName} | ${type} | ${amt.toLocaleString('en-US')} ر.س`;
+    });
+
+    const deposits      = list.filter(o => o.type === 'deposit');
+    const withdrawals   = list.filter(o => o.type !== 'deposit');
+    const totalDep      = deposits.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    const totalWd       = withdrawals.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    const net           = totalDep - totalWd;
+    const pct           = ceiling > 0 ? Math.round((total / ceiling) * 100) : 0;
+    const remain        = Math.max(0, ceiling - total);
+
+    const text = [
+      `🏦 كشف حساب بنكي — ${bank.name}`,
+      `📅 ${date}`,
+      `─────────────────`,
+      ...rows,
+      `─────────────────`,
+      `📥 إجمالي الإيداعات: ${Math.round(totalDep).toLocaleString('en-US')} ر.س`,
+      `📤 إجمالي السحوبات: ${Math.round(totalWd).toLocaleString('en-US')} ر.س`,
+      `💰 الصافي: ${Math.round(net).toLocaleString('en-US')} ر.س`,
+      `🎯 السقف اليومي: ${Math.round(ceiling).toLocaleString('en-US')} ر.س`,
+      `📊 نسبة الاستخدام: ${pct}%`,
+      `✅ المتبقي: ${Math.round(remain).toLocaleString('en-US')} ر.س`,
+      `─────────────────`,
+      `نظام أبو حذيفة 🔐`,
+    ].join('\n');
+
+    copyToClipboard(text, 'تم نسخ كشف الحساب البنكي');
+  },
+
+  // ملخص مختصر عند غياب العمليات
+  _shareBankSummary(bank, total, ceiling) {
+    const pct    = ceiling > 0 ? Math.round((total / ceiling) * 100) : 0;
+    const remain = Math.max(0, ceiling - total);
+    const text   = [
+      `🏦 ${bank.name}`,
+      `📅 ${formatDateArabic(this._selectedDate)}`,
+      `─────────────────`,
+      `💰 إجمالي الإيداعات: ${Math.round(total).toLocaleString('en-US')} ر.س`,
+      `🎯 السقف اليومي: ${Math.round(ceiling).toLocaleString('en-US')} ر.س`,
+      `📊 نسبة الاستخدام: ${pct}%`,
+      `✅ المتبقي: ${Math.round(remain).toLocaleString('en-US')} ر.س`,
+      `─────────────────`,
+      `نظام أبو حذيفة 🔐`,
+    ].join('\n');
+    copyToClipboard(text, 'تم نسخ ملخص الحساب البنكي');
   },
 
   // ─────────────────────────────────────────────
