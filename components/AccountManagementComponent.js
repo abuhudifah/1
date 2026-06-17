@@ -1024,11 +1024,14 @@ const AccountManagementComponent = {
 
       // إثراء القيود ببيانات المعاملة المرتبطة (الوقت، النوع، الأسماء، التفاصيل)
       const txMap = await this._enrichEntries(entries);
+      // FIX: جلب الطرف المقابل للقيود التي لا تملك معاملة مرتبطة
+      const counterpartMap = await this._buildCounterpartMap(entries, txMap, acc);
 
       const rows = (entries || []).map(e => {
         const tx = e.reference_id ? txMap.get(e.reference_id) : null;
         const timeRaw = tx?.time || tx?.created_at || e.created_at || null;
-        const desc = this._describeLedgerEntry(acc, e, tx);
+        const counterpart = counterpartMap.get(e.voucher_number);
+        const desc = this._describeLedgerEntry(acc, e, tx, counterpart);
         return {
           date: e.date, timeRaw, time: this._formatTime12(timeRaw),
           label: desc.label, details: desc.details,
@@ -1295,16 +1298,76 @@ const AccountManagementComponent = {
     return txMap;
   },
 
+  // FIX: تحويل account_id إلى اسم عرض مقروء باستخدام خرائط الأسماء
+  _accountIdToName(accountId, maps) {
+    if (!accountId) return '—';
+    if (accountId.startsWith('AGT_')) {
+      const u = maps.userById.get(accountId.slice(4));
+      return u?.display_name || u?.username || accountId;
+    }
+    if (accountId.startsWith('COMP_')) {
+      const c = maps.companyById.get(accountId.slice(5));
+      return c?.name || accountId;
+    }
+    if (accountId === 'DEBTOR_SETTLEMENT') return 'تسوية المديونين';
+    if (accountId.startsWith('EXP_')) return `مصروف ${accountId.slice(4)}`;
+    if (accountId.startsWith('SUSP_')) return 'حساب معلق';
+    const b = maps.bankById.get(accountId);
+    return b?.name || accountId;
+  },
+
+  // FIX: جلب الطرف المقابل لكل قيد لا تربطه معاملة — دفعةً واحدة من Supabase
+  async _buildCounterpartMap(entries, txMap, currentAccountId) {
+    const vouchers = [...new Set(
+      entries
+        .filter(e => !e.reference_id || !txMap.has(e.reference_id))
+        .map(e => e.voucher_number)
+        .filter(Boolean)
+    )];
+    if (!vouchers.length) return new Map();
+
+    const maps   = this._nameMaps();
+    const result = new Map();
+    if (isOnline()) {
+      try {
+        const { data } = await supabaseClient
+          .from('account_ledger')
+          .select('voucher_number, account_id')
+          .in('voucher_number', vouchers)
+          .neq('account_id', currentAccountId)
+          .limit(vouchers.length * 4);
+        for (const row of (data || [])) {
+          if (!result.has(row.voucher_number))
+            result.set(row.voucher_number, this._accountIdToName(row.account_id, maps));
+        }
+      } catch (err) { console.warn('[Statement] فشل جلب الأطراف المقابلة:', err?.message); }
+    }
+    return result;
+  },
+
   // بناء (نوع العملية) و(التفاصيل) حسب نوع الحساب المعروض — مطابق للصيغ المعتمدة
-  _describeLedgerEntry(accountId, e, tx) {
+  _describeLedgerEntry(accountId, e, tx, counterpart) {
     const debit  = parseFloat(e.debit)  || 0;
     const credit = parseFloat(e.credit) || 0;
     const user   = (tx?.details || '').trim();
     const withUser = (s) => (user ? `${s} ${user}` : s);
 
+    // FIX: القيود العكسية — voucher_number يبدأ بـ REV_
+    if (e.voucher_number?.startsWith('REV_')) {
+      const amt      = Math.round(Math.max(debit, credit));
+      const typeMap  = { collection: 'تحصيل', deposit: 'إيداع', bank_withdrawal: 'سحب بنكي', expense: 'مصروف', delivery: 'تسليم', receipt: 'استلام' };
+      const typeName = tx?.type ? (typeMap[tx.type] || tx.type) : '';
+      const origDesc = (e.description || '').replace(/^عكس:\s*/u, '').trim() || typeName;
+      const suffix   = (typeName && amt) ? ` (عكس عملية ${typeName} بقيمة ${amt.toLocaleString('en-US')} ر.س)` : '';
+      return { label: 'قيد عكسي', details: `قيد عكسي لـ: ${origDesc}${suffix}` };
+    }
+
     if (!tx) {
       const dir = debit > 0 ? 'لكم' : 'عليكم';
-      return { label: 'قيد محاسبي', details: e.description || `${dir} قيد محاسبي` };
+      // FIX: استخدام وصف القيد المخزَّن، وإلا إضافة اسم الطرف المقابل إن وُجد
+      if (e.description) return { label: 'قيد محاسبي', details: e.description };
+      const cpStr = counterpart ? ` — ${dir === 'لكم' ? 'من' : 'إلى'} حساب ${counterpart}` : '';
+      return { label: 'قيد محاسبي', details: `${dir} قيد محاسبي${cpStr}` };
     }
 
     // ── حساب الشركة ──

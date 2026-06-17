@@ -1131,15 +1131,24 @@ const DataEntryComponent = {
     const acctField = this._field('tr-recipient-select', 'المستلم', true);
     const acctErrDiv = this._errMsg('tr-account-num-err');
 
-    // فلترة المستخدمين حسب الصلاحيات
-    const allUsers = AppStore.getState('users') || [];
-    const allowedUsers = (typeof AuthService !== 'undefined') ? AuthService.getAllowedUsers() : null;
+    // FIX: فلترة المستخدمين حسب الصلاحيات مع معالجة صريحة لحالة المدير.
+    // getAllowedUsers تُعيد null للمديرين، لكن إذا أُسيء تفسيرها تظهر القائمة فارغة.
+    const allUsers      = AppStore.getState('users') || [];
     const currentUserId = (typeof AuthService !== 'undefined') ? AuthService.getCurrentUserId() : null;
-    const recipientUsers = allUsers.filter(u =>
-      u.id !== currentUserId &&
-      u.is_active !== false &&
-      (!allowedUsers || allowedUsers.includes(u.id))
-    );
+    const isAdminUser   = (typeof AuthService !== 'undefined') && AuthService.isAdminOrAssistant?.();
+    let recipientUsers;
+    if (isAdminUser) {
+      // المدير/المساعد: يرى جميع المستخدمين النشطين (باستثناء نفسه)
+      recipientUsers = allUsers.filter(u => u.id !== currentUserId && u.is_active !== false);
+    } else {
+      // المندوب: يرى فقط المستخدمين المسموح لهم حسب allowed_users
+      const allowedUsers = (typeof AuthService !== 'undefined') ? AuthService.getAllowedUsers() : null;
+      recipientUsers = allUsers.filter(u =>
+        u.id !== currentUserId &&
+        u.is_active !== false &&
+        (!allowedUsers || allowedUsers.includes(u.id))
+      );
+    }
 
     const acctSelect = document.createElement('select');
     acctSelect.id = 'tr-recipient-select';
