@@ -400,6 +400,19 @@ async function createTransactionWithEntries(txData) {
           sync_status : SYNC_STATUS.PENDING,
         });
       }
+
+      // تحديث رصيد المدين محلياً فوراً (يُصحَّح على الخادم عند المزامنة عبر UPDATE_DEBTOR_BALANCE)
+      if (txData.type === TRANSACTION_TYPES.COLLECTION && txData.customer_id) {
+        try {
+          const debtor = await db.debtors.get(txData.customer_id);
+          if (debtor) {
+            const newBal = Math.max(0, (parseFloat(debtor.balance) || 0) - parseFloat(txData.amount || 0));
+            await db.debtors.update(txData.customer_id, { balance: newBal });
+          }
+        } catch (e) {
+          console.warn('⚠️ AccountingService: فشل تحديث رصيد المدين محلياً:', e.message);
+        }
+      }
     }
 
     await _updateLocalBalances(enrichedEntries);
@@ -920,4 +933,4 @@ const AccountingService = {
 };
 
 window.AccountingService = AccountingService;
-console.log('✅ AccountingService.js v4.0 — القيود مطابقة للمرجع (إيداع: COMP←AGT، سحب: AGT←COMP، مديون: AGT←DEBTOR_SETTLEMENT، مصروف: EXP_GENERAL←AGT)');
+console.log('✅ AccountingService.js v4.1 — Offline: تحديث رصيد المدين محلياً في Dexie فوراً عند التحصيل');
