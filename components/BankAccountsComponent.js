@@ -370,15 +370,19 @@ const BankAccountsComponent = {
         سحوبات اليوم: <strong>${info.withdrawTotal.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}</strong>
       </div>` : ''}`;
 
-    const depList = info.list.filter(d => d.type === 'deposit').slice(0, 5);
-    if (depList.length) {
-      const depHTML = depList.map(d => {
-        const agent = users.find(u=>u.id===d.agent_id);
+    const recentList = info.list.slice(0, 5);
+    if (recentList.length) {
+      const txHTML = recentList.map(d => {
+        const agent    = users.find(u=>u.id===d.agent_id);
+        const isDeposit = d.type === 'deposit';
+        const typeLabel = isDeposit ? 'إيداع' : 'سحب';
+        const typeColor = isDeposit ? 'var(--success)' : 'var(--danger)';
         return `
           <div style="display:flex;justify-content:space-between;align-items:center;
             padding:5px 0;border-bottom:1px solid var(--border-color);font-size:0.75rem;">
             <span style="color:var(--text-secondary);">${escapeHtml(agent?.display_name||'—')}</span>
-            <span style="font-weight:700;color:var(--info);direction:ltr;">
+            <span style="font-size:0.68rem;color:${typeColor};font-weight:600;">${typeLabel}</span>
+            <span style="font-weight:700;color:${typeColor};direction:ltr;">
               ${Math.round(parseFloat(d.amount)||0).toLocaleString('en-US')}
             </span>
           </div>`;
@@ -387,17 +391,17 @@ const BankAccountsComponent = {
       stats.innerHTML += `
         <div style="margin-bottom:8px;">
           <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px;">
-            آخر ${depList.length} إيداعات اليوم
+            آخر ${recentList.length} عمليات اليوم
           </div>
-          ${depHTML}
+          ${txHTML}
         </div>`;
 
-      if (info.list.filter(d=>d.type==='deposit').length > 5) {
+      if (info.list.length > 5) {
         stats.innerHTML += `
           <button class="show-more-btn btn btn-secondary btn-sm"
             data-bankid="${escapeHtml(bank.id)}"
             style="width:100%;font-size:0.75rem;margin-bottom:8px;">
-            عرض كل الإيداعات (${info.list.filter(d=>d.type==='deposit').length})
+            عرض كل العمليات (${info.list.length})
           </button>`;
       }
     }
@@ -430,8 +434,9 @@ const BankAccountsComponent = {
   // عرض جميع الإيداعات (مودال)
   // ─────────────────────────────────────────────
   _showAllDeposits(bank, list) {
-    const users = AppStore.getState('users');
-    const total = list.reduce((s,d)=>s+Math.round(parseFloat(d.amount)||0),0);
+    const users    = AppStore.getState('users');
+    const depTotal = list.filter(d=>d.type==='deposit').reduce((s,d)=>s+Math.round(parseFloat(d.amount)||0),0);
+    const wdTotal  = list.filter(d=>d.type==='bank_withdrawal').reduce((s,d)=>s+Math.round(parseFloat(d.amount)||0),0);
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -440,23 +445,28 @@ const BankAccountsComponent = {
 
     const box = document.createElement('div');
     box.className='modal-box';
-    box.style.maxWidth='500px';
+    box.style.maxWidth='540px';
     box.innerHTML=`
       <div class="modal-header">
-        <h3 class="modal-title">جميع إيداعات ${escapeHtml(bank?.name||'')} — ${escapeHtml(formatDateArabic(this._selectedDate))}</h3>
+        <h3 class="modal-title">جميع عمليات ${escapeHtml(bank?.name||'')} — ${escapeHtml(formatDateArabic(this._selectedDate))}</h3>
         <button class="modal-close" id="all-dep-close">✕</button>
       </div>
       <div class="table-wrapper" style="max-height:380px;overflow-y:auto;">
         <table class="data-table">
-          <thead><tr><th>#</th><th>المندوب</th><th>المبلغ</th><th>الوقت</th></tr></thead>
+          <thead><tr><th>#</th><th>المندوب</th><th>المبلغ</th><th>نوع العملية</th><th>الوقت</th></tr></thead>
           <tbody>
             ${list.map((d,i)=>{
-              const agent = users.find(u=>u.id===d.agent_id);
+              const agent      = users.find(u=>u.id===d.agent_id);
+              const isDeposit  = d.type === 'deposit';
+              const typeLabel  = isDeposit ? 'إيداع' : 'سحب';
+              const typeColor  = isDeposit ? 'var(--success)' : 'var(--danger)';
+              const amtColor   = isDeposit ? 'var(--success)' : 'var(--danger)';
               return `<tr>
                 <td style="font-size:0.75rem;color:var(--text-muted);">${i+1}</td>
                 <td>${escapeHtml(agent?.display_name||'—')}</td>
-                <td style="font-weight:700;color:var(--info);direction:ltr;">
+                <td style="font-weight:700;color:${amtColor};direction:ltr;">
                   ${Math.round(parseFloat(d.amount)||0).toLocaleString('en-US')}</td>
+                <td><span style="color:${typeColor};font-weight:600;font-size:0.82rem;">${typeLabel}</span></td>
                 <td style="font-size:0.75rem;color:var(--text-muted);">
                   ${d.created_at?new Date(d.created_at).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}):'—'}
                 </td>
@@ -465,10 +475,15 @@ const BankAccountsComponent = {
           </tbody>
           <tfoot>
             <tr style="font-weight:800;background:var(--bg-hover);">
-              <td colspan="2" style="text-align:center;">الإجمالي</td>
-              <td style="color:var(--success);direction:ltr;">${total.toLocaleString('en-US')}</td>
-              <td></td>
+              <td colspan="2" style="text-align:center;">إيداعات</td>
+              <td style="color:var(--success);direction:ltr;">${depTotal.toLocaleString('en-US')}</td>
+              <td colspan="2"></td>
             </tr>
+            ${wdTotal > 0 ? `<tr style="font-weight:800;background:var(--bg-hover);">
+              <td colspan="2" style="text-align:center;">سحوبات</td>
+              <td style="color:var(--danger);direction:ltr;">${wdTotal.toLocaleString('en-US')}</td>
+              <td colspan="2"></td>
+            </tr>` : ''}
           </tfoot>
         </table>
       </div>`;
@@ -481,24 +496,31 @@ const BankAccountsComponent = {
   // ─────────────────────────────────────────────
   // طباعة كشف الحساب البنكي
   // ─────────────────────────────────────────────
-  _printStatement(bank, deposits, ceiling) {
-    const users   = AppStore.getState('users');
-    const logoUrl = AppStore.getState('logoUrl') || '';
-    const total   = deposits.reduce((s, d) => s + Math.round(parseFloat(d.amount) || 0), 0);
-    const pct     = ceiling > 0 ? Math.round(total / ceiling * 100) : 0;
-    const remain  = Math.max(0, ceiling - total);
+  _printStatement(bank, list, ceiling) {
+    const users    = AppStore.getState('users');
+    const logoUrl  = AppStore.getState('logoUrl') || '';
+    const depTotal = list.filter(d=>d.type==='deposit').reduce((s,d)=>s+Math.round(parseFloat(d.amount)||0),0);
+    const wdTotal  = list.filter(d=>d.type==='bank_withdrawal').reduce((s,d)=>s+Math.round(parseFloat(d.amount)||0),0);
+    const openBal  = Math.round(bank.opening_balance || 0);
+    const netBal   = openBal + depTotal - wdTotal;
+    const pct      = ceiling > 0 ? Math.round(depTotal / ceiling * 100) : 0;
+    const remain   = Math.max(0, ceiling - depTotal);
     const fillColor = pct >= 80 ? '#dc2626' : pct >= 50 ? '#d97706' : '#059669';
-    const dateStr = typeof formatDateArabic === 'function' ? formatDateArabic(this._selectedDate) : new Date().toLocaleDateString('ar-SA');
+    const dateStr  = typeof formatDateArabic === 'function' ? formatDateArabic(this._selectedDate) : new Date().toLocaleDateString('ar-SA');
 
-    const rowsHTML = deposits.map((d, i) => {
-      const agent = users.find(u => u.id === d.agent_id);
+    const rowsHTML = list.map((d, i) => {
+      const agent     = users.find(u => u.id === d.agent_id);
+      const isDeposit = d.type === 'deposit';
+      const typeLabel = isDeposit ? 'إيداع' : 'سحب';
+      const typeColor = isDeposit ? '#059669' : '#dc2626';
       const t = d.created_at
         ? new Date(d.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
         : '—';
       return `<tr class="${i % 2 === 1 ? 'ps-even' : ''}">
         <td style="direction:ltr">${i + 1}</td>
         <td>${agent?.display_name || '—'}</td>
-        <td style="direction:ltr;font-weight:700">${Math.round(parseFloat(d.amount) || 0).toLocaleString('en-US')}</td>
+        <td style="direction:ltr;font-weight:700;color:${typeColor}">${Math.round(parseFloat(d.amount) || 0).toLocaleString('en-US')}</td>
+        <td><span style="color:${typeColor};font-weight:600;">${typeLabel}</span></td>
         <td>${t}</td>
       </tr>`;
     }).join('');
@@ -507,12 +529,15 @@ const BankAccountsComponent = {
       `🏦 كشف حساب بنكي — ${bank.name}`,
       `📅 ${dateStr}`,
       '─────────────────',
-      `💰 إجمالي الإيداعات: ${total.toLocaleString('en-US')} ر.س`,
+      openBal > 0 ? `💼 الرصيد الافتتاحي: ${openBal.toLocaleString('en-US')} ر.س` : '',
+      `💰 إجمالي الإيداعات: ${depTotal.toLocaleString('en-US')} ر.س`,
+      wdTotal > 0 ? `💸 إجمالي السحوبات: ${wdTotal.toLocaleString('en-US')} ر.س` : '',
       `📊 السقف اليومي: ${ceiling.toLocaleString('en-US')} ر.س`,
       `✅ نسبة الاستخدام: ${pct}%`,
-      `🔹 المتبقي: ${remain.toLocaleString('en-US')} ر.س`,
+      `🔹 المتبقي من السقف: ${remain.toLocaleString('en-US')} ر.س`,
+      `🏦 الرصيد الحالي: ${netBal.toLocaleString('en-US')} ر.س`,
       'نظام أبو حذيفة 🔐',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     const ts = new Date().toLocaleString('ar-SA', {
       year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -536,12 +561,13 @@ const BankAccountsComponent = {
         <div><span class="bank-info-label">حامل البطاقة</span><span class="bank-info-val">${bank.card_holder || '—'}</span></div>
         <div><span class="bank-info-label">رقم البطاقة</span><span class="bank-info-val" dir="ltr">${bank.card_number || '—'}</span></div>
         <div><span class="bank-info-label">السقف اليومي</span><span class="bank-info-val" dir="ltr">${ceiling.toLocaleString('en-US')} ر.س</span></div>
+        ${openBal > 0 ? `<div><span class="bank-info-label">الرصيد الافتتاحي</span><span class="bank-info-val" dir="ltr">${openBal.toLocaleString('en-US')} ر.س</span></div>` : ''}
         <div><span class="bank-info-label">تاريخ الكشف</span><span class="bank-info-val">${dateStr}</span></div>
       </div>
 
       <div style="margin-bottom:18px;">
         <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px;">
-          <span>نسبة استخدام السقف: <strong>${pct}%</strong></span>
+          <span>نسبة استخدام السقف (إيداعات): <strong>${pct}%</strong></span>
           <span>المتبقي: <strong dir="ltr">${remain.toLocaleString('en-US')} ر.س</strong></span>
         </div>
         <div class="bank-progress-bar">
@@ -552,13 +578,23 @@ const BankAccountsComponent = {
 
       <div class="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>المندوب</th><th>المبلغ (ر.س)</th><th>وقت الإيداع</th></tr></thead>
+          <thead><tr><th>#</th><th>المندوب</th><th>المبلغ (ر.س)</th><th>نوع العملية</th><th>الوقت</th></tr></thead>
           <tbody>${rowsHTML}</tbody>
           <tfoot>
             <tr class="totals" style="display:table-row;">
               <td colspan="2"><strong>إجمالي الإيداعات</strong></td>
-              <td style="direction:ltr;font-weight:800;color:#059669">${total.toLocaleString('en-US')}</td>
-              <td></td>
+              <td style="direction:ltr;font-weight:800;color:#059669">${depTotal.toLocaleString('en-US')}</td>
+              <td colspan="2"></td>
+            </tr>
+            ${wdTotal > 0 ? `<tr class="totals" style="display:table-row;">
+              <td colspan="2"><strong>إجمالي السحوبات</strong></td>
+              <td style="direction:ltr;font-weight:800;color:#dc2626">${wdTotal.toLocaleString('en-US')}</td>
+              <td colspan="2"></td>
+            </tr>` : ''}
+            <tr class="totals" style="display:table-row;background:#f0fdf4;">
+              <td colspan="2"><strong>الرصيد الحالي</strong></td>
+              <td style="direction:ltr;font-weight:800;color:#059669">${netBal.toLocaleString('en-US')}</td>
+              <td colspan="2"></td>
             </tr>
           </tfoot>
         </table>
