@@ -81,17 +81,31 @@ const DebtorsComponent = {
       const isAgent = AuthService.isAgent();
       const uid     = AuthService.getCurrentUserId();
 
-      const result = await repo.query(TABLES.DEBTORS, {}, { orderBy: 'name', ascending: true, pageSize: 500 });
-      let debtors  = isOk(result) ? (result.data.data || []) : [];
+      let debtors = [];
 
-      /* فلترة للمندوب */
-      if (isAgent) {
-        debtors = debtors.filter(d => {
-          const agents = Array.isArray(d.assigned_agents)
-            ? d.assigned_agents
-            : (typeof d.assigned_agents === 'string' ? JSON.parse(d.assigned_agents || '[]') : []);
-          return agents.includes(uid);
-        });
+      if (isAgent && isOnline()) {
+        // FIX: للمندوب online — استعلام مباشر بفلتر JSONB @> لتجنب تحميل كل المدينين
+        // وتجاوز حد pageSize:500 الذي قد يُفوِّت مدينين في صفحات لاحقة
+        const { data, error: qErr } = await supabaseClient
+          .from(TABLES.DEBTORS)
+          .select('*')
+          .filter('assigned_agents', 'cs', JSON.stringify([uid]))
+          .order('name', { ascending: true });
+        if (qErr) throw new Error(qErr.message);
+        debtors = data || [];
+      } else {
+        const result = await repo.query(TABLES.DEBTORS, {}, { orderBy: 'name', ascending: true, pageSize: 500 });
+        debtors = isOk(result) ? (result.data.data || []) : [];
+        // FIX offline: الفلترة المحلية مع تحليل assigned_agents (Array أو JSON string)
+        if (isAgent) {
+          debtors = debtors.filter(d => {
+            if (d.assigned_agents == null) return false;
+            const agents = Array.isArray(d.assigned_agents)
+              ? d.assigned_agents
+              : (() => { try { return JSON.parse(d.assigned_agents); } catch { return []; } })();
+            return agents.includes(uid);
+          });
+        }
       }
 
       if (debtors.length === 0) {
