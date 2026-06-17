@@ -467,11 +467,12 @@ async function _resyncVaults(session) {
 }
 
 // الاستماع لتجديد التوكن لإبقاء الخزنة محدّثة طوال الجلسة
+// FIX: إضافة INITIAL_SESSION لاستعادة الجلسة بعد تحديث الصفحة
 if (typeof window !== 'undefined') {
   window.addEventListener('supabase:authChange', (e) => {
     const { event, session } = e.detail || {};
-    if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') && session) {
-      _resyncVaults(session);
+    if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+      _resyncVaults(session).catch(err => console.warn('[Auth] resync after', event, 'failed:', err?.message));
     }
   });
 }

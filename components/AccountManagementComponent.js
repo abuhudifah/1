@@ -2130,10 +2130,14 @@ const AccountManagementComponent = {
         
         const { data: accountNumber, error: genError } = await supabaseClient.rpc('generate_account_number', { entity_type: 'company' });
         if (genError) throw new Error(`فشل توليد رقم الحساب: ${genError.message}`);
-        
+        if (!accountNumber) throw new Error('فشل توليد رقم الحساب: القيمة فارغة');
+
+        // FIX: account_prefix مطلوب NOT NULL — يساوي أول 3 أحرف من رقم الحساب (مثال: COM)
+        const accountPrefix = String(accountNumber).slice(0, 3);
+
         const { data: company, error: insertError } = await supabaseClient
           .from('companies')
-          .insert({ name, account_number: accountNumber })
+          .insert({ name, account_number: accountNumber, account_prefix: accountPrefix })
           .select()
           .single();
         
