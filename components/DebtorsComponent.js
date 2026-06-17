@@ -27,7 +27,7 @@ const DebtorsComponent = {
     topBar.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;';
     topBar.innerHTML = `<h2 style="font-size:1.2rem;font-weight:700;color:var(--text-primary);flex:1;">العملاء المديونون</h2>`;
 
-    if (isAdmin) {
+    {
       const addBtn = document.createElement('button');
       addBtn.className = 'btn btn-primary btn-sm';
       addBtn.innerHTML = '<i data-lucide="plus" style="width:14px;height:14px"></i> إضافة عميل';

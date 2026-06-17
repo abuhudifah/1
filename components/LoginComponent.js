@@ -1121,6 +1121,10 @@ const LoginComponent = {
     this._injectStyles();
     container.innerHTML = '';
     container.appendChild(this._buildPage());
+    // إخفاء الشعار في عرض الآلة الحاسبة + تفعيل زر البصمة بعد إضافة الصفحة للـ DOM
+    const brandEl2 = document.getElementById('lp-brand-el');
+    if (brandEl2 && this._state.view === 'calc') brandEl2.style.display = 'none';
+    this._updateQuickWebAuthnBtnVisibility();
 
     // ربط keyboard بعد render
     this._kbHandler = (e) => this._handleKeyboard(e);
@@ -1170,6 +1174,9 @@ const LoginComponent = {
     if (!scene) scene = document.getElementById('lp-scene');
     if (!scene) return;
     scene.innerHTML = '';
+    // إخفاء/إظهار الشعار حسب العرض الحالي
+    const brandEl = document.getElementById('lp-brand-el');
+    if (brandEl) brandEl.style.display = this._state.view === 'calc' ? 'none' : '';
     if (this._state.view === 'calc') {
       scene.appendChild(this._buildCalcCard());
       this._updateQuickWebAuthnBtnVisibility(); // ✅ بعد الإضافة للـ DOM
@@ -1187,6 +1194,7 @@ const LoginComponent = {
   // ─────────────────────────────────────────────────────────
   _buildBrand() {
     const b = document.createElement('div');
+    b.id        = 'lp-brand-el';
     b.className = 'lp-brand';
     b.innerHTML = `
       <div class="lp-brand-icon">

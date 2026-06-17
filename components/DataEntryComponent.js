@@ -748,15 +748,19 @@ const DataEntryComponent = {
         ? allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ))
         : allDebtors.slice(0, 12);
 
-      // BND-3.7: إنشاء عملاء جدد مقيّد للمدير فقط (RLS على debtors تمنع وصول المندوبين)
-      if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ) && !isAgent) {
+      if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ)) {
         const newItem = document.createElement('div');
         newItem.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-color);color:var(--accent);font-size:0.88rem;font-weight:600;';
         newItem.innerHTML = `<span>➕</span><span>إضافة عميل جديد: <strong>${escapeHtml(q.trim())}</strong></span>`;
         newItem.addEventListener('click', async () => {
+          const nameParts = q.trim().split(/\s+/).filter(Boolean);
+          if (nameParts.length < 3) {
+            showToast('يجب إدخال الاسم الثلاثي للعميل (ثلاث كلمات على الأقل)', 'error');
+            return;
+          }
           dd.style.display = 'none';
           input.disabled = true;
-          const newDebtor = { name: q.trim(), debt_amount: 0, assigned_agents: [] };
+          const newDebtor = { name: q.trim(), debt_amount: 0, assigned_agents: isAgent ? [uid] : [] };
           try {
             const r = await repo.create(TABLES.DEBTORS, newDebtor);
             if (isOk(r)) {
@@ -1357,18 +1361,14 @@ const DataEntryComponent = {
     if (!bankId) { showToast('اختر الحساب البنكي (ابحث برقم الحساب)', 'error'); return; }
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
 
-    // BND-3.2.2: التحقق المسبق من ارتباط البنك بشركة قبل إرسال أي طلب
-    const companyId = bank?.company_id || null;
-    if (!companyId) {
-      showToast('❌ الحساب البنكي غير مرتبط بشركة — يرجى مراجعة المدير لإعداد الحساب', 'error', 5000);
-      return;
-    }
-
     const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     if (!agentId) { showToast('يجب تسجيل الدخول أولاً', 'error'); return; }
     const btn     = document.getElementById('wd-save-btn');
     const restore = setButtonLoading(btn);
+
+    // تحديد company_id من البنك
+    const companyId = bank?.company_id || null;
 
     const result = await AccountingService.createTransactionWithEntries({
       type            : 'bank_withdrawal',
@@ -1393,12 +1393,6 @@ const DataEntryComponent = {
   async _saveDeposit({ bankId, bank, amount, notes }) {
     if (!bankId) { showToast('اختر الحساب البنكي (ابحث برقم الحساب)', 'error'); return; }
     if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
-
-    // BND-3.2.2: التحقق المسبق من ارتباط البنك بشركة قبل إرسال أي طلب
-    if (!bank?.company_id) {
-      showToast('❌ الحساب البنكي غير مرتبط بشركة — يرجى مراجعة المدير لإعداد الحساب', 'error', 5000);
-      return;
-    }
 
     const rounded = roundAmount(amount);
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
@@ -1462,12 +1456,15 @@ const DataEntryComponent = {
     const btn     = document.getElementById('exp-save-btn');
     const restore = setButtonLoading(btn);
 
+    const agentUser = (AppStore.getState('users') || []).find(u => u.id === agentId);
+    const agentName = agentUser?.display_name || agentId;
     // ✅ استخدام حساب EXP_GENERAL الثابت، مع تضمين نوع المصروف في الوصف
     const result  = await AccountingService.createTransactionWithEntries({
       type        : 'expense',
       amount      : rounded,
       date        : txDate,
       agent_id    : agentId,
+      agent_name  : agentName,
       expense_type: expenseType,
       details     : details ? `${details} (نوع: ${expenseType})` : `مصروف من نوع ${expenseType}`,
     });
@@ -1522,9 +1519,6 @@ const DataEntryComponent = {
       const confirmed = await confirmDialog(confirmMessage, 'تأكيد', 'إلغاء', 'warning');
       if (!confirmed) return;
 
-      // BND-3.2.4: مساعد لتحويل كائن الخطأ إلى نص مقروء
-      const _errStr = (e) => (typeof e === 'string' ? e : (e?.message || JSON.stringify(e) || 'خطأ غير معروف'));
-
       if (mode === 'transfer') {
         // تحويل مباشر: خصم فوري من المرسل وإيداع فوري للمستقبل — بلا موافقة إدارية
         const txData = {
@@ -1540,7 +1534,7 @@ const DataEntryComponent = {
           approval_status: APPROVAL_STATUS.APPROVED,
         };
         const result = await AccountingService.createTransactionWithEntries(txData);
-        if (!isOk(result)) throw new Error(_errStr(result.error));
+        if (!isOk(result)) throw new Error(result.error);
 
         const txStatus = result.data.pending ? 'بانتظار المزامنة' : 'مكتملة';
         console.log(`[Transfer] تحويل مباشر | المرسل: ${myName} → المستقبل: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: ${txStatus}`);
@@ -1570,7 +1564,7 @@ const DataEntryComponent = {
           updated_at: new Date().toISOString(),
         };
         const createResult = await repo.create(TABLES.TRANSFER_REQUESTS, requestData);
-        if (!isOk(createResult)) throw new Error(_errStr(createResult.error));
+        if (!isOk(createResult)) throw new Error(createResult.error);
 
         const notifData = {
           title: '📨 طلب أموال',
