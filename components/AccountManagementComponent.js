@@ -792,6 +792,17 @@ const AccountManagementComponent = {
           .delete()
           .eq('account_id', accountId);
         if (balErr) { showToast(`فشل حذف الحساب: ${balErr.message}`, 'error'); return; }
+
+        // FIX: حذف السجل الأصلي من companies/expense_accounts لتفادي "الأشباح" في القوائم المنسدلة.
+        if (accountId.startsWith('COMP_')) {
+          const companyId = accountId.replace('COMP_', '');
+          const { error: compErr } = await supabaseClient.from('companies').delete().eq('id', companyId);
+          if (compErr) console.warn('⚠️ لم يتم حذف الشركة من جدول companies:', compErr.message);
+        } else if (accountId.startsWith('EXP_')) {
+          const expCode = accountId.replace('EXP_', '');
+          const { error: expErr } = await supabaseClient.from('expense_accounts').delete().eq('code', expCode);
+          if (expErr) console.warn('⚠️ لم يتم حذف المصروف من جدول expense_accounts:', expErr.message);
+        }
       } else {
         if (typeof db !== 'undefined' && db.isOpen()) {
           await db.account_ledger.where('account_id').equals(accountId).delete();
@@ -799,12 +810,27 @@ const AccountManagementComponent = {
           if (typeof SyncQueue !== 'undefined') {
             await SyncQueue.add('delete', 'account_balances', accountId, {});
           }
+          // FIX offline: حذف من companies/expense_accounts محلياً
+          if (accountId.startsWith('COMP_')) {
+            const companyId = accountId.replace('COMP_', '');
+            await db.companies?.delete(companyId).catch(() => {});
+            if (typeof SyncQueue !== 'undefined') {
+              await SyncQueue.add('delete', 'companies', companyId, {});
+            }
+          } else if (accountId.startsWith('EXP_')) {
+            const expCode = accountId.replace('EXP_', '');
+            await db.expense_accounts?.where('code').equals(expCode).delete().catch(() => {});
+            if (typeof SyncQueue !== 'undefined') {
+              await SyncQueue.add('delete', 'expense_accounts', expCode, {});
+            }
+          }
         } else {
           showToast('لا يمكن الحذف بدون اتصال وقاعدة بيانات محلية', 'error');
           return;
         }
       }
       showToast(`تم حذف الحساب "${accountName}" بنجاح`, 'success');
+      if (typeof AppStore !== 'undefined') await AppStore.refreshData();
       await this._loadChart();
     } catch (e) {
       showToast(`خطأ غير متوقع: ${e.message}`, 'error');
@@ -1095,9 +1121,10 @@ const AccountManagementComponent = {
       }
 
       // تخزين بيانات الكشف للطباعة الاحترافية
+      // FIX: عنوان محدد للحساب والفترة لاسم ملف PDF دلالي
       this._lastStatement = {
         kind: 'ledger',
-        title: `كشف حساب: ${this._selectedAccountName || acc}`,
+        title: `كشف_${this._selectedAccountName || acc}`,
         accountId: acc,
         periodText: this._buildPeriodText(from, to),
         columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
@@ -1207,7 +1234,7 @@ const AccountManagementComponent = {
 
       this._lastStatement = {
         kind: 'bank',
-        title: `كشف حركة بنك: ${this._selectedAccountName || ('BNK_' + bankId)}`,
+        title: `كشف_بنك_${this._selectedAccountName || bankId}`,
         accountId: 'BNK_' + bankId,
         periodText: this._buildPeriodText(from, to),
         columns: ['#', 'الوقت', 'نوع العملية', 'المندوب', 'المبلغ (ر.س)'],
@@ -2207,10 +2234,12 @@ const AccountManagementComponent = {
         if (insertError) throw new Error(`فشل إضافة الشركة: ${insertError.message}`);
         
         const accountId = `COMP_${company.id}`;
+        // FIX: trigger trg_init_company_account ينشئ السجل تلقائياً عند إدراج الشركة.
+        // نستخدم upsert مع ignoreDuplicates لتجنب خطأ account_balances_pkey إذا سبق الـ trigger.
         const { error: balanceError } = await supabaseClient
           .from('account_balances')
-          .insert({ account_id: accountId, balance: 0 });
-        
+          .upsert({ account_id: accountId, balance: 0 }, { onConflict: 'account_id', ignoreDuplicates: true });
+
         if (balanceError) throw new Error(`فشل إنشاء الحساب المحاسبي: ${balanceError.message}`);
         
         showToast(`✅ تم إضافة الشركة "${name}" برقم حساب ${accountNumber}`, 'success');

@@ -91,8 +91,27 @@ const BankAccountsComponent = {
     let bankAccounts = [];
 
     if (isAgent) {
-      /* المندوب: فقط الحسابات التي أودع فيها أو سحب منها في التاريخ المحدد */
-      let activeIds = [];
+      // FIX: استخدام getAllowedBanks() كفلتر أساسي للصلاحيات بدلاً من النشاط اليومي فقط.
+      // البنوك المصرح بها تظهر دائماً؛ ترتيبها يعتمد على النشاط (نشطة أولاً).
+      const allowedBanks = AuthService.getAllowedBanks();
+      let allBanks = AppStore.getState('bankAccounts') || [];
+
+      if (allowedBanks && allowedBanks.length > 0) {
+        bankAccounts = allBanks.filter(b => allowedBanks.includes(b.id));
+      } else {
+        // null = لا قيود مُحدَّدة → يرى المندوب جميع البنوك
+        bankAccounts = allBanks;
+      }
+
+      if (!bankAccounts.length) {
+        el.innerHTML=`<div class="empty-state" style="grid-column:1/-1;">
+          <div class="empty-state-icon">🏦</div>
+          <div class="empty-state-text">لا توجد حسابات بنكية مصرح بها</div>
+        </div>`; return;
+      }
+
+      // جلب معرّفات البنوك النشطة اليوم (للترتيب وعرض بيانات النشاط فقط، لا للفلترة)
+      this._agentActiveIds = new Set();
       try {
         if (isOnline()) {
           const { data } = await supabaseClient.from('transactions')
@@ -100,22 +119,21 @@ const BankAccountsComponent = {
             .eq('date', this._selectedDate)
             .in('type', ['deposit', 'bank_withdrawal'])
             .eq('agent_id', uid);
-          activeIds = [...new Set((data||[]).map(d=>d.bank_account_id).filter(Boolean))];
+          this._agentActiveIds = new Set((data||[]).map(d=>d.bank_account_id).filter(Boolean));
         } else {
           const txs = await db.transactions.where('[date+agent_id]').equals([this._selectedDate, uid])
             .filter(t => (t.type==='deposit' || t.type==='bank_withdrawal') && t.bank_account_id)
             .toArray();
-          activeIds = [...new Set(txs.map(d=>d.bank_account_id))];
+          this._agentActiveIds = new Set(txs.map(d=>d.bank_account_id));
         }
       } catch (e) { console.warn('⚠️ BankAccounts: فشل تحميل الحسابات النشطة:', e.message); }
 
-      if (!activeIds.length) {
-        el.innerHTML=`<div class="empty-state" style="grid-column:1/-1;">
-          <div class="empty-state-icon">🏦</div>
-          <div class="empty-state-text">لا توجد عمليات بنكية في ${escapeHtml(formatDateArabic(this._selectedDate))}</div>
-        </div>`; return;
-      }
-      bankAccounts = (AppStore.getState('bankAccounts')||[]).filter(b=>activeIds.includes(b.id));
+      // البنوك النشطة تُعرض أولاً
+      bankAccounts.sort((a, b) => {
+        const aActive = this._agentActiveIds.has(a.id) ? 0 : 1;
+        const bActive = this._agentActiveIds.has(b.id) ? 0 : 1;
+        return aActive - bActive;
+      });
     } else {
       bankAccounts = AppStore.getState('bankAccounts')||[];
       // تطبيق فلتر الشركة إن وُجد
@@ -606,8 +624,9 @@ const BankAccountsComponent = {
       </div>`;
 
     if (typeof PrintService !== 'undefined' && PrintService.printHTML) {
+      // FIX: عنوان محدد يشمل اسم البنك والتاريخ لاسم ملف PDF دلالي
       PrintService.printHTML(contentHTML, {
-        title     : `كشف حساب بنكي — ${bank.name}`,
+        title     : `كشف_بنكي_${bank.name}_${dateStr}`,
         logo      : logoUrl,
         shareText,
         periodText: dateStr,

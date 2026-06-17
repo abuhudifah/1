@@ -174,6 +174,10 @@ const PrintService = (() => {
   height:8px;background:#e2e8f0;border-radius:4px;margin-top:6px;overflow:hidden;
 }
 
+/* ══ إخفاء عناصر التحكم عند التقاط html2canvas (تُضاف آنياً قبل الالتقاط) ══ */
+#ps-overlay.ps-capturing .ps-toolbar{visibility:hidden !important;}
+#ps-overlay.ps-capturing .ps-scroll{overflow:visible !important;}
+
 /* ══ طباعة ══ */
 @media print{
   body.ps-printing > *:not(#ps-overlay){display:none !important;}
@@ -257,10 +261,16 @@ const PrintService = (() => {
     const spinEl    = document.getElementById('ps-spin');
     const setSpin   = (on) => { spinEl.style.display = on ? 'inline-block' : 'none'; };
 
-    /* اسم الملف */
-    const safeTitle  = (title || 'تقرير').replace(/[^؀-ۿa-zA-Z0-9_\- ]/g, '').trim();
+    /* اسم الملف — FIX: استبدال الرموز الخاصة ببدائل آمنة بدلاً من حذفها */
+    const safeTitle = (title || 'تقرير')
+      .replace(/[—–]/g, '-')                        // شرطة طويلة/متوسطة → -
+      .replace(/[:：]/g, '_')                       // نقطتان → _
+      .replace(/\s+/g, '_')                         // مسافات → _
+      .replace(/[^a-zA-Z0-9_؀-ۿ-]/g, '') // احذف ما تبقى من رموز غير آمنة
+      .replace(/_+/g, '_')                          // دمج underscores متعددة
+      .replace(/^_+|_+$/g, '');                     // حذف _ من الطرفين
     const dateSuffix = new Date().toISOString().slice(0, 10);
-    const filename   = `${safeTitle}_${dateSuffix}.pdf`;
+    const filename   = `${safeTitle || 'تقرير'}_${dateSuffix}.pdf`;
 
     /* بناء إعدادات html2pdf */
     const _pdfOpts = () => {
@@ -270,7 +280,10 @@ const PrintService = (() => {
         margin      : [margin, margin, margin, margin],
         filename,
         image       : { type: 'jpeg', quality: 0.97 },
-        html2canvas : { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+        // FIX: إزالة scrollY:0 الذي يُدرج عناصر position:fixed (شريط الأدوات) في الـ PDF.
+        // windowScrollY يُحسب من موضع contentEl الفعلي في الصفحة.
+        html2canvas : { scale: 2, useCORS: true, logging: false,
+          scrollY: -window.scrollY, windowScrollY: 0 },
         jsPDF       : { unit: 'mm', format: 'a4', orientation: orient },
       };
     };
@@ -319,6 +332,8 @@ const PrintService = (() => {
     /* زر حفظ PDF */
     document.getElementById('ps-btn-pdf').addEventListener('click', async () => {
       setSpin(true);
+      // FIX: إخفاء شريط الأدوات أثناء الالتقاط لمنع ظهوره في PDF
+      overlay.classList.add('ps-capturing');
       try {
         await _ensurePdfLib();
         await window.html2pdf().set(_pdfOpts()).from(contentEl).save();
@@ -327,12 +342,14 @@ const PrintService = (() => {
         if (window.showToast) showToast('❌ خطأ في توليد PDF: ' + e.message, 'error');
         else console.error('PDF error:', e);
       }
+      overlay.classList.remove('ps-capturing');
       setSpin(false);
     });
 
     /* زر المشاركة */
     document.getElementById('ps-btn-share').addEventListener('click', async () => {
       setSpin(true);
+      overlay.classList.add('ps-capturing');
       try {
         const txt = shareText || `${title}\n${periodText}`;
         await _ensurePdfLib();
@@ -352,6 +369,7 @@ const PrintService = (() => {
           if (window.showToast) showToast('❌ خطأ في المشاركة: ' + e.message, 'error');
         }
       }
+      overlay.classList.remove('ps-capturing');
       setSpin(false);
     });
 
