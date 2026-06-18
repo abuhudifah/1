@@ -97,9 +97,9 @@ const TRANSACTION_TYPES = Object.freeze({
   COLLECTION        : 'collection',
   DEPOSIT           : 'deposit',
   BANK_WITHDRAWAL   : 'bank_withdrawal',
-  BANK_WITHDRAWAL   : 'bank_withdrawal',
   EXPENSE           : 'expense',
   RECEIPT           : 'receipt',
+  DELIVERY          : 'delivery',
   REFUND_SETTLEMENT : 'refund_settlement',
 });
 
@@ -109,6 +109,7 @@ const TRANSACTION_TYPE_LABELS = Object.freeze({
   bank_withdrawal   : 'سحب بنكي',
   expense           : 'مصروف',
   receipt           : 'تحويل',
+  delivery          : 'تسليم مباشر',
   refund_settlement : 'تسوية استرداد',
 });
 
