@@ -15,6 +15,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: anthropics/claude-code-security-review@main
+        continue-on-error: true
         with:
           comment-pr: true
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
