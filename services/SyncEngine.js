@@ -279,6 +279,9 @@ function _sleep(ms) {
 // ============================================================
 
 window.addEventListener('app:onlineStatusChange', async (e) => {
+  // وضع Offline اليدوي: تُعالجه App.js عبر _autoSyncAndLogout — لا تدخّل هنا
+  if (window.AuthState?.isOffline) return;
+
   if (e.detail?.online && window.AuthState?.isInitialized) {
     const pending = typeof LocalOperationsService !== 'undefined'
       ? await LocalOperationsService.getPendingCount()

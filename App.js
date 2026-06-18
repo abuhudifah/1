@@ -714,16 +714,18 @@ function _updateConnStatus(isNowOnline) {
     showToast('انقطع الاتصال. العمليات ستُحفظ محلياً.', 'warning', 4000);
   }
 
-  // إعادة الاتصال بعد offline → تشغيل المزامنة + تحديث widget
+  // إعادة الاتصال أثناء وضع Offline → مزامنة تلقائية + تسجيل خروج تلقائي
+  if (isNowOnline && wasOffline) {
+    _autoSyncAndLogout();
+    _updateSyncWidget();
+    return;
+  }
+
+  // إعادة الاتصال في وضع Online العادي → مزامنة الطابور المعلق
   if (isNowOnline && typeof SyncEngine !== 'undefined') {
     SyncEngine.startAutoSync().catch(e => console.warn('[App] SyncEngine:', e.message));
   }
   _updateSyncWidget();
-
-  // إعادة الاتصال أثناء وضع Offline → عرض مودال إعادة تسجيل الدخول
-  if (isNowOnline && wasOffline) {
-    _showReconnectionModal();
-  }
 }
 
 /** شريط وضع Offline — يظهر أسفل الهيدر مباشرة (position:fixed) */
@@ -783,12 +785,42 @@ function _showReconnectionModal() {
   });
 }
 
-/** تسجيل الخروج وإعادة التحميل بعد إغلاق مودال إعادة الاتصال */
+/** تسجيل الخروج وإعادة التحميل */
 async function _handleReconnectionConfirm() {
   if (typeof AuthService !== 'undefined' && AuthService.logout) {
-    await AuthService.logout(); // ✅ انتظر إتمام الخروج قبل إعادة التحميل
+    await AuthService.logout();
   }
   window.location.reload();
+}
+
+/**
+ * عند عودة الإنترنت أثناء وضع Offline:
+ * 1. يُزامن الطابور المعلق تلقائياً
+ * 2. يُسجّل الخروج تلقائياً دون تدخّل المستخدم
+ */
+async function _autoSyncAndLogout() {
+  if (typeof showToast === 'function') {
+    showToast('🌐 تمت معاودة الاتصال — جارٍ مزامنة بياناتك...', 'info', 8000);
+  }
+
+  try {
+    if (typeof OutboxService !== 'undefined') {
+      const result = await OutboxService.processOutbox();
+      if (result?.data?.failed > 0) {
+        console.warn(`[App] _autoSyncAndLogout: ${result.data.failed} عملية فشلت في المزامنة`);
+      }
+    }
+  } catch (e) {
+    console.warn('[App] _autoSyncAndLogout:', e.message);
+  }
+
+  if (typeof showToast === 'function') {
+    showToast('✅ تمت المزامنة — سيتم تسجيل الخروج تلقائياً...', 'success', 3000);
+  }
+
+  // تأخير قصير ليرى المستخدم إشعار النجاح قبل إعادة التحميل
+  await new Promise(r => setTimeout(r, 2500));
+  await _handleReconnectionConfirm();
 }
 
 // ============================================================
