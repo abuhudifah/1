@@ -3,3 +3,6 @@ node_modules/
 .env.local
 coverage/
 .claude/
+!.claude/settings.json
+!.claude/hooks/
+!.claude/hooks/session-start.sh
