@@ -13,14 +13,22 @@ const PrintService = (() => {
 
   const _STYLE_ID  = 'ps-global-styles';
   const _MODAL_ID  = 'ps-overlay';
-  const _PDF_CDN   = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  const _PDF_CDNS  = [
+    'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+    'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js',
+  ];
 
   function _loadScript(url) {
     return new Promise((resolve, reject) => {
-      if (document.querySelector(`script[src="${url}"]`)) { resolve(); return; }
+      const existing = document.querySelector(`script[src="${url}"]`);
+      if (existing) {
+        if (existing.dataset.loadState === 'ok') { resolve(); return; }
+        existing.remove(); // أزل script فاشل أو معلّق من محاولة سابقة
+      }
       const s = document.createElement('script');
-      s.src = url; s.onload = resolve;
-      s.onerror = () => reject(new Error('فشل تحميل المكتبة — تحقق من الاتصال'));
+      s.src = url;
+      s.onload  = () => { s.dataset.loadState = 'ok';   resolve(); };
+      s.onerror = () => { s.dataset.loadState = 'fail'; reject(new Error('فشل تحميل المكتبة — تحقق من الاتصال')); };
       document.head.appendChild(s);
     });
   }
@@ -288,17 +296,18 @@ const PrintService = (() => {
       };
     };
 
-    /* تحميل html2pdf عند الحاجة — مع معالجة فشل CDN */
-    // FIX: رسالة واضحة للمستخدم عند فشل تحميل المكتبة (انقطاع الإنترنت أو حجب CDN)
+    /* تحميل html2pdf — يجرب CDNs بالتسلسل */
     const _ensurePdfLib = async () => {
       if (window.html2pdf) return;
-      try {
-        await _loadScript(_PDF_CDN);
-        if (!window.html2pdf) throw new Error('المكتبة لم تُحمَّل بعد تنفيذ السكريبت');
-      } catch (e) {
-        if (window.showToast) showToast('⚠️ تعذّر تحميل مكتبة PDF — تحقق من اتصال الإنترنت أو استخدم زر الطباعة كبديل', 'warning', 6000);
-        throw e;
+      let lastErr;
+      for (const cdn of _PDF_CDNS) {
+        try {
+          await _loadScript(cdn);
+          if (window.html2pdf) return; // نجح
+        } catch (e) { lastErr = e; }
       }
+      if (window.showToast) showToast('⚠️ تعذّر تحميل مكتبة PDF — تحقق من اتصال الإنترنت أو استخدم زر الطباعة كبديل', 'warning', 6000);
+      throw lastErr || new Error('المكتبة لم تُحمَّل');
     };
 
     /* زر الإغلاق */
@@ -311,7 +320,6 @@ const PrintService = (() => {
 
     /* زر الطباعة */
     document.getElementById('ps-btn-print').addEventListener('click', () => {
-      /* إضافة class على body يُعطّل كل شيء عدا المودال في @media print */
       const orient = document.getElementById('ps-orient').value;
       const margin = document.getElementById('ps-margin').value;
       let dynStyle = document.getElementById('ps-print-dyn');
@@ -321,10 +329,13 @@ const PrintService = (() => {
         document.head.appendChild(dynStyle);
       }
       dynStyle.textContent = `@media print{@page{size:A4 ${orient};margin:${margin}mm;}}`;
+      /* تعيين عنوان الصفحة مؤقتاً حتى يستخدمه المتصفح اسماً للملف عند "حفظ كـ PDF" */
+      const origTitle = document.title;
+      document.title  = safeTitle;
       document.body.classList.add('ps-printing');
       window.print();
-      /* بعد الطباعة نزيل الكلاس */
       window.addEventListener('afterprint', () => {
+        document.title = origTitle;
         document.body.classList.remove('ps-printing');
       }, { once: true });
     });
@@ -350,20 +361,32 @@ const PrintService = (() => {
     document.getElementById('ps-btn-share').addEventListener('click', async () => {
       setSpin(true);
       overlay.classList.add('ps-capturing');
-      try {
-        const txt = shareText || `${title}\n${periodText}`;
-        await _ensurePdfLib();
-        const blob = await window.html2pdf().set(_pdfOpts()).from(contentEl).outputPdf('blob');
-        const file = new File([blob], filename, { type: 'application/pdf' });
+      const txt = shareText || `${title}\n${periodText}`;
 
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ title, text: txt, files: [file] });
-        } else if (navigator.share) {
+      const _textShare = async () => {
+        if (navigator.share) {
           await navigator.share({ title, text: txt }).catch(() => {});
         } else {
-          /* واتساب كبديل نصي */
           window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(txt), '_blank');
         }
+      };
+
+      try {
+        /* حاول مشاركة PDF أولاً */
+        let sharedAsPdf = false;
+        try {
+          await _ensurePdfLib();
+          const blob = await window.html2pdf().set(_pdfOpts()).from(contentEl).outputPdf('blob');
+          const file = new File([blob], filename, { type: 'application/pdf' });
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ title, text: txt, files: [file] });
+            sharedAsPdf = true;
+          }
+        } catch (pdfErr) {
+          if (pdfErr.name === 'AbortError') throw pdfErr; // المستخدم ألغى
+          /* CDN فاشل أو الجهاز لا يدعم مشاركة الملفات — تراجع للنص */
+        }
+        if (!sharedAsPdf) await _textShare();
       } catch (e) {
         if (e.name !== 'AbortError') {
           if (window.showToast) showToast('❌ خطأ في المشاركة: ' + e.message, 'error');
