@@ -16,6 +16,10 @@
 
 'use strict';
 
+// الجداول التي تملك عمودَي sync_status و idempotency_key في Supabase
+// (جميع الجداول الأخرى تحتفظ بهذه الحقول في Dexie فقط)
+const _TABLES_WITH_SERVER_SYNC = new Set([TABLES.TRANSACTIONS]);
+
 // ============================================================
 // OutboxService
 // ============================================================
@@ -201,9 +205,14 @@ const OutboxService = {
     try {
       const clean = this._cleanForServer(data);
 
+      // فقط جداول Supabase التي تملك sync_status و idempotency_key تستقبلهما
+      const payload = _TABLES_WITH_SERVER_SYNC.has(tableName)
+        ? { ...clean, idempotency_key: data.idempotency_key || data.id, sync_status: SYNC_STATUS.SYNCED }
+        : clean;
+
       const { data: saved, error } = await supabaseClient
         .from(tableName)
-        .insert({ ...clean, sync_status: SYNC_STATUS.SYNCED })
+        .insert(payload)
         .select()
         .single();
 
@@ -236,7 +245,10 @@ const OutboxService = {
 
       if (txOp && entryOps.length > 0) {
         const rpcResult = await callRPC(RPC.CREATE_TRANSACTION_WITH_ENTRIES, {
-          p_transaction : this._cleanForServer(txOp.data),
+          p_transaction : {
+            ...this._cleanForServer(txOp.data),
+            idempotency_key: txOp.data?.idempotency_key || txOp.data?.id,
+          },
           p_entries     : entryOps.map(op => this._cleanForServer(op.data)),
         });
 
@@ -306,6 +318,7 @@ const OutboxService = {
     if (!record) return {};
     const cleaned = { ...record };
     delete cleaned.sync_status;
+    delete cleaned.idempotency_key;   // يُعاد إضافته صراحةً للجداول التي تملكه
     delete cleaned.error_message;
     delete cleaned._local_only;
     delete cleaned._preEditUpdatedAt;
