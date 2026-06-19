@@ -342,6 +342,7 @@ const OutboxService = {
   _cleanForServer(record, tableName = null) {
     if (!record) return {};
     const cleaned = { ...record };
+    // حقول محلية فقط — لا تُرسل لـ Supabase
     delete cleaned.sync_status;
     delete cleaned.idempotency_key;   // يُعاد إضافته صراحةً للجداول التي تملكه
     delete cleaned.error_message;
@@ -350,6 +351,7 @@ const OutboxService = {
     delete cleaned._preEditVersion;
     delete cleaned.local_timestamp;
     delete cleaned.device_id;
+    delete cleaned.synced_at;
     // يُحذف updated_at للجداول التي لا تملكه في Supabase لتفادي خطأ 42703
     if (tableName && _TABLES_WITHOUT_UPDATED_AT.has(tableName)) {
       delete cleaned.updated_at;
