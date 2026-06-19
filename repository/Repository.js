@@ -55,12 +55,15 @@ function _getPKColumn(tableName) {
   return TABLE_PRIMARY_KEYS[tableName] || 'id';
 }
 
-// الجداول التي لا تحتوي على عمود updated_at
+// الجداول التي لا تحتوي على عمود updated_at في Supabase
+// يجب إبقاء هذه القائمة متزامنة مع _TABLES_WITHOUT_UPDATED_AT في SyncQueue.js و OutboxService.js
 const _REPO_TABLES_WITHOUT_UPDATED_AT = new Set([
   'account_balances',
   'accounts',
   'audit_logs',
+  'companies',              // لا يوجد عمود updated_at في Supabase
   'daily_closings',
+  'notifications',          // لا يوجد عمود updated_at في Supabase
   'quick_login_rate_limit',
   'user_beneficiaries',
 ]);
@@ -192,6 +195,8 @@ const repo = {
         created_at : data.created_at || new Date().toISOString(),
         ...(hasUpdatedAt ? { updated_at: data.updated_at || new Date().toISOString() } : {}),
       };
+      // إذا أحضر ...data عمود updated_at لجدول لا يملكه، نحذفه صراحةً
+      if (!hasUpdatedAt) delete record.updated_at;
 
       // للتوافق مع الكود القديم الذي يتوقع record.id
       if (pkColumn !== 'id' && !record.id) {
@@ -477,11 +482,14 @@ const repo = {
       // FIX-4: استخدام pkColumn كعمود تعارض افتراضي إذا لم يُحدَّد
       const resolvedConflictColumns = conflictColumns || [pkColumn];
 
+      const hasUpdatedAt = !_REPO_TABLES_WITHOUT_UPDATED_AT.has(tableName);
       const record = {
         ...data,
-        updated_at : new Date().toISOString(),
         created_at : data.created_at || new Date().toISOString(),
       };
+      // يُضاف updated_at فقط للجداول التي تملكه فعلياً في Supabase
+      if (hasUpdatedAt) record.updated_at = new Date().toISOString();
+      else              delete record.updated_at; // يُزال حتى لو أحضره ...data
 
       // ضمان وجود قيمة PK
       if (!record[pkColumn] && pkColumn === 'id') {

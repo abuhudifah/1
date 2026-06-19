@@ -568,9 +568,14 @@ const SyncQueue = {
         // فرض نسخة العميل — إعادة الإرسال لـ Supabase
         const clientData = JSON.parse(conflict.client_data || '{}');
         const pkCol = _sqGetPKColumn(conflict.table_name);
+        // لا يُضاف updated_at لجداول لا تملكه في Supabase (تتطابق مع _TABLES_WITHOUT_UPDATED_AT)
+        const hasUpdatedAt = !this._TABLES_WITHOUT_UPDATED_AT.has(conflict.table_name);
+        const upsertPayload = { ...clientData };
+        if (hasUpdatedAt) upsertPayload.updated_at = new Date().toISOString();
+        else              delete upsertPayload.updated_at;
         const { error } = await supabaseClient
           .from(conflict.table_name)
-          .upsert({ ...clientData, updated_at: new Date().toISOString() }, { onConflict: pkCol })
+          .upsert(upsertPayload, { onConflict: pkCol })
           .select();
 
         if (error) return err(`فشل فرض نسخة العميل: ${error.message}`);
@@ -607,13 +612,17 @@ const SyncQueue = {
    * @returns {object}
    * @private
    */
-  // الجداول التي لا تحتوي على عمود updated_at
+  // الجداول التي لا تحتوي على عمود updated_at في Supabase
+  // يجب إبقاء هذه القائمة متزامنة مع _REPO_TABLES_WITHOUT_UPDATED_AT في Repository.js و OutboxService.js
   _TABLES_WITHOUT_UPDATED_AT: new Set([
     'account_balances',
     'accounts',
     'audit_logs',
+    'companies',              // لا يوجد عمود updated_at في Supabase
     'daily_closings',
+    'notifications',          // لا يوجد عمود updated_at في Supabase
     'quick_login_rate_limit',
+    'user_beneficiaries',
   ]),
 
   _cleanRecord(record, tableName) {

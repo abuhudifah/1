@@ -107,7 +107,14 @@ const LocalOperationsService = {
 
       // 5. تسجيل في طابور المزامنة (سيُعالَج بـ OutboxService.processOutbox عند الاتصال)
       if (typeof SyncQueue !== 'undefined') {
-        await SyncQueue.add(SYNC_ACTIONS.CREATE, TABLES.TRANSACTIONS, localOp.id, localOp);
+        const queueResult = await SyncQueue.add(SYNC_ACTIONS.CREATE, TABLES.TRANSACTIONS, localOp.id, localOp);
+        if (queueResult && !isOk(queueResult)) {
+          // العملية محفوظة في Dexie — لن تضيع — لكن المزامنة التلقائية لن تشملها
+          console.warn('⚠️ LocalOperationsService: فشل إضافة العملية للطابور —', queueResult.error);
+          if (String(queueResult.error).includes('ممتلئ')) {
+            showToast('تحذير: طابور المزامنة ممتلئ — زامن البيانات يدوياً من الإعدادات', 'warning', 8000);
+          }
+        }
       }
 
       window.dispatchEvent(new CustomEvent('app:localOpSaved'));
