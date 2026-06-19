@@ -395,7 +395,7 @@ const ProfileSettingsComponent = {
 
     // تسجيل الخروج من الأجهزة الأخرى
     document.getElementById('psc-signout-others')?.addEventListener('click', async () => {
-      if (!isOnline()) { showToast('يتطلب اتصالاً بالإنترنت', 'warning'); return; }
+      if (isOfflineMode() || !isOnline()) { showToast('يتطلب اتصالاً بالإنترنت', 'warning'); return; }
       const btn = document.getElementById('psc-signout-others');
       if (btn) { btn.disabled = true; btn.innerHTML = '⏳ جارٍ...'; }
       const res = await AuthService.signOutOtherDevices();
@@ -418,7 +418,7 @@ const ProfileSettingsComponent = {
         'تأكيد الخروج', 'إلغاء', 'danger'
       );
       if (!confirmed) return;
-      if (!isOnline()) { showToast('يتطلب اتصالاً بالإنترنت', 'warning'); return; }
+      if (isOfflineMode() || !isOnline()) { showToast('يتطلب اتصالاً بالإنترنت', 'warning'); return; }
       const res = await AuthService.signOutAllDevices();
       if (!isOk(res)) showToast(res.error, 'error');
       // signOutAllDevices يُرسل auth:logout → App.js يعيد التوجيه لشاشة الدخول

@@ -145,13 +145,12 @@ window.addEventListener('offline', () => {
 });
 
 /**
- * هل يمكن إجراء عمليات Online الآن؟
- * يعيد false إذا كانت الشبكة مقطوعة أو إذا كان المستخدم في وضع Offline.
- * ملاحظة (v3.0): سيتم ترحيل المستدعِين تدريجياً إلى isOfflineMode() في المراحل القادمة
- *                وعندها ستُصبح هذه الدالة تعكس الشبكة فقط.
+ * هل الشبكة متصلة فعلياً؟
+ * يعكس حالة الشبكة الفعلية (navigator.onLine / _isOnline) فقط —
+ * مستقل تماماً عن وضع Offline (isOfflineMode).
+ * للتحقق من إمكانية إجراء عمليات Supabase استخدم: !isOfflineMode() && isOnline()
  */
 function isOnline() {
-  if (window.AuthState?.isOffline) return false;
   return _isOnline === true;
 }
 

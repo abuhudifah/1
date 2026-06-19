@@ -20,7 +20,7 @@ function initSyncService() {
   window.addEventListener('sync:queueCountChanged', _onQueueCountChanged);
   window.addEventListener('sync:conflict',          _onConflictDetected);
 
-  if (isOnline()) {
+  if (!isOfflineMode() && isOnline()) {
     setTimeout(() => _triggerSync('startup'), 2000);
   }
 
@@ -202,7 +202,7 @@ function _schedulePeriodicSync() {
   const INTERVAL_MS = 30 * 1000; // 30 ثانية
 
   _syncState.periodicTimer = setInterval(async () => {
-    if (!isOnline() || _syncState.isRunning) return;
+    if (isOfflineMode() || !isOnline() || _syncState.isRunning) return;
     try {
       if (!db.isOpen()) return;
 
@@ -237,7 +237,7 @@ function _notifyRunning(running) {
 }
 
 async function manualSync() {
-  if (!isOnline()) { showToast('لا يوجد اتصال بالإنترنت', 'warning'); return; }
+  if (isOfflineMode() || !isOnline()) { showToast('لا يوجد اتصال بالإنترنت', 'warning'); return; }
   showToast('جاري المزامنة...', 'info', 1500);
   await _triggerSync('manual');
   showToast('تمت المزامنة بنجاح', 'success');
@@ -261,7 +261,7 @@ async function getSyncStats() {
     ...(isOk(stats) ? stats.data : {}),
     isRunning  : _syncState.isRunning,
     lastSyncAt : _syncState.lastSyncAt,
-    isOnline   : isOnline(),
+    isOnline   : !isOfflineMode() && isOnline(),
   };
 }
 

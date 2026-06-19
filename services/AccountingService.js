@@ -49,7 +49,7 @@ function _stripEphemeral(obj) {
 // ============================================================
 
 async function _generateVoucherNumber() {
-  if (isOnline()) {
+  if (!isOfflineMode() && isOnline()) {
     try {
       const { data, error } = await supabaseClient.rpc(RPC.GET_NEXT_VOUCHER_NUMBER);
       if (!error && data) return data;
@@ -226,7 +226,7 @@ async function _resolveCompanyFromBank(tx) {
     }
   } catch { /* تجاهل ونحاول عبر الشبكة */ }
 
-  if (isOnline()) {
+  if (!isOfflineMode() && isOnline()) {
     try {
       const { data, error } = await supabaseClient
         .from(TABLES.BANK_ACCOUNTS)
@@ -346,7 +346,7 @@ async function createTransactionWithEntries(txData) {
       time            : txData.time || getCurrentSaudiTime(),
       created_at      : new Date().toISOString(),
       updated_at      : new Date().toISOString(),
-      sync_status     : isOnline() ? SYNC_STATUS.SYNCED : SYNC_STATUS.PENDING,
+      sync_status     : (!isOfflineMode() && isOnline()) ? SYNC_STATUS.SYNCED : SYNC_STATUS.PENDING,
       approval_status : txData.approval_status
         || (isReceiptByAgent ? APPROVAL_STATUS.PENDING : APPROVAL_STATUS.APPROVED),
     };
@@ -363,7 +363,7 @@ async function createTransactionWithEntries(txData) {
       created_at : new Date().toISOString(),
     }));
 
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       // استدعاء مباشر للحصول على كود الخطأ (callRPC يفقد الكود)
       const { data: rpcData, error: rpcError } = await supabaseClient.rpc(
         RPC.CREATE_TRANSACTION_WITH_ENTRIES,
@@ -472,7 +472,7 @@ async function createTransactionWithEntries(txData) {
 
 async function getAccountBalance(accountId) {
   try {
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       const { data, error } = await supabaseClient
         .from(TABLES.ACCOUNT_BALANCES)
         .select('balance')
@@ -506,7 +506,7 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
     const { page = 1, pageSize = PAGINATION_CONFIG.DEFAULT_PAGE_SIZE } = options;
 
     let openingBalance = 0;
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       const { data: balanceData, error: balanceErr } = await supabaseClient
         .rpc(RPC.GET_OPENING_BALANCE, { p_account_id: accountId, p_from_date: fromDate });
       if (!balanceErr && balanceData !== null) {
@@ -535,7 +535,7 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
     }
 
     let closingBalance = openingBalance + pageDebit - pageCredit;
-    if (isOnline() && page > 1) {
+    if (!isOfflineMode() && isOnline() && page > 1) {
       try {
         const { data: stmtData } = await supabaseClient.rpc(RPC.GET_ACCOUNT_STATEMENT, {
           p_account_id : accountId,
@@ -572,7 +572,7 @@ async function dailyClose(date = null) {
   try {
     const closeDate = date || getYesterdaySaudiDate();
     if (!AuthService.isAdmin()) return err('الإقفال اليومي مسموح للمدير فقط');
-    if (!isOnline()) return err('يجب الاتصال بالإنترنت لتنفيذ الإقفال اليومي');
+    if (isOfflineMode() || !isOnline()) return err('يجب الاتصال بالإنترنت لتنفيذ الإقفال اليومي');
 
     const result = await callRPC(RPC.PERFORM_DAILY_CLOSE, { p_date: closeDate });
     if (!isOk(result)) return result;
@@ -604,7 +604,7 @@ async function reverseEntries(transactionId) {
     const tx = txResult.data;
     if (tx.is_reversed) return err('هذه المعاملة تم عكسها مسبقاً');
 
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       const result = await callRPC(RPC.REVERSE_TRANSACTION, { p_transaction_id: transactionId });
       if (!isOk(result)) return result;
 
@@ -691,7 +691,7 @@ async function _updateLocalBalances(entries) {
 
 async function getDailyDepositsTotal(bankAccountId, date) {
   try {
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       const { data, error } = await supabaseClient
         .from(TABLES.TRANSACTIONS)
         .select('amount')
@@ -723,7 +723,7 @@ async function getAgentDailySummary(agentId, date) {
   try {
     let transactions = [];
 
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       const { data } = await supabaseClient
         .from(TABLES.TRANSACTIONS)
         .select('type, amount')
@@ -765,7 +765,7 @@ async function getAgentDailyLedgerNet(agentId, date) {
     const accId = AccountId.agent(agentId);
     let entries = [];
 
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       const { data, error } = await supabaseClient
         .from(TABLES.ACCOUNT_LEDGER)
         .select('debit, credit')
@@ -793,7 +793,7 @@ async function getAgentDailyLedgerNet(agentId, date) {
 
 async function approveTransaction(transactionId) {
   try {
-    if (!isOnline()) return err('يجب الاتصال بالإنترنت للموافقة على المعاملات');
+    if (isOfflineMode() || !isOnline()) return err('يجب الاتصال بالإنترنت للموافقة على المعاملات');
 
     const result = await callRPC(RPC.APPROVE_TRANSACTION, { p_transaction_id: transactionId });
     if (!isOk(result)) return result;
@@ -811,7 +811,7 @@ async function approveTransaction(transactionId) {
 
 async function rejectTransaction(transactionId, reason = '') {
   try {
-    if (!isOnline()) return err('يجب الاتصال بالإنترنت لرفض المعاملات');
+    if (isOfflineMode() || !isOnline()) return err('يجب الاتصال بالإنترنت لرفض المعاملات');
 
     const result = await callRPC(RPC.REJECT_TRANSACTION, {
       p_transaction_id : transactionId,
@@ -832,7 +832,7 @@ async function rejectTransaction(transactionId, reason = '') {
 
 async function getPendingApprovals() {
   try {
-    if (!isOnline()) return ok([]);
+    if (isOfflineMode() || !isOnline()) return ok([]);
     const result = await callRPC(RPC.GET_PENDING_APPROVALS, {});
     if (!isOk(result)) return ok([]);
     return ok(Array.isArray(result.data) ? result.data : []);
@@ -846,7 +846,7 @@ async function getPendingApprovals() {
 // ============================================================
 async function createTransferFromRequest(requestId) {
   try {
-    if (!isOnline()) {
+    if (isOfflineMode() || !isOnline()) {
       return err('يجب الاتصال بالإنترنت لقبول طلب التحويل');
     }
 

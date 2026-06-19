@@ -208,7 +208,7 @@ const DashboardComponent = {
     try {
       const { from, to } = this._getDateRange();
 
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // FIX-3: استخدام supabaseClient المُوحَّد
         const { data, error } = await supabaseClient.rpc(RPC.GET_ADMIN_DASHBOARD, {
           p_date: this._selectedDate, p_from: from, p_to: to,
@@ -280,7 +280,7 @@ const DashboardComponent = {
   async _loadKPI(from, to) {
     let txs = [];
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data } = await supabaseClient
           .from(TABLES.TRANSACTIONS).select('type,amount,is_reversed')
           .gte('date', from).lte('date', to).eq('is_reversed', false);
@@ -297,7 +297,7 @@ const DashboardComponent = {
     // حساب الصافي من account_balances (أدق من مجموع transactions)
     let ledgerNet = null;
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data: balData } = await supabaseClient
           .from(TABLES.ACCOUNT_BALANCES).select('balance')
           .like('account_id', 'AGT_%');
@@ -373,7 +373,7 @@ const DashboardComponent = {
     // مدين = دخل إجمالي للمناديب | دائن = خروج إجمالي من المناديب
     let debitData = [], creditData = [];
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data } = await supabaseClient
           .from(TABLES.ACCOUNT_LEDGER)
           .select('date,debit,credit')
@@ -445,7 +445,7 @@ const DashboardComponent = {
       let banks = AppStore.getState('bankAccounts') || [];
       let totals = {};
 
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
           .from(TABLES.TRANSACTIONS).select('bank_account_id,amount')
@@ -527,7 +527,7 @@ const DashboardComponent = {
     let txs = [], balances = {};
     const agentAccountIds = agents.map(a => `AGT_${a.id}`);
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // الرصيد دائماً من account_balances (المصدر الأمين) + التجميعات من transactions للعرض
         const [txRes, balRes] = await Promise.all([
           supabaseClient.from(TABLES.TRANSACTIONS).select('agent_id,type,amount')
@@ -604,7 +604,7 @@ const DashboardComponent = {
     if (!el) return;
     let txs = [];
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
           .from(TABLES.TRANSACTIONS)

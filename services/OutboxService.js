@@ -120,7 +120,7 @@ const OutboxService = {
    * @returns {Promise<{ok: boolean, data?: {processed, failed, total}, error?: string}>}
    */
   async processOutbox() {
-    if (!isOnline()) {
+    if (isOfflineMode() || !isOnline()) {
       return ok({ processed: 0, failed: 0, total: 0, reason: 'offline' });
     }
     if (typeof db === 'undefined' || !db.isOpen()) {

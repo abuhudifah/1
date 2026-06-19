@@ -1056,7 +1056,7 @@ async function quickLogin(equation) {
     const lockCheck = _checkBruteForce('quick_login');
     if (!isOk(lockCheck)) return lockCheck;
 
-    if (!isOnline()) {
+    if (isOfflineMode() || !isOnline()) {
       // المعادلة السريعة Online فقط (تُنشئ جلسة حقيقية). للأوفلاين: 🔌 برمز PIN.
       return err('لا يوجد اتصال بالإنترنت — استخدم 🔌 للدخول بدون إنترنت برمز PIN');
     }
@@ -1335,7 +1335,7 @@ async function quickLoginWithWebAuthn(userId) {
     if (!userId) return err('مستخدم غير محدد');
 
     // البصمة تُنشئ جلسة Supabase حقيقية ⇒ تتطلب اتصالاً
-    if (!isOnline()) {
+    if (isOfflineMode() || !isOnline()) {
       return err('البصمة تتطلب اتصالاً بالإنترنت — استخدم 🔌 للدخول بدون إنترنت برمز PIN');
     }
 
@@ -1479,7 +1479,7 @@ function generateAccountNumber(user = null) {
  */
 async function getUserAccountNumber(userId) {
   try {
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)
         .select('account_number')
@@ -1512,7 +1512,7 @@ async function _ensureUserAccountNumber(userId, profile = null) {
   try {
     // محاولة جلب الرقم الحالي
     let currentNumber = null;
-    if (isOnline()) {
+    if (!isOfflineMode() && isOnline()) {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)
         .select('account_number')
@@ -1530,7 +1530,7 @@ async function _ensureUserAccountNumber(userId, profile = null) {
     }
     
     // توليد رقم حساب جديد باستخدام RPC
-    if (!isOnline()) {
+    if (isOfflineMode() || !isOnline()) {
       console.warn('⚠️ لا يمكن توليد رقم حساب دون اتصال');
       return null;
     }
@@ -1706,7 +1706,7 @@ function getDeviceToken() {
 // 10. جلب ملف المستخدم
 // ============================================================
 async function _fetchUserProfile(userId) {
-  if (isOnline()) {
+  if (!isOfflineMode() && isOnline()) {
     try {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)

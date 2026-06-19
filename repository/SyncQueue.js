@@ -168,7 +168,7 @@ const SyncQueue = {
       return ok({ processed: 0, failed: 0, reason: 'already_processing' });
     }
 
-    if (!isOnline()) {
+    if (isOfflineMode() || !isOnline()) {
       console.log('ℹ️  SyncQueue: غير متصل — تأجيل المعالجة');
       return ok({ processed: 0, failed: 0, reason: 'offline' });
     }
@@ -491,7 +491,7 @@ const SyncQueue = {
       const timer = setTimeout(async () => {
         _queueState.retryTimers.delete(savedItemId);
         await db.sync_queue.update(savedItemId, { sync_status: 'pending' }).catch(() => {});
-        if (isOnline() && !_queueState.isProcessing && typeof OutboxService !== 'undefined') {
+        if (!isOfflineMode() && isOnline() && !_queueState.isProcessing && typeof OutboxService !== 'undefined') {
           // OutboxService هو المحرك الوحيد (id===idempotency_key + 23505=نجاح + FIFO)
           await OutboxService.processOutbox();
         }
