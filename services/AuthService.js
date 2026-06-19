@@ -198,6 +198,12 @@ async function login(email, password) {
     _saveToDexieBackground(profile);
     _preloadEssentialData(profile);
 
+    // ✅ Q2=B: snapshot بيانات المراجع للـ Dexie لدعم وضع Offline لاحقاً
+    // يُنفَّذ في الخلفية — لا ينتظر اكتماله لإرجاع نتيجة الدخول
+    if (window.AppStore?.snapshotReferenceDataToDexie) {
+      window.AppStore.snapshotReferenceDataToDexie().catch(() => {});
+    }
+
     return ok({ user: authData.user, profile });
 
   } catch (e) {
@@ -440,6 +446,10 @@ async function checkSession() {
       _saveToDexieBackground(profile);
       _preloadEssentialData(profile);
       _migrateQuickLoginStorage();
+      // ✅ Q2=B: تحديث snapshot بيانات المراجع عند استعادة الجلسة
+      if (window.AppStore?.snapshotReferenceDataToDexie) {
+        window.AppStore.snapshotReferenceDataToDexie().catch(() => {});
+      }
       return ok({ user: session.user, profile });
     }
 

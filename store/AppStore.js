@@ -1,13 +1,15 @@
 /**
- * store/AppStore.js — v3.0 (Online-First)
+ * store/AppStore.js — v4.0
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * التغييرات v3:
- * ✅ refreshData() تقرأ من Supabase مباشرة (Online-First)
- * ✅ _loadCompanies/_loadBankAccounts/_loadSystemSettings/_loadUsers/_loadDebtors
- *    كلها تستعلم Supabase أولاً وتسقط إلى Dexie عند offline فقط
- * ✅ _loadNotifications تقرأ من Supabase أولاً عند الاتصال
- * ✅ كتابة Dexie تتم في الخلفية بعد نجاح Supabase
+ * v3.0 — Online-First: Supabase أولاً + Dexie احتياطي.
+ *
+ * v4.0 — Phase 4: فصل Online/Offline paths (Q1=A، Q2=B):
+ * ✅ _fetchOnline()  → Supabase مباشر + snapshot إلى Dexie (Q2=B)، خطأ صريح عند الفشل
+ * ✅ _fetchOffline() → Dexie snapshot فقط، بلا Supabase
+ * ✅ snapshotReferenceDataToDexie() → حفظ جميع بيانات المراجع في Dexie عند كل Online login
+ * ✅ isOfflineMode() في كل دوال التحميل بدلاً من isOnline()
+ * ✅ حذف _fetchFromSupabaseWithFallback() وكل الـ fallbacks من Online path
  */
 'use strict';
 
@@ -219,12 +221,12 @@ async function refreshData() {
 }
 
 // ============================================================
-// دوال تحميل البيانات — Online-First
+// دوال تحميل البيانات — Online/Offline منفصلان تماماً
 // ============================================================
 
-// TTL cache — تجنّب استعلامات Supabase المتكررة عند تبديل التبويبات
+// TTL cache — يمنع إعادة الاستعلام من Supabase خلال 5 دقائق (Online فقط)
 const _cacheTs = {};
-const _CACHE_TTL_MS = 5 * 60 * 1000; // 5 دقائق
+const _CACHE_TTL_MS = 5 * 60 * 1000;
 
 function invalidateCache(tableName = null) {
   if (tableName) delete _cacheTs[tableName];
@@ -232,141 +234,166 @@ function invalidateCache(tableName = null) {
 }
 
 /**
- * جلب من Supabase أولاً، Dexie احتياطي عند offline.
- * إذا كانت البيانات محمّلة حديثاً (< 5 دقائق) تُعاد من Dexie فوراً بلا شبكة.
+ * Online: جلب من Supabase مباشرة + snapshot إلى Dexie (Q2=B).
+ * خطأ صريح عند الفشل — بلا Dexie fallback (Q1=A).
+ * يحترم TTL: إذا كانت البيانات موجودة في _state وطازجة (< 5 دقائق) يُعيدها مباشرة.
  */
-async function _fetchFromSupabaseWithFallback(tableName, supabaseQuery, dexieFallback) {
-  if (isOnline()) {
+async function _fetchOnline(tableName, supabaseQuery, stateKey = null) {
+  if (stateKey) {
     const age = Date.now() - (_cacheTs[tableName] || 0);
-    if (age < _CACHE_TTL_MS) {
-      // البيانات طازجة — أعِد من Dexie فوراً
-      const cached = await dexieFallback();
-      if (cached && cached.length > 0) return cached;
-      // Dexie فارغة → تابع للشبكة
-    }
-    try {
-      const { data, error } = await supabaseQuery();
-      if (!error && data) {
-        _cacheTs[tableName] = Date.now();
-        // كتابة Dexie في الخلفية
-        (async () => {
-          try {
-            if (db.isOpen()) await db[tableName]?.bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED })));
-          } catch { }
-        })();
-        return data;
-      }
-      console.warn(`⚠️ AppStore._fetch(${tableName}): Supabase فشل، سقوط إلى Dexie`);
-    } catch (e) {
-      console.warn(`⚠️ AppStore._fetch(${tableName}): استثناء، سقوط إلى Dexie:`, e.message);
+    if (age < _CACHE_TTL_MS && Array.isArray(_state[stateKey]) && _state[stateKey].length > 0) {
+      return _state[stateKey];
     }
   }
-  // Offline أو فشل Supabase → Dexie
+  const { data, error } = await supabaseQuery();
+  if (error) throw new Error(`${error.message}`);
+  _cacheTs[tableName] = Date.now();
+  // ✅ Q2=B: snapshot بيانات المراجع إلى Dexie في الخلفية لدعم Offline mode لاحقاً
+  if (data?.length && typeof db !== 'undefined' && db.isOpen() && db[tableName]) {
+    (async () => {
+      try { await db[tableName].bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }))); } catch { }
+    })();
+  }
+  return data || [];
+}
+
+/**
+ * Offline: قراءة من Dexie snapshot فقط — بلا أي Supabase.
+ */
+async function _fetchOffline(dexieFallback) {
+  if (typeof db === 'undefined' || !db.isOpen()) return [];
   return await dexieFallback();
 }
 
+/**
+ * Q2=B: حفظ snapshot شامل لبيانات المراجع في Dexie عند كل Online login.
+ * يُستدعى من AuthService بعد نجاح تسجيل الدخول Online.
+ */
+async function snapshotReferenceDataToDexie() {
+  if (typeof db === 'undefined' || !db.isOpen()) return;
+  try {
+    await Promise.allSettled([
+      supabaseClient.from(TABLES.COMPANIES).select('*').order('name').limit(QUERY_LIMITS.COMPANIES)
+        .then(({ data }) => { if (data?.length) db.companies?.bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {}); }),
+      supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.EXPENSE_ACCOUNTS)
+        .then(({ data }) => { if (data?.length) db.expense_accounts?.bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {}); }),
+      supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').limit(QUERY_LIMITS.SYSTEM_SETTINGS)
+        .then(({ data }) => { if (data?.length) db.system_settings?.bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {}); }),
+      supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.BANK_ACCOUNTS)
+        .then(({ data }) => { if (data?.length) db.bank_accounts?.bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {}); }),
+      supabaseClient.from(TABLES.USERS)
+        .select('id, username, display_name, role, is_active, allowed_tabs, account_number')
+        .eq('is_active', true).order('display_name').limit(QUERY_LIMITS.USERS)
+        .then(({ data }) => { if (data?.length) db.users?.bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {}); }),
+      supabaseClient.from(TABLES.DEBTORS).select('*').order('name').limit(QUERY_LIMITS.DEBTORS)
+        .then(({ data }) => { if (data?.length) db.debtors?.bulkPut(data.map(r => ({ ...r, sync_status: SYNC_STATUS.SYNCED }))).catch(() => {}); }),
+    ]);
+    console.log('✅ AppStore: snapshot المراجع حُفظ في Dexie (Q2=B)');
+  } catch (e) {
+    console.warn('⚠️ AppStore.snapshotReferenceDataToDexie():', e.message);
+  }
+}
+
 async function _loadCompanies() {
-  const data = await _fetchFromSupabaseWithFallback(
-    TABLES.COMPANIES,
-    () => supabaseClient.from(TABLES.COMPANIES).select('*').order('name').limit(QUERY_LIMITS.COMPANIES),
-    () => db.isOpen() ? db.companies.toArray().catch(() => []) : []
-  );
-  setState({ companies: data || [] }, 'store:companiesLoaded');
+  try {
+    const data = isOfflineMode()
+      ? await _fetchOffline(() => db.companies.toArray().catch(() => []))
+      : await _fetchOnline(TABLES.COMPANIES,
+          () => supabaseClient.from(TABLES.COMPANIES).select('*').order('name').limit(QUERY_LIMITS.COMPANIES),
+          'companies');
+    setState({ companies: data || [] }, 'store:companiesLoaded');
+  } catch (e) { console.warn('⚠️ _loadCompanies():', e.message); }
 }
 
 async function _loadExpenseAccounts() {
-  const data = await _fetchFromSupabaseWithFallback(
-    TABLES.EXPENSE_ACCOUNTS,
-    () => supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.EXPENSE_ACCOUNTS),
-    () => db.isOpen() ? db.expense_accounts.toArray().catch(() => []) : []
-  );
-  setState({ expenseAccounts: data || [] }, 'store:expenseAccountsLoaded');
+  try {
+    const data = isOfflineMode()
+      ? await _fetchOffline(() => db.expense_accounts.toArray().catch(() => []))
+      : await _fetchOnline(TABLES.EXPENSE_ACCOUNTS,
+          () => supabaseClient.from(TABLES.EXPENSE_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.EXPENSE_ACCOUNTS),
+          'expenseAccounts');
+    setState({ expenseAccounts: data || [] }, 'store:expenseAccountsLoaded');
+  } catch (e) { console.warn('⚠️ _loadExpenseAccounts():', e.message); }
 }
 
 async function _loadSystemSettings() {
-  const data = await _fetchFromSupabaseWithFallback(
-    TABLES.SYSTEM_SETTINGS,
-    () => supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').limit(QUERY_LIMITS.SYSTEM_SETTINGS),
-    () => db.isOpen() ? db.system_settings.toArray().catch(() => []) : []
-  );
-  const settingsMap = new Map();
-  (data || []).forEach(s => settingsMap.set(s.key, s.value));
+  try {
+    const data = isOfflineMode()
+      ? await _fetchOffline(() => db.system_settings.toArray().catch(() => []))
+      : await _fetchOnline(TABLES.SYSTEM_SETTINGS,
+          () => supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').limit(QUERY_LIMITS.SYSTEM_SETTINGS),
+          'systemSettings');
 
-  const logoEntry = settingsMap.get('logo');
-  const logoUrl   = typeof logoEntry === 'object' ? logoEntry?.value : logoEntry || null;
-
-  setState({ systemSettings: settingsMap, logoUrl }, 'store:settingsLoaded');
+    const settingsMap = new Map();
+    (data || []).forEach(s => settingsMap.set(s.key, s.value));
+    const logoEntry = settingsMap.get('logo');
+    const logoUrl   = typeof logoEntry === 'object' ? logoEntry?.value : logoEntry || null;
+    setState({ systemSettings: settingsMap, logoUrl }, 'store:settingsLoaded');
+  } catch (e) { console.warn('⚠️ _loadSystemSettings():', e.message); }
 }
 
 async function _loadBankAccounts() {
-  const data = await _fetchFromSupabaseWithFallback(
-    TABLES.BANK_ACCOUNTS,
-    () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.BANK_ACCOUNTS),
-    () => db.isOpen() ? db.bank_accounts.toArray().catch(() => []) : []
-  );
-  setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
+  try {
+    const data = isOfflineMode()
+      ? await _fetchOffline(() => db.bank_accounts.toArray().catch(() => []))
+      : await _fetchOnline(TABLES.BANK_ACCOUNTS,
+          () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.BANK_ACCOUNTS),
+          'bankAccounts');
+    setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
+  } catch (e) { console.warn('⚠️ _loadBankAccounts():', e.message); }
 }
 
 async function _loadDebtors() {
-  const data = await _fetchFromSupabaseWithFallback(
-    TABLES.DEBTORS,
-    () => supabaseClient.from(TABLES.DEBTORS).select('*').order('name').limit(QUERY_LIMITS.DEBTORS),
-    () => db.isOpen() ? db.debtors.toArray().catch(() => []) : []
-  );
-  setState({ debtors: data || [] }, 'store:debtorsLoaded');
+  try {
+    const data = isOfflineMode()
+      ? await _fetchOffline(() => db.debtors.toArray().catch(() => []))
+      : await _fetchOnline(TABLES.DEBTORS,
+          () => supabaseClient.from(TABLES.DEBTORS).select('*').order('name').limit(QUERY_LIMITS.DEBTORS),
+          'debtors');
+    setState({ debtors: data || [] }, 'store:debtorsLoaded');
+  } catch (e) { console.warn('⚠️ _loadDebtors():', e.message); }
 }
 
 async function _loadUsers() {
-  const data = await _fetchFromSupabaseWithFallback(
-    TABLES.USERS,
-    () => supabaseClient.from(TABLES.USERS)
-      .select('id, username, display_name, role, is_active, allowed_tabs, account_number')
-      .eq('is_active', true)
-      .order('display_name')
-      .limit(QUERY_LIMITS.USERS),
-    () => db.isOpen()
-      ? db.users.where('is_active').equals(1).toArray().catch(() => [])
-      : []
-  );
-  setState({ users: data || [] }, 'store:usersLoaded');
+  try {
+    const data = isOfflineMode()
+      ? await _fetchOffline(() => db.users.where('is_active').equals(1).toArray().catch(() => []))
+      : await _fetchOnline(TABLES.USERS,
+          () => supabaseClient.from(TABLES.USERS)
+            .select('id, username, display_name, role, is_active, allowed_tabs, account_number')
+            .eq('is_active', true).order('display_name').limit(QUERY_LIMITS.USERS),
+          'users');
+    setState({ users: data || [] }, 'store:usersLoaded');
+  } catch (e) { console.warn('⚠️ _loadUsers():', e.message); }
 }
 
 async function _loadNotifications(user) {
   try {
     let allNotifs = [];
 
-    if (isOnline()) {
-      try {
-        const { data, error } = await supabaseClient
-          .from(TABLES.NOTIFICATIONS)
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(50);
-        if (!error && data) {
-          allNotifs = data.map(_normalizeNotification);
-          // كتابة Dexie في الخلفية
-          (async () => {
-            try { if (db.isOpen()) await db.notifications.bulkPut(data); } catch { }
-          })();
-        }
-      } catch { /* سقوط إلى Dexie */ }
+    if (isOfflineMode()) {
+      // Offline: من Dexie snapshot فقط
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        const raw = await db.notifications.orderBy('created_at').reverse().limit(50).toArray().catch(() => []);
+        allNotifs = raw.map(_normalizeNotification);
+      }
+    } else {
+      // Online: Supabase مباشر — خطأ صريح
+      const { data, error } = await supabaseClient
+        .from(TABLES.NOTIFICATIONS)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (!error && data) {
+        allNotifs = data.map(_normalizeNotification);
+      } else if (error) {
+        console.warn('⚠️ _loadNotifications Supabase:', error.message);
+      }
     }
 
-    if (!allNotifs.length && db.isOpen()) {
-      const raw = await db.notifications.orderBy('created_at').reverse().limit(50).toArray().catch(() => []);
-      allNotifs = raw.map(_normalizeNotification);
-    }
-
-    const visible = allNotifs.filter(n => {
-      const t = n.target;
-      if (t === 'all') return true;
-      if (Array.isArray(t)) return t.includes(user.id);
-      return false;
-    });
-
+    const visible  = allNotifs.filter(n => { const t = n.target; return t === 'all' || (Array.isArray(t) && t.includes(user.id)); });
     const notHidden = visible.filter(n => !n.hidden_by.includes(user.id));
     const unread    = notHidden.filter(n => !n.read_by.includes(user.id));
-
     setState({ notifications: notHidden, unreadNotifCount: unread.length }, 'store:notificationsLoaded');
   } catch (e) {
     console.error('❌ AppStore._loadNotifications():', e);
@@ -375,46 +402,48 @@ async function _loadNotifications(user) {
 }
 
 // المندوب: يجلب كل البنوك — RLS تضمن صلاحية القراءة
-// BankAccountsComponent يُصفِّي عرض اليوم محلياً في واجهته
 async function _loadAgentBankAccounts(agentId) {
   try {
-    const data = await _fetchFromSupabaseWithFallback(
-      TABLES.BANK_ACCOUNTS,
-      () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.BANK_ACCOUNTS),
-      () => db.isOpen() ? db.bank_accounts.orderBy('name').toArray().catch(() => []) : []
-    );
+    const data = isOfflineMode()
+      ? await _fetchOffline(() => db.bank_accounts.orderBy('name').toArray().catch(() => []))
+      : await _fetchOnline(TABLES.BANK_ACCOUNTS,
+          () => supabaseClient.from(TABLES.BANK_ACCOUNTS).select('*').order('name').limit(QUERY_LIMITS.BANK_ACCOUNTS),
+          'bankAccounts');
     setState({ bankAccounts: data || [] }, 'store:bankAccountsLoaded');
-  } catch { /* تجاهل */ }
+  } catch (e) { console.warn('⚠️ _loadAgentBankAccounts():', e.message); }
 }
 
 async function _loadAgentDebtors(agentId) {
   try {
     let data = [];
-    if (isOnline()) {
-      // Supabase: يجلب المديونين المعينين لهذا المندوب
-      const { data: res } = await supabaseClient
+    if (isOfflineMode()) {
+      // Offline: فلترة محلية من Dexie snapshot
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        const all = await db.debtors.toArray().catch(() => []);
+        data = all.filter(d => {
+          try {
+            const agents = Array.isArray(d.assigned_agents) ? d.assigned_agents : JSON.parse(d.assigned_agents || '[]');
+            return agents.includes(agentId);
+          } catch { return false; }
+        });
+      }
+    } else {
+      // Online: Supabase مباشر — خطأ صريح
+      const { data: res, error } = await supabaseClient
         .from(TABLES.DEBTORS)
         .select('*')
         .filter('assigned_agents', 'cs', JSON.stringify([agentId]))
         .order('name')
         .limit(QUERY_LIMITS.DEBTORS);
+      if (error) throw new Error(error.message);
       data = res || [];
-      if (data.length && db.isOpen()) {
-        (async () => {
-          try { await db.debtors.bulkPut(data.map(d => ({ ...d, sync_status: SYNC_STATUS.SYNCED }))); } catch { }
-        })();
+      // Q2=B snapshot
+      if (data.length && typeof db !== 'undefined' && db.isOpen()) {
+        (async () => { try { await db.debtors.bulkPut(data.map(d => ({ ...d, sync_status: SYNC_STATUS.SYNCED }))); } catch { } })();
       }
-    } else if (db.isOpen()) {
-      const all = await db.debtors.toArray().catch(() => []);
-      data = all.filter(d => {
-        try {
-          const agents = Array.isArray(d.assigned_agents) ? d.assigned_agents : JSON.parse(d.assigned_agents || '[]');
-          return agents.includes(agentId);
-        } catch { return false; }
-      });
     }
     setState({ debtors: data }, 'store:debtorsLoaded');
-  } catch { /* تجاهل */ }
+  } catch (e) { console.warn('⚠️ _loadAgentDebtors():', e.message); }
 }
 
 // ============================================================
@@ -499,7 +528,7 @@ Object.assign(AppStore, {
   setCurrentTab,
   addTransaction, updateTransaction, deleteTransaction, markTransactionReversed,
   refreshTransactions, setSelectedDate, setSelectedAgent,
-  refreshData,
+  refreshData, snapshotReferenceDataToDexie,
   setOnlineStatus, updateSyncQueueLength, setSyncRunning,
   addNotification, decrementUnreadCount,
   setKpiData, setKpiLoading,
@@ -509,4 +538,4 @@ Object.assign(AppStore, {
 });
 
 window.AppStore = AppStore;
-console.log('✅ AppStore.js v3.0 — Online-First: Supabase مصدر الحقيقة الوحيد');
+console.log('✅ AppStore.js v4.0 — Online: Supabase مباشر + Dexie snapshot (Q2=B) | Offline: Dexie فقط | isOfflineMode()');
