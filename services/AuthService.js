@@ -1424,38 +1424,46 @@ async function _ensureUserAccountNumber(userId, profile = null) {
     }
     
     // ✅ A1: UPDATE مشروط (فقط إذا كان الحقل لا يزال NULL) لمنع Race Condition
+    // ملاحظة حرجة: supabase-js بلا .select() يُعيد {error:null} حتى لو لم يُحدَّث أي صف
+    // (0 rows affected لا يُولّد خطأ) → لا يمكن الاعتماد على updateError لكشف الـ race.
+    // الحل: نُعيد القراءة دائماً من قاعدة البيانات للتأكد من القيمة الفعلية المُخزَّنة.
     const { error: updateError } = await supabaseClient
       .from(TABLES.USERS)
       .update({ account_number: newNumber })
       .eq('id', userId)
       .is('account_number', null);
 
-    if (updateError) {
-      // 23505 = Unique Violation أو PGRST116 = لا صفوف تحقق الشرط
-      // كلاهما يعني أن عملية أخرى سبقتنا وعيّنت رقماً → نجلب القيمة الحالية
-      if (updateError.code === '23505' || updateError.code === 'PGRST116') {
-        const { data: refetched } = await supabaseClient
-          .from(TABLES.USERS).select('account_number').eq('id', userId).single();
-        if (refetched?.account_number) {
-          if (profile) profile.account_number = refetched.account_number;
-          return refetched.account_number;
-        }
-      }
+    // 23505 = تعارض فريد صريح — خطأ حقيقي من قاعدة البيانات
+    if (updateError && updateError.code !== '23505') {
       console.error('❌ فشل تحديث رقم الحساب:', updateError);
       return null;
     }
-    
-    if (profile) profile.account_number = newNumber;
-    
-    // تحديث Dexie
+
+    // ✅ قراءة تأكيدية: تُحدّد الفائز في السباق بغض النظر عمّن نجح في الكتابة
+    // (سواء نجح الـ UPDATE الحالي أو سبقته عملية أخرى وعيّنت الرقم مسبقاً)
+    const { data: confirmed, error: confirmError } = await supabaseClient
+      .from(TABLES.USERS)
+      .select('account_number')
+      .eq('id', userId)
+      .single();
+
+    if (confirmError || !confirmed?.account_number) {
+      console.error('❌ فشل التأكيد بعد تحديث رقم الحساب:', confirmError?.message);
+      return null;
+    }
+
+    const finalNumber = confirmed.account_number;
+    if (profile) profile.account_number = finalNumber;
+
+    // تحديث Dexie بالقيمة المؤكَّدة من قاعدة البيانات
     if (typeof db !== 'undefined' && db.isOpen()) {
       const existing = await db.users.get(userId);
       if (existing) {
-        await db.users.update(userId, { account_number: newNumber });
+        await db.users.update(userId, { account_number: finalNumber });
       }
     }
-    
-    return newNumber;
+
+    return finalNumber;
     
   } catch (e) {
     console.error('❌ _ensureUserAccountNumber:', e);
