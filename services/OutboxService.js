@@ -266,29 +266,43 @@ const OutboxService = {
       const entryOps = operations.filter(op => op.table === TABLES.ACCOUNT_LEDGER);
 
       if (txOp && entryOps.length > 0) {
-        const rpcResult = await callRPC(RPC.CREATE_TRANSACTION_WITH_ENTRIES, {
-          p_transaction : {
-            ...this._cleanForServer(txOp.data, TABLES.TRANSACTIONS),
-            idempotency_key: txOp.data?.idempotency_key || txOp.data?.id,
-          },
-          p_entries     : entryOps.map(op => this._cleanForServer(op.data, TABLES.ACCOUNT_LEDGER)),
-        });
+        // استدعاء مباشر للحصول على كود الخطأ (callRPC يفقد الكود)
+        const { data: rpcData, error: rpcError } = await supabaseClient.rpc(
+          RPC.CREATE_TRANSACTION_WITH_ENTRIES,
+          {
+            p_transaction : {
+              ...this._cleanForServer(txOp.data, TABLES.TRANSACTIONS),
+              idempotency_key: txOp.data?.idempotency_key || txOp.data?.id,
+            },
+            p_entries: entryOps.map(op => this._cleanForServer(op.data, TABLES.ACCOUNT_LEDGER)),
+          }
+        );
 
-        if (!isOk(rpcResult)) {
-          const errStr = String(rpcResult.error || '');
-          // 23505 قد يصل عبر نص رسالة الخطأ من RPC
+        if (rpcError) {
+          const errCode = rpcError.code || '';
+          const errMsg  = String(rpcError.message || '');
+
+          // idempotency: العملية موجودة بالفعل = نجاح
           if (
-            errStr.includes('23505') ||
-            errStr.includes('unique_violation') ||
-            errStr.includes('already exists')
+            errCode === '23505' ||
+            errMsg.includes('unique_violation') ||
+            errMsg.includes('already exists')
           ) {
             await this._markSynced(TABLES.TRANSACTIONS, txOp.data?.id);
             return ok({ skipped: true, reason: 'already_synced' });
           }
-          return rpcResult;
+
+          // خطأ دائم لا يُجدي إعادة المحاولة — يُوقف الطابور فوراً
+          const _FATAL = new Set(['23502','23514','42703','42501','P0001','22P02','23503','22003']);
+          if (_FATAL.has(errCode) || errMsg.includes('does not exist')) {
+            console.error(`❌ OutboxService._executeBatch: خطأ دائم (${errCode}): ${errMsg}`);
+            return err(`خطأ دائم: ${errMsg}`);
+          }
+
+          return err(errMsg);
         }
 
-        const realId = rpcResult.data?.transaction_id || txOp.data?.id;
+        const realId = rpcData?.transaction_id || txOp.data?.id;
         await this._markSynced(TABLES.TRANSACTIONS, realId);
 
         if (typeof db !== 'undefined' && db.isOpen()) {
