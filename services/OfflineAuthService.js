@@ -190,6 +190,7 @@ const OfflineAuthService = {
         localStorage.setItem(`ahu_offline_session_${userId}`, JSON.stringify({
           userId, deviceId, hasPin: true, hasWebAuthn: false,
           source: 'vault', createdAt: new Date().toISOString(),
+          lastActivity: Date.now(),
         }));
       } catch { /* localStorage غير متاح */ }
 

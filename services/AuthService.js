@@ -49,6 +49,7 @@ function _bfWrite(key, data) {
 }
 function _resetAttempts(key) {
   try { sessionStorage.removeItem(_BF_PREFIX + key); } catch (e) { }
+  _lsResetAttempts(key);
 }
 
 // localStorage للقفل الدائم (يبقى عبر جلسات المتصفح)
@@ -128,11 +129,8 @@ function _recordLsFailedAttempt(key) {
 // ============================================================
 async function login(email, password) {
   try {
-    // فحص مزدوج: sessionStorage (مؤقت) + localStorage (دائم عبر الجلسات)
     const lockCheck = _checkBruteForce(email);
     if (!isOk(lockCheck)) return lockCheck;
-    const lsLockCheck = _checkLsBruteForce(`login_${email}`);
-    if (!isOk(lsLockCheck)) return lsLockCheck;
 
     if (!email || !password) return err('البريد الإلكتروني وكلمة المرور مطلوبان');
     if (!isValidEmail(email))  return err('البريد الإلكتروني غير صالح');
@@ -143,12 +141,10 @@ async function login(email, password) {
 
     if (authError) {
       _recordFailedAttempt(email);
-      _recordLsFailedAttempt(`login_${email}`);
       return err(_translateAuthError(authError.message));
     }
 
     _resetAttempts(email);
-    _lsResetAttempts(`login_${email}`);
 
     const profileResult = await _fetchUserProfile(authData.user.id);
     if (!isOk(profileResult)) {
@@ -345,6 +341,9 @@ async function checkSession() {
 // ============================================================
 // 3b. استعادة جلسة Offline بعد إغلاق المتصفح
 // ============================================================
+/** مهلة إعادة التحقق من PIN بعد خمول 30 دقيقة في وضع Offline */
+const _OFFLINE_REAUTH_MS = 30 * 60 * 1000;
+
 async function _checkOfflineSessionFallback() {
   try {
     // ✅ منع استعادة الجلسة بعد logout صريح
@@ -362,10 +361,52 @@ async function _checkOfflineSessionFallback() {
       if (!key?.startsWith('ahu_offline_session_')) continue;
       try {
         const data = JSON.parse(localStorage.getItem(key) || '{}');
-        if (!data?.userId || !data?.hasPin) continue; // ✅ يجب أن يكون لديه PIN
+        if (!data?.userId || !data?.hasPin) continue;
 
         const profile = await db.users.get(data.userId);
         if (!profile?.is_active) continue;
+
+        // هل انتهت مهلة 30 دقيقة منذ آخر نشاط مُسجَّل؟
+        const idleMs  = data.lastActivity ? (Date.now() - data.lastActivity) : Infinity;
+        const needPin = idleMs > _OFFLINE_REAUTH_MS;
+
+        if (needPin) {
+          const PD = (typeof PinDialog !== 'undefined') ? PinDialog : null;
+          if (!PD) continue; // مكوّن PIN غير محمّل بعد
+
+          const pin = await PD.show({
+            userId  : data.userId,
+            title   : `مرحباً ${profile.display_name}`,
+            subtitle: 'أدخل رمز PIN للمتابعة بدون إنترنت',
+          });
+
+          if (!pin) continue; // ألغى المستخدم الإدخال
+
+          const OA = (typeof OfflineAuthService !== 'undefined') ? OfflineAuthService : null;
+          if (!OA) continue;
+
+          const verifyResult = await OA.verifyOfflineSession(data.userId, pin);
+          if (!isOk(verifyResult)) {
+            if (typeof showToast === 'function') {
+              showToast(verifyResult.error || 'PIN غير صحيح', 'error', 3500);
+            }
+            continue;
+          }
+        }
+
+        // تحديث lastActivity وتجديده كل 5 دقائق طوال الجلسة
+        const _refreshLastActivity = () => {
+          try {
+            const d = JSON.parse(localStorage.getItem(key) || '{}');
+            d.lastActivity = Date.now();
+            localStorage.setItem(key, JSON.stringify(d));
+          } catch { /* تجاهل */ }
+        };
+        _refreshLastActivity();
+        const _activityInterval = setInterval(() => {
+          if (!AuthState.isOffline) { clearInterval(_activityInterval); return; }
+          _refreshLastActivity();
+        }, 5 * 60 * 1000);
 
         AuthState.currentUser   = profile;
         AuthState.isOffline     = true;
@@ -380,7 +421,12 @@ async function _checkOfflineSessionFallback() {
           accountNumber: profile.account_number,
         });
 
-        console.log('✅ [checkSession] استعادة جلسة Offline من PIN:', profile.display_name);
+        console.log(
+          needPin
+            ? '✅ [checkSession] استعادة جلسة Offline بعد تحقق PIN:'
+            : '✅ [checkSession] استعادة جلسة Offline (نشط < 30 دقيقة):',
+          profile.display_name
+        );
         return ok({ profile, offline: true });
       } catch { continue; }
     }
@@ -1601,25 +1647,25 @@ function _migrateQuickLoginStorage() {
 // ============================================================
 function _checkBruteForce(key) {
   const r = _bfRead(key);
-  if (!r) return ok(true);
-  if (r.lockedUntil && Date.now() < r.lockedUntil) {
+  if (r && r.lockedUntil && Date.now() < r.lockedUntil) {
     const mins = Math.ceil((r.lockedUntil - Date.now()) / 60000);
     return err(`تم قفل الحساب. حاول بعد ${mins} دقيقة`);
   }
-  // انتهت مدة القفل → نظّف تلقائياً
-  if (r.lockedUntil && Date.now() >= r.lockedUntil) _resetAttempts(key);
-  return ok(true);
+  if (r && r.lockedUntil && Date.now() >= r.lockedUntil) _resetAttempts(key);
+  // فحص القفل الدائم (localStorage) بنفس المفتاح
+  return _checkLsBruteForce(key);
 }
 function _recordFailedAttempt(key) {
   const now = Date.now();
   const r   = _bfRead(key) || { count: 0, lastAttempt: now };
   r.count++;
   r.lastAttempt = now;
-  // قفل متعدد المراحل
-  if      (r.count >= 20) r.lockedUntil = now + 60 * 60 * 1000;   // 1 ساعة
-  else if (r.count >= 10) r.lockedUntil = now + 15 * 60 * 1000;   // 15 دقيقة
-  else if (r.count >= 5)  r.lockedUntil = now + 5  * 60 * 1000;   // 5 دقائق
+  if      (r.count >= 20) r.lockedUntil = now + 60 * 60 * 1000;
+  else if (r.count >= 10) r.lockedUntil = now + 15 * 60 * 1000;
+  else if (r.count >= 5)  r.lockedUntil = now + 5  * 60 * 1000;
   _bfWrite(key, r);
+  // تسجيل متزامن في localStorage للقفل الدائم عبر الجلسات
+  _recordLsFailedAttempt(key);
 }
 function _translateAuthError(msg) {
   if (msg.includes('Invalid login credentials')) return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
