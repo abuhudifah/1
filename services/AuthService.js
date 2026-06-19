@@ -215,9 +215,17 @@ async function login(email, password) {
 // ============================================================
 // 2. تسجيل الخروج
 // ============================================================
-async function logout(clearLocalData = false) {
+async function logout(clearLocalData = false, _skipOfflineSync = false) {
   // ✅ حارس إعادة الدخول: امنع أي logout متكرر/متداخل قبل اكتمال الجاري
   if (AuthState.isLoggingOut) return ok(true);
+
+  // Q4=C: في وضع Offline → مزامنة أولاً ثم خروج
+  if (isOfflineMode() && !_skipOfflineSync) {
+    if (typeof OutboxService !== 'undefined') {
+      return OutboxService.syncAndLogout();
+    }
+  }
+
   AuthState.isLoggingOut = true;
 
   try {
