@@ -1,16 +1,10 @@
-# AISpec — المواصفات الكاملة للنظام من منظور الأعمال والتجربة والوظائف
+# AISpec — المواصفات الكاملة للنظام
 ## نظام أبو حذيفة المتكامل للصرافة والتحويلات
 
-> **الإصدار:** 1.0  
+> **الإصدار:** 2.0 (مبني على الكود المصدري حصرًا)  
 > **تاريخ الاستخراج:** 2026-06-19  
-> **المصدر:** تحليل المستودع `abuhudifah/1` (الفرع `main`)  
-> **الجمهور المستهدف:** أي مطور أو نموذج ذكاء اصطناعي يريد إعادة بناء هذا النظام من الصفر
-
----
-
-## ملاحظة للقارئ
-
-هذه الوثيقة محايدة تقنيًا — تصف **ماذا** يفعل النظام **ولماذا**، وليس **كيف** يُنفَّذ بتقنية بعينها. الأجزاء التي تحتوي على قرارات تصميمية مقترحة (لم تكن موجودة صراحةً في الكود) مُوسَّمة بـ **[افتراض تصميمي قابل للمراجعة]**.
+> **المصادر:** config.js، App.js، جميع Services، جميع Components، جميع ملفات SQL (24 migration)  
+> **السياسة:** لا شيء من هذه الوثيقة مصدره ملفات التوثيق — كل قيمة مستخرجة مباشرةً من الكود
 
 ---
 
@@ -18,1224 +12,1199 @@
 
 ## 1.1 الملخص التنفيذي
 
-**نظام أبو حذيفة** منصة إدارة مالية متكاملة لشركات الصرافة والتحويلات المالية، تُمكّن المندوبين الميدانيين من تسجيل العمليات المالية في الوقت الفعلي أو دون اتصال، بينما تُتيح للإدارة الإشراف الكامل والمحاسبة المزدوجة وإغلاق اليوميات بدقة.
-
-**القيمة المضافة:** ضمان استمرارية العمل حتى في غياب الإنترنت، مع توحيد السجلات المحاسبية وتوفير رقابة لحظية على أداء المندوبين.
+منصة إدارة مالية لشركات الصرافة والتحويلات، تعمل بواجهة عربية RTL بالكامل. تُمكِّن المندوبين الميدانيين من تسجيل العمليات أثناء انقطاع الإنترنت، وتضمن المزامنة التلقائية مع الخادم عند استعادة الاتصال، مع محاسبة بالقيد المزدوج لكل عملية.
 
 ## 1.2 نطاق الحل
 
-### داخل النطاق (In Scope)
-- تسجيل العمليات المالية: تحصيل، إيداع بنكي، سحب بنكي، مصروفات، استلام، تسليم
-- إدارة الحسابات البنكية لشركات الاستفادة
-- إدارة المدينين (العملاء الذين لديهم ديون على المندوبين)
-- إدارة الإيداعات الفاشلة وتتبع حالتها
-- المحاسبة بالقيد المزدوج مع دفتر الأستاذ الكامل
-- إغلاق اليوميات وتوليد التقارير
-- إدارة المستخدمين والصلاحيات
-- سجل التدقيق الكامل للتغييرات
-- الإشعارات الداخلية للمستخدمين
-- تشغيل كامل دون اتصال مع مزامنة تلقائية عند الاتصال
-- تصدير التقارير (Excel، PDF)
+### داخل النطاق
+- تسجيل 7 أنواع من العمليات المالية (تحصيل، إيداع، سحب، مصروف، تحويل، تسليم، تسوية استرداد)
+- محاسبة بالقيد المزدوج مع دفتر أستاذ كامل
+- إدارة حسابات بنكية مرتبطة بشركات
+- إدارة عملاء مديونين مع تتبع الديون
+- تتبع الإيداعات الفاشلة بحالاتها الأربع
+- إشعارات داخلية مع تحديث فوري عبر Supabase Realtime
+- سجل تدقيق لكل تعديل أو حذف على الجداول الحرجة
+- تشغيل كامل دون اتصال (3 تبويبات) مع مزامنة تلقائية
+- تصدير تقارير (Excel + PDF)
+- أوامر نظام مركزية يُصدرها المدير لجميع الأجهزة
+- سجل الأجهزة المتصلة مع إمكانية الإلغاء عن بُعد
 
-### خارج النطاق (Out of Scope)
-- إجراء تحويلات مصرفية فعلية (النظام يسجّل فقط)
-- التكامل مع أنظمة بنكية خارجية
-- معالجة بطاقات الائتمان/الدفع الإلكتروني
-- محاسبة ضريبية أو تقارير للجهات الحكومية
-- إدارة المخزون أو الأصول الثابتة
+### خارج النطاق
+- تنفيذ تحويلات بنكية فعلية (النظام يسجّل فقط)
+- تكامل مع أنظمة بنكية خارجية
+- محاسبة ضريبية أو تقارير حكومية
+- إدارة مخزون أو أصول ثابتة
 
 ## 1.3 السياق التشغيلي
 
-| المتغير | الواقع |
+| المتغير | الواقع (من الكود) |
+|---------|-------------------|
+| اللغة | العربية بالكامل، RTL |
+| المنطقة الزمنية | Asia/Riyadh (دالة `getCurrentSaudiDate()`) |
+| العملة | ريال سعودي، حدود المبلغ: 0.01 – 10,000,000 (`AMOUNT_CONFIG`) |
+| الاتصال | متقطع — يعمل الجزء الأساسي offline |
+| قاعدة البيانات المحلية | IndexedDB عبر Dexie.js، اسم القاعدة: `AbuHudhaifaDB` |
+| قاعدة البيانات السحابية | Supabase (PostgreSQL) |
+
+## 1.4 الأدوار
+
+ثلاثة أدوار محددة في `config.js`:
+
+| المعرّف | التسمية |
+|---------|---------|
+| `admin` | مدير |
+| `admin_assistant` | مساعد إداري |
+| `agent` | مندوب |
+
+---
+
+# الجزء الثاني: نماذج البيانات
+
+## 2.1 الجداول الأصلية (موجودة قبل الـ migrations)
+
+هذه الجداول موجودة بالأصل في Supabase ولا تحتوي عليها ملفات الـ migrations بشكل كامل. يُستنتج هيكلها من استعلامات الكود:
+
+### `users`
+| الحقل | المصدر |
+|-------|--------|
+| `id` | UUID, PK — من Supabase Auth |
+| `username` | TEXT |
+| `display_name` | TEXT |
+| `role` | TEXT — `admin` \| `admin_assistant` \| `agent` |
+| `is_active` | BOOLEAN |
+| `account_number` | TEXT — صيغة `AGT000001` (مولَّد بـ `generate_account_number`) |
+| `allowed_tabs` | JSONB أو TEXT[] — مُخصَّص للمساعد الإداري فقط |
+| `allowed_companies` | TEXT[] DEFAULT `{}` — مُضاف في migration 20260612000008 |
+| `allowed_banks` | TEXT[] DEFAULT `{}` — مُضاف في migration 20260612000008 |
+| `allowed_users` | TEXT[] DEFAULT `{}` — مُضاف في migration 20260612000008 |
+| `quick_login_enabled` | BOOLEAN DEFAULT false — مُضاف في migration 20260619000003 |
+| `quick_equation_hash` | TEXT — هاش معادلة الدخول السريع |
+| `assigned_debtors` | مصفوفة — معرّفات المدينين المُعيَّنين للمندوب |
+| `last_login` | TIMESTAMPTZ |
+| `version` | INTEGER DEFAULT 1 — مُضاف في migration 20260612000000 |
+| `created_at` | TIMESTAMPTZ |
+| `updated_at` | TIMESTAMPTZ |
+
+**ملاحظة حول `allowed_tabs` للمساعد الإداري:** يُقرأ من `users.allowed_tabs` ويُحوَّل من JSON إذا كان نصًا. إذا كانت المصفوفة فارغة → يحصل على `AGENT_TABS` افتراضيًا (من `getAllowedTabs()` في AuthService.js:1840-1844).
+
+---
+
+### `transactions`
+| الحقل | النوع والقيود | المصدر |
+|-------|--------------|--------|
+| `id` | UUID PK | أصلي |
+| `type` | TEXT — قيم محددة (انظر 2.5) | أصلي |
+| `amount` | NUMERIC — 0.01 إلى 10,000,000 | أصلي |
+| `date` | DATE | أصلي |
+| `agent_id` | UUID FK → users | أصلي |
+| `company_id` | UUID FK → companies | أصلي |
+| `bank_account_id` | UUID FK → bank_accounts | أصلي |
+| `customer_id` | UUID FK → debtors | أصلي |
+| `customer_name` | TEXT | أصلي |
+| `from_agent_id` | UUID FK → users | أصلي |
+| `to_agent_id` | UUID FK → users | أصلي |
+| `description` | TEXT | أصلي |
+| `expense_type` | TEXT | أصلي |
+| `approval_status` | TEXT — `approved` \| `pending` \| `rejected` | أصلي |
+| `approved_by` | UUID FK → users | أصلي |
+| `approved_at` | TIMESTAMPTZ | أصلي |
+| `status` | TEXT | أصلي |
+| `idempotency_key` | UUID — UNIQUE partial (WHERE NOT NULL) | migration 20260612000000 |
+| `device_id` | TEXT | migration 20260612000000 |
+| `local_timestamp` | TIMESTAMPTZ | migration 20260612000000 |
+| `version` | INTEGER NOT NULL DEFAULT 1 | migration 20260612000000 |
+| `reverses_id` | UUID FK → transactions (self-ref, ON DELETE SET NULL) | migration 20260615000002 |
+
+**فهرس:** `idx_transactions_idempotency_key` — partial UNIQUE WHERE NOT NULL
+
+---
+
+### `bank_accounts`
+| الحقل | النوع | المصدر |
+|-------|-------|--------|
+| `id` | UUID PK | أصلي |
+| `name` | TEXT | أصلي |
+| `account_number` | TEXT | أصلي — مُحسَّن في migration 20260612000006/7 |
+| `bank_name` | TEXT | أصلي |
+| `company_id` | UUID FK → companies | أصلي |
+| `opening_balance` | NUMERIC — مُضاف في migration 20260617000004 | migration |
+| `is_active` | BOOLEAN | أصلي |
+| `version` | INTEGER NOT NULL DEFAULT 1 | migration 20260612000000 |
+
+---
+
+### `companies`
+| الحقل | النوع | المصدر |
+|-------|-------|--------|
+| `id` | UUID PK | أصلي |
+| `name` | TEXT | أصلي |
+| `account_number` | TEXT — صيغة `COM000001` | migration 20260612000008 |
+| `account_prefix` | TEXT — كان UNIQUE، أُزيل القيد في migration 20260617000005 | أصلي |
+| `is_active` | BOOLEAN | أصلي |
+| `version` | INTEGER NOT NULL DEFAULT 1 | migration 20260612000000 |
+
+---
+
+### `debtors`
+| الحقل | النوع | المصدر |
+|-------|-------|--------|
+| `id` | UUID PK | أصلي |
+| `name` | TEXT NOT NULL | أصلي |
+| `phone` | TEXT | أصلي |
+| `amount_owed` | NUMERIC | أصلي |
+| `assigned_agents` | UUID[] أو JSONB | أصلي |
+| `notes` | TEXT | أصلي |
+| `is_active` | BOOLEAN | أصلي |
+| `version` | INTEGER NOT NULL DEFAULT 1 | migration 20260612000000 |
+
+**RLS:** المدير فقط يرى الكل (migration 20260617000002)؛ المندوب يرى ويضيف مدينيه فقط (migration 20260617000003).
+
+---
+
+### `failed_deposits`
+| الحقل | النوع | المصدر |
+|-------|-------|--------|
+| `id` | UUID PK | أصلي |
+| `agent_id` | UUID FK → users | أصلي |
+| `company_id` | UUID FK → companies | أصلي |
+| `amount` | NUMERIC | أصلي |
+| `date` | DATE | أصلي |
+| `reason` | TEXT | أصلي |
+| `status` | TEXT — `pending` \| `claimed` \| `refunded` \| `rejected` | أصلي (config.js:215-220) |
+| `version` | INTEGER NOT NULL DEFAULT 1 | migration 20260612000000 |
+
+---
+
+### `notifications`
+| الحقل | النوع | المصدر |
+|-------|-------|--------|
+| `id` | UUID PK | أصلي |
+| `title` | TEXT | أصلي |
+| `body` | TEXT | أصلي |
+| `type` | TEXT — `info` \| `warning` \| `success` \| `error` | أصلي (config.js:233-238) |
+| `target` | TEXT أو JSONB — `all` أو مصفوفة user IDs | أصلي |
+| `read_by` | JSONB أو UUID[] | أصلي |
+| `hidden_by` | JSONB أو UUID[] | أصلي |
+| `created_by` | UUID FK → users | أصلي |
+| `created_at` | TIMESTAMPTZ | أصلي |
+
+**Realtime:** اشتراك Supabase postgres_changes على هذا الجدول — القناة: `notifications-realtime-<userId>` (App.js:1159).
+
+---
+
+### `audit_logs`
+| الحقل | النوع | المصدر |
+|-------|-------|--------|
+| `id` | UUID PK | أصلي |
+| `table_name` | TEXT | أصلي |
+| `record_id` | UUID | أصلي |
+| `operation` | TEXT — `UPDATE` \| `DELETE` | أصلي |
+| `old_value` | JSONB — مُضاف في migration 20260612000000 | migration |
+| `new_value` | JSONB — مُضاف في migration 20260612000000 | migration |
+| `changed_fields` | JSONB — `{"حقل": {"old": v1, "new": v2}}` — مُضاف في migration 20260612000000 | migration |
+| `changed_by` | UUID FK → users | أصلي |
+| `changed_at` / `timestamp` | TIMESTAMPTZ | أصلي |
+
+**آلية التشغيل:** Trigger `trg_write_audit_log()` على UPDATE/DELETE. يسجّل الحقول المتغيرة فقط في `changed_fields` (توفير ~97% من الحجم). يتجاهل: `version, updated_at, created_at, sync_status, last_login`.
+
+---
+
+### `account_ledger`
+| الحقل | النوع | المصدر |
+|-------|-------|--------|
+| `id` | UUID PK | أصلي |
+| `voucher_number` | TEXT NOT NULL | أصلي |
+| `date` | DATE NOT NULL | أصلي |
+| `account_id` | TEXT NOT NULL — مثل `AGT_<uuid>`, `COMP_<uuid>`, `EXP_GENERAL` | أصلي |
+| `debit` | NUMERIC DEFAULT 0 | أصلي |
+| `credit` | NUMERIC DEFAULT 0 | أصلي |
+| `description` | TEXT | أصلي |
+| `transaction_id` | UUID FK → transactions | أصلي |
+| `idempotency_key` | UUID — UNIQUE partial — مُضاف في migration 20260619000004 | migration |
+
+**فهارس محسَّنة:** مُضافة في migration 20260617000001.
+
+---
+
+### `account_balances`
+| الحقل | النوع | ملاحظة |
+|-------|-------|--------|
+| `account_id` | TEXT **PK** — ليس `id` | يتطلب معالجة خاصة في Repository.js |
+| `balance` | NUMERIC | |
+| `last_updated` | TIMESTAMPTZ | |
+
+---
+
+### `daily_closings`
+| الحقل | النوع |
+|-------|-------|
+| `id` | UUID PK |
+| `date` | DATE UNIQUE |
+| `closed_at` | TIMESTAMPTZ |
+| `closed_by_id` | UUID FK → users |
+
+---
+
+### `system_settings`
+| الحقل | النوع | ملاحظة |
+|-------|-------|--------|
+| `key` | TEXT **PK** — ليس `id` | يتطلب معالجة خاصة في Repository.js |
+| `value` | JSONB | |
+| `updated_at` | TIMESTAMPTZ | |
+
+---
+
+### `expense_accounts`
+| الحقل | النوع |
+|-------|-------|
+| `id` | UUID PK |
+| `code` | TEXT |
+| `name` | TEXT |
+
+---
+
+## 2.2 الجداول المُضافة في الـ Migrations
+
+### `offline_sessions` (migration 20260612000000)
+| الحقل | النوع |
+|-------|-------|
+| `id` | UUID PK |
+| `user_id` | UUID FK → users ON DELETE CASCADE |
+| `device_id` | TEXT NOT NULL |
+| `pin_hash` | TEXT — هاش مُشفَّر، لا يُخزَّن في النص الواضح |
+| `webauthn_credential_id` | TEXT |
+| `expires_at` | TIMESTAMPTZ NOT NULL DEFAULT now()+90d |
+| `is_active` | BOOLEAN DEFAULT true |
+| `created_at` | TIMESTAMPTZ |
+| `updated_at` | TIMESTAMPTZ |
+
+**قيد فريد:** `(user_id, device_id)` — جلسة واحدة نشطة لكل مستخدم لكل جهاز.
+
+---
+
+### `quick_login_tokens` (migration 20260612000001)
+| الحقل | النوع |
+|-------|-------|
+| `id` | UUID PK |
+| `user_id` | UUID FK → users |
+| `token_hash` | TEXT — SHA-256 |
+| `equation` | TEXT |
+| `device_id` | TEXT |
+| `expires_at` | TIMESTAMPTZ — 30 يومًا (AuthService.js:859) |
+| `is_active` | BOOLEAN DEFAULT true |
+| `created_at` | TIMESTAMPTZ |
+
+---
+
+### `quick_login_temp_passwords` (migration 20260612000002)
+جدول مؤقت لإدارة كلمات مرور مؤقتة أثناء عملية الدخول السريع. مرتبط بـ JWT session.
+
+---
+
+### `user_devices` (migration 20260615000002)
+| الحقل | النوع |
+|-------|-------|
+| `device_id` | TEXT **PK** |
+| `user_id` | UUID FK → users ON DELETE CASCADE |
+| `label` | TEXT |
+| `user_agent` | TEXT |
+| `created_at` | TIMESTAMPTZ DEFAULT now() |
+| `last_seen_at` | TIMESTAMPTZ DEFAULT now() |
+| `revoked_at` | TIMESTAMPTZ — NULL = نشط، تاريخ = مُلغَى |
+
+**RLS:** المستخدم يدير أجهزته؛ المدير يرى الكل.
+
+---
+
+### `user_beneficiaries` (Dexie.js v3 + config.js)
+| الحقل | النوع |
+|-------|-------|
+| `id` | UUID |
+| `user_id` | UUID |
+| `beneficiary_id` | UUID |
+| `beneficiary_type` | TEXT |
+
+**ملاحظة:** موجود في Dexie (IndexedDB محلي) وفي `TABLES` في config.js. يُستخدم لتخزين التحديدات السريعة الأخيرة (شركات/بنوك/مستخدمين).
+
+---
+
+### `system_commands` (مُشار إليه في config.js + App.js)
+| الحقل | النوع |
+|-------|-------|
+| `id` | UUID |
+| `command` | TEXT — `RESET_ALL_DATA` |
+| `issued_at` | TIMESTAMPTZ |
+| `executed_at` | TIMESTAMPTZ — NULL = لم يُنفَّذ بعد |
+
+**السلوك:** App.js يستطلعه كل 30 ثانية. عند وجود `RESET_ALL_DATA` بـ `executed_at = null` → يمسح Dexie وlocalStorage ويُعيد تحميل الصفحة ثم يُحدِّث `executed_at`.
+
+---
+
+### `transfer_requests` (مُشار إليه في config.js)
+جدول طلبات التحويل بين المندوبين — لا migrations صريحة له في المستودع الحالي.
+
+---
+
+## 2.3 مخطط قاعدة البيانات المحلية (Dexie / IndexedDB)
+
+```
+db.version(DEXIE_CONFIG.DB_VERSION).stores({
+  transactions      : 'id, date, type, agent_id, sync_status, [date+agent_id], [date+type], bank_account_id, created_at',
+  users             : 'id, username, role, is_active, sync_status',
+  bank_accounts     : 'id, company_id, name, sync_status',
+  companies         : 'id, account_prefix, sync_status',
+  expense_accounts  : 'id, code, sync_status',
+  debtors           : 'id, name, sync_status',
+  failed_deposits   : 'id, agent_id, status, date, sync_status',
+  notifications     : 'id, created_at, type, sync_status',
+  audit_logs        : 'id, timestamp, ...',
+  account_ledger    : 'id, account_id, date, transaction_id, ...',
+  account_balances  : 'account_id, ...',
+  daily_closings    : 'id, date',
+  sync_queue        : 'id, ...',
+  sync_conflicts    : 'id, ...',
+  cache_meta        : 'key, ...',
+  user_beneficiaries: 'id, user_id, beneficiary_id, beneficiary_type, [user_id+beneficiary_type]',  // v3
+})
+```
+
+---
+
+## 2.4 بادئات معرّفات الحسابات المحاسبية
+
+من `config.js:244-252`:
+
+| البادئة | المعنى |
 |---------|--------|
-| **البيئة الجغرافية** | منطقة عربية (السياق يشير إلى السوق السعودي) |
-| **الاتصال** | غير مضمون — يجب أن يعمل النظام أثناء انقطاع الإنترنت |
-| **الأجهزة** | أجهزة حاسوب مكتبية في الفروع + أجهزة لوحية/محمولة للمندوبين الميدانيين |
-| **ساعات التشغيل** | يومي (بما يشمل تشغيل موازي بين عدة أجهزة ومندوبين) |
-| **العملات** | ريال سعودي كعملة رئيسية (الكود يشير إلى SAR) |
-| **المنطقة الزمنية** | توقيت المملكة العربية السعودية (Asia/Riyadh) |
-| **اللغة** | العربية بالكامل — واجهة RTL |
+| `AGT_` | حساب مندوب |
+| `COMP_` | حساب شركة |
+| `BNK_` | وسم حساب بنكي — **لا يدخل دفتر الأستاذ أبدًا** |
+| `CUST_` | حساب عميل |
+| `EXP_` | حساب مصروفات |
+| `REV_` | حساب إيرادات |
+| `SUSP_` | حساب تعليق مؤقت |
 
-## 1.4 أصحاب المصلحة والأدوار
-
-| الدور | المعرّف | الوصف |
-|-------|---------|-------|
-| **المدير** | `admin` | صلاحيات كاملة: إدارة المستخدمين، إعدادات النظام، سجل التدقيق، إغلاق اليوميات، تصفية كل العمليات |
-| **مساعد المدير** | `admin_assistant` | إشراف تشغيلي: مراجعة العمليات، الموافقة على الاستلام، متابعة الحسابات البنكية والمدينين |
-| **المندوب** | `agent` | إدخال العمليات الميدانية، متابعة مدينيه، الإيداع البنكي، الإشعارات |
+**حسابات ثابتة خاصة:**
+- `DEBTOR_SETTLEMENT` — تسويات جميع العملاء المدينين (حساب موحَّد)
+- `EXP_GENERAL` — جميع المصروفات (حساب موحَّد)
+- `GENERAL_FUND` — يُستخدم فقط في `refund_settlement` حين لا توجد شركة مرتبطة
 
 ---
 
-# الجزء الثاني: نماذج البيانات والعلاقات
+## 2.5 أنواع العمليات
 
-## 2.1 قاموس الكيانات
+من `config.js:96-114`:
 
-### كيان: `users` (المستخدمون)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK, NOT NULL | معرّف فريد (من Supabase Auth) |
-| `username` | TEXT | NOT NULL, UNIQUE | اسم المستخدم للدخول |
-| `display_name` | TEXT | NOT NULL | الاسم الظاهر في الواجهة |
-| `role` | TEXT | NOT NULL, CHECK IN ('admin','admin_assistant','agent') | الدور |
-| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | هل الحساب نشط؟ |
-| `account_number` | TEXT | UNIQUE | رقم الحساب المحاسبي (مولَّد تلقائيًا) |
-| `quick_login_enabled` | BOOLEAN | DEFAULT false | هل تم تفعيل الدخول السريع؟ |
-| `version` | INTEGER | NOT NULL, DEFAULT 1 | رقم الإصدار للقفل التفاؤلي |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | تاريخ الإنشاء |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | تاريخ آخر تعديل |
-
-**الفهارس:** `idx_users_role`, `idx_users_is_active`
+| القيمة | التسمية العربية |
+|--------|----------------|
+| `collection` | تحصيل |
+| `deposit` | إيداع بنكي |
+| `bank_withdrawal` | سحب بنكي |
+| `expense` | مصروف |
+| `receipt` | تحويل |
+| `delivery` | تسليم مباشر |
+| `refund_settlement` | تسوية استرداد |
 
 ---
 
-### كيان: `transactions` (العمليات المالية)
+## 2.6 القيم الثابتة الأخرى
 
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK, NOT NULL | معرّف فريد |
-| `type` | TEXT | NOT NULL, CHECK IN ('collection','deposit','expense','receipt','delivery','bank_withdrawal') | نوع العملية |
-| `amount` | NUMERIC(15,2) | NOT NULL, CHECK > 0 | المبلغ |
-| `date` | DATE | NOT NULL | تاريخ العملية |
-| `agent_id` | UUID | FK → users.id, NOT NULL | المندوب المنفّذ |
-| `company_id` | UUID | FK → companies.id | الشركة المستفيدة (اختياري لبعض الأنواع) |
-| `bank_account_id` | UUID | FK → bank_accounts.id | الحساب البنكي (للإيداع/السحب) |
-| `customer_id` | UUID | FK → debtors.id | المدين (للتحصيل من مدين) |
-| `customer_name` | TEXT | | اسم العميل (نص حر) |
-| `from_agent_id` | UUID | FK → users.id | المُرسِل (للاستلام/التسليم) |
-| `to_agent_id` | UUID | FK → users.id | المُستلِم (للاستلام/التسليم) |
-| `description` | TEXT | | ملاحظات/وصف |
-| `expense_type` | TEXT | | نوع المصروف (للعمليات من نوع expense) |
-| `status` | TEXT | NOT NULL, DEFAULT 'active' | حالة العملية |
-| `approval_status` | TEXT | DEFAULT 'approved', CHECK IN ('pending','approved','rejected') | حالة الموافقة |
-| `approved_by` | UUID | FK → users.id | المُوافِق |
-| `approved_at` | TIMESTAMPTZ | | وقت الموافقة |
-| `is_reversed` | BOOLEAN | DEFAULT false | هل تمّ عكس العملية؟ |
-| `reversed_by` | UUID | FK → users.id | مَن قام بالعكس |
-| `reversed_at` | TIMESTAMPTZ | | وقت العكس |
-| `reversal_reason` | TEXT | | سبب العكس |
-| `idempotency_key` | UUID | UNIQUE (partial, WHERE NOT NULL) | مفتاح تجنب التكرار في المزامنة |
-| `device_id` | TEXT | | معرّف الجهاز المُنشئ |
-| `local_timestamp` | TIMESTAMPTZ | | الوقت المحلي عند الإنشاء دون اتصال |
-| `version` | INTEGER | NOT NULL, DEFAULT 1 | للقفل التفاؤلي |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+**حالات الموافقة** (`config.js:255-258`): `approved` | `pending` | `rejected`
 
-**الفهارس:** `idx_transactions_agent_id`, `idx_transactions_date`, `idx_transactions_type`, `idx_transactions_company_id`, `idx_transactions_idempotency_key` (partial)
+**حالات الإيداع الفاشل** (`config.js:215-220`): `pending` (معلق) | `claimed` (مطالب به) | `refunded` (مسترد) | `rejected` (مرفوض)
 
----
+**حالات المزامنة** (`config.js:197-201`): `synced` | `pending` | `conflict`
 
-### كيان: `bank_accounts` (الحسابات البنكية)
+**أنواع إجراءات طابور المزامنة** (`config.js:204-209`): `create` | `update` | `delete` | `batch`
 
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `account_name` | TEXT | NOT NULL | اسم الحساب |
-| `account_number` | TEXT | | رقم الحساب في البنك |
-| `bank_name` | TEXT | | اسم البنك |
-| `company_id` | UUID | FK → companies.id | الشركة المالكة (ضروري لاشتقاق الحساب المحاسبي) |
-| `opening_balance` | NUMERIC(15,2) | DEFAULT 0 | الرصيد الافتتاحي |
-| `is_active` | BOOLEAN | DEFAULT true | |
-| `version` | INTEGER | NOT NULL, DEFAULT 1 | |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | |
-
----
-
-### كيان: `companies` (الشركات المستفيدة)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `name` | TEXT | NOT NULL | اسم الشركة |
-| `account_prefix` | TEXT | | بادئة الحساب المحاسبي (`COMP_`) |
-| `is_active` | BOOLEAN | DEFAULT true | |
-| `version` | INTEGER | NOT NULL, DEFAULT 1 | |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | |
-
----
-
-### كيان: `debtors` (المدينون)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `name` | TEXT | NOT NULL | اسم المدين |
-| `phone` | TEXT | | رقم الهاتف |
-| `amount_owed` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | المبلغ المستحق |
-| `assigned_agents` | UUID[] | | مصفوفة معرفات المندوبين المخوَّلين |
-| `notes` | TEXT | | ملاحظات |
-| `is_active` | BOOLEAN | DEFAULT true | |
-| `version` | INTEGER | NOT NULL, DEFAULT 1 | |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | |
-
----
-
-### كيان: `failed_deposits` (الإيداعات الفاشلة)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `agent_id` | UUID | FK → users.id, NOT NULL | المندوب |
-| `company_id` | UUID | FK → companies.id | الشركة |
-| `amount` | NUMERIC(15,2) | NOT NULL | المبلغ |
-| `date` | DATE | NOT NULL | التاريخ |
-| `reason` | TEXT | | سبب الفشل |
-| `status` | TEXT | DEFAULT 'pending', CHECK IN ('pending','resolved','cancelled') | الحالة |
-| `resolved_at` | TIMESTAMPTZ | | تاريخ الحل |
-| `resolved_by` | UUID | FK → users.id | مَن حلّ المشكلة |
-| `version` | INTEGER | NOT NULL, DEFAULT 1 | |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | |
-
----
-
-### كيان: `account_ledger` (دفتر الأستاذ — القيود المحاسبية)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `voucher_number` | TEXT | NOT NULL | رقم القيد (مولَّد تلقائيًا أو محلي) |
-| `date` | DATE | NOT NULL | تاريخ القيد |
-| `account_id` | TEXT | NOT NULL | معرّف الحساب (مثل `AGT_<uuid>`, `COMP_<uuid>`, `EXP_GENERAL`) |
-| `debit` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | مبلغ المدين |
-| `credit` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | مبلغ الدائن |
-| `description` | TEXT | | وصف القيد |
-| `transaction_id` | UUID | FK → transactions.id | العملية المرتبطة |
-| `idempotency_key` | UUID | UNIQUE (partial) | لمنع تكرار القيود في المزامنة |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-
-**الفهارس:** `idx_account_ledger_account_id`, `idx_account_ledger_date`, `idx_account_ledger_transaction_id`
-
----
-
-### كيان: `account_balances` (أرصدة الحسابات)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `account_id` | TEXT | PK (ليس `id`) | معرّف الحساب |
-| `balance` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | الرصيد الحالي |
-| `last_updated` | TIMESTAMPTZ | | آخر تحديث |
-
-> ⚠️ **ملاحظة:** المفتاح الأساسي هو `account_id` وليس `id` — يجب التعامل معه بشكل خاص في طبقة البيانات.
-
----
-
-### كيان: `notifications` (الإشعارات)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `title` | TEXT | NOT NULL | عنوان الإشعار |
-| `body` | TEXT | NOT NULL | نص الإشعار |
-| `type` | TEXT | | نوع الإشعار |
-| `targets` | TEXT[] | | مصفوفة معرفات المستهدفين أو `['all']` |
-| `read_by` | UUID[] | DEFAULT '{}' | مصفوفة مَن قرأ |
-| `hidden_by` | UUID[] | DEFAULT '{}' | مصفوفة مَن أخفى |
-| `created_by` | UUID | FK → users.id | مَن أنشأ الإشعار |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-
----
-
-### كيان: `audit_logs` (سجل التدقيق)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `table_name` | TEXT | NOT NULL | اسم الجدول المُعدَّل |
-| `record_id` | UUID | NOT NULL | معرّف السجل المُعدَّل |
-| `operation` | TEXT | NOT NULL, CHECK IN ('UPDATE','DELETE') | نوع العملية |
-| `old_value` | JSONB | | القيم القديمة |
-| `new_value` | JSONB | | القيم الجديدة |
-| `changed_fields` | JSONB | | الحقول المتغيرة فقط `{field: {old, new}}` |
-| `changed_by` | UUID | FK → users.id | مَن أجرى التغيير |
-| `changed_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | وقت التغيير |
-
----
-
-### كيان: `daily_closings` (إغلاق اليوميات)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `date` | DATE | NOT NULL, UNIQUE | تاريخ الإغلاق |
-| `closed_by` | UUID | FK → users.id | مَن أغلق |
-| `summary` | JSONB | | ملخص اليومية |
-| `closed_at` | TIMESTAMPTZ | NOT NULL | وقت الإغلاق |
-
----
-
-### كيان: `system_settings` (إعدادات النظام)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `key` | TEXT | PK (ليس `id`) | مفتاح الإعداد |
-| `value` | JSONB | | قيمة الإعداد |
-| `updated_at` | TIMESTAMPTZ | | |
-
-> ⚠️ **ملاحظة:** المفتاح الأساسي هو `key` وليس `id`.
-
----
-
-### كيان: `quick_login_tokens` (رموز الدخول السريع)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `user_id` | UUID | FK → users.id, NOT NULL | المستخدم |
-| `token_hash` | TEXT | NOT NULL | هاش الرمز (SHA-256) |
-| `equation` | TEXT | NOT NULL | المعادلة الرياضية |
-| `expires_at` | TIMESTAMPTZ | NOT NULL | تاريخ الانتهاء |
-| `is_active` | BOOLEAN | DEFAULT true | |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-
----
-
-### كيان: `offline_sessions` (جلسات العمل دون اتصال)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `user_id` | UUID | FK → users.id | المستخدم |
-| `device_id` | TEXT | NOT NULL | معرّف الجهاز |
-| `pin_hash` | TEXT | | هاش رمز PIN |
-| `webauthn_credential_id` | TEXT | | معرّف بيانات اعتماد WebAuthn |
-| `expires_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now()+90d | |
-| `is_active` | BOOLEAN | DEFAULT true | |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | |
-
-**قيد فريد:** `(user_id, device_id)` — جلسة واحدة لكل جهاز لكل مستخدم
-
----
-
-### كيان: `transfer_requests` (طلبات التحويل بين المندوبين)
-
-| الحقل | النوع | القيود | الوصف |
-|-------|-------|--------|-------|
-| `id` | UUID | PK | |
-| `from_agent_id` | UUID | FK → users.id | المُرسِل |
-| `to_agent_id` | UUID | FK → users.id | المُستلِم |
-| `amount` | NUMERIC(15,2) | NOT NULL | المبلغ |
-| `status` | TEXT | DEFAULT 'pending' | حالة الطلب |
-| `created_at` | TIMESTAMPTZ | NOT NULL | |
-
----
-
-## 2.2 خريطة العلاقات
-
-```
-users (1) ──────────────────── (N) transactions [agent_id]
-users (1) ──────────────────── (N) transactions [from_agent_id]
-users (1) ──────────────────── (N) transactions [to_agent_id]
-users (1) ──────────────────── (N) transactions [approved_by]
-users (1) ──────────────────── (N) transactions [reversed_by]
-companies (1) ──────────────── (N) transactions [company_id]
-companies (1) ──────────────── (N) bank_accounts [company_id]
-bank_accounts (1) ──────────── (N) transactions [bank_account_id]
-debtors (1) ────────────────── (N) transactions [customer_id]
-transactions (1) ───────────── (N) account_ledger [transaction_id]
-transactions (1) ───────────── (N) audit_logs [record_id]
-users (1) ──────────────────── (N) quick_login_tokens [user_id]
-users (1) ──────────────────── (N) offline_sessions [user_id]
-users (N) ←── assigned_agents ─── (N) debtors  [مصفوفة]
-```
-
-## 2.3 بادئات معرّفات الحسابات المحاسبية
-
-| البادئة | المعنى | مثال |
-|---------|--------|------|
-| `AGT_` | حساب مندوب | `AGT_<user_uuid>` |
-| `COMP_` | حساب شركة | `COMP_<company_uuid>` |
-| `BNK_` | وسم حساب بنكي (لا يُستخدم في القيود) | `BNK_<account_uuid>` |
-| `EXP_` | حساب مصروفات | `EXP_GENERAL` |
-| `CUST_` | حساب عميل | `CUST_<debtor_uuid>` |
-| `REV_` | حساب إيرادات | `REV_<code>` |
-| `SUSP_` | حساب تعليق مؤقت | `SUSP_<tx_uuid>` |
-| `DEBTOR_SETTLEMENT` | تسويات المدينين (حساب موحّد) | ثابت |
-| `GENERAL_FUND` | الصندوق العام (محدود الاستخدام) | ثابت |
-
-## 2.4 قواعد التحقق من صحة البيانات
-
-### على مستوى الحقل
-- `amount` > 0 دائمًا
-- `date` لا يقبل تواريخ مستقبلية تجاوز يوم واحد **[افتراض تصميمي قابل للمراجعة]**
-- `role` ينتمي إلى قائمة محددة فقط
-- `token_hash` لا يُخزَّن نصًا واضحًا أبدًا
-
-### على مستوى الكيان
-- عملية `collection` يجب أن تحتوي على `company_id` **أو** `customer_id` (ليس كلاهما null)
-- عملية `deposit` أو `bank_withdrawal` يجب أن تحتوي على `bank_account_id` مرتبط بـ `company_id`
-- عملية `receipt` أو `delivery` يجب أن تحتوي على `from_agent_id` **و** `to_agent_id`
-- القيود المحاسبية: مجموع المدين = مجموع الدائن لكل قيد
+**أنواع الإشعارات** (`config.js:233-238`): `info` | `warning` | `success` | `error`
 
 ---
 
 # الجزء الثالث: منطق الأعمال وقواعده
 
-## 3.1 محرك القيد المزدوج (Double-Entry Accounting)
+## 3.1 محرك القيد المزدوج
 
-كل عملية مالية **تولّد تلقائيًا** قيدين محاسبيين متوازنين (مدين = دائن).
+كل عملية تُولِّد قيدين متوازنين (مدين = دائن) في `account_ledger`. منطق البناء في `AccountingService.js`.
 
-### مصفوفة القيود المعتمدة
+### مصفوفة القيود الكاملة
 
-| نوع العملية | الحساب المدين | الحساب الدائن | القاعدة الملزمة |
-|-------------|--------------|--------------|-----------------|
-| تحصيل من عميل لصالح شركة | `AGT_<agent_id>` | `COMP_<company_id>` | يجب وجود `company_id` |
-| تحصيل من مدين | `AGT_<agent_id>` | `DEBTOR_SETTLEMENT` | يجب وجود `customer_id`؛ لا حساب فردي للمدين |
-| إيداع بنكي | `COMP_<company_id>` | `AGT_<agent_id>` | `company_id` مشتَق من `bank_accounts.company_id` |
-| سحب بنكي | `AGT_<agent_id>` | `COMP_<company_id>` | نفس الاشتقاق |
-| مصروف | `EXP_GENERAL` | `AGT_<agent_id>` | نوع المصروف في الوصف فقط؛ لا تجزئة حسابات |
-| استلام (معتمد) | `AGT_<to_agent_id>` | `AGT_<from_agent_id>` | يحتاج موافقة إذا كان approval_status=pending |
-| استلام (معلّق) | `SUSP_<tx_id>` | `AGT_<from_agent_id>` | يُحجز مؤقتًا ريثما تتم الموافقة |
-| تسليم | `AGT_<to_agent_id>` | `AGT_<from_agent_id>` | مباشر بدون موافقة |
+| نوع العملية | الحساب المدين | الحساب الدائن | قيود وملاحظات |
+|-------------|--------------|--------------|---------------|
+| `collection` + `company_id` | `AGT_<agent_id>` | `COMP_<company_id>` | يجب وجود `company_id` |
+| `collection` + `customer_id` | `AGT_<agent_id>` | `DEBTOR_SETTLEMENT` | حساب موحَّد — لا حساب فردي للمدين |
+| `collection` بلا جهة | — | — | **خطأ صريح** — مرفوض |
+| `deposit` | `COMP_<company_id>` | `AGT_<agent_id>` | `company_id` مشتَق من `bank_accounts.company_id`؛ بلا شركة → **خطأ صريح** |
+| `bank_withdrawal` | `AGT_<agent_id>` | `COMP_<company_id>` | نفس الاشتقاق |
+| `expense` | `EXP_GENERAL` | `AGT_<agent_id>` | نوع المصروف في الوصف فقط — لا تجزئة |
+| `receipt` (معتمد) | `AGT_<to/receiver>` | `AGT_<from/sender>` | |
+| `receipt` (معلّق) | `SUSP_<tx_id>` | `AGT_<from_agent_id>` | مؤقت ريثما تتم الموافقة |
+| `delivery` | `AGT_<to_agent_id>` | `AGT_<from_agent_id>` | مباشر بلا موافقة |
+| `refund_settlement` + `company_id` | `AGT_<agent_id>` | `COMP_<company_id>` | |
+| `refund_settlement` بلا شركة | `AGT_<agent_id>` | `GENERAL_FUND` | الحالة الوحيدة التي يُستخدم فيها `GENERAL_FUND` |
 
-### القواعد الملزمة
-1. `BNK_*` لا يظهر أبدًا في أي قيد محاسبي — هو وسم (tag) فقط في `transactions.bank_account_id`
-2. الإيداع/السحب بدون `company_id` مرتبط بالحساب البنكي → **خطأ صريح**؛ ممنوع استخدام `GENERAL_FUND` كبديل
-3. جميع المصروفات تذهب إلى `EXP_GENERAL` بغض النظر عن نوعها
-4. `DEBTOR_SETTLEMENT` حساب موحّد لجميع تسويات المدينين (لا حسابات فردية)
+**قاعدة ملزمة:** `BNK_*` لا يظهر في أي قيد أبدًا. الحساب البنكي وسم في `transactions.bank_account_id` فقط.
 
-## 3.2 إدارة الأرصدة
+---
+
+## 3.2 رقم القيد (Voucher Number)
+
+- Online: يُولَّد من RPC `get_next_voucher_number`
+- Offline: `V{YYYYMMDD}-LOCAL-{timestamp}` (AccountingService.js:_generateVoucherNumber)
+
+---
+
+## 3.3 عكس العمليات (Reversal)
+
+العكس يُنشئ **عملية جديدة** في `transactions` برابط `reverses_id = original_tx_id` — لا UPDATE على العملية الأصلية. يُبنى قيد معاكس (مدين ↔ دائن مقلوبان). العمود `reverses_id` مُضاف في migration 20260615000002.
+
+---
+
+## 3.4 دورة حياة العملية
 
 ```
-عند كل عملية مالية:
-  IF online:
-    → تُنفَّذ عبر RPC ذرّية (create_transaction_with_entries)
-    → يُحدَّث account_balances تلقائيًا في قاعدة البيانات
-  IF offline:
-    → تُحفظ في IndexedDB محليًا
-    → يُحسَب الرصيد المحلي من مجموع قيود account_ledger المحلية
-    → عند الاتصال: تُعاد المزامنة وتُحدَّث account_balances من الخادم
-```
-
-## 3.3 دورة حياة العملية (Transaction Lifecycle)
-
-```
-إنشاء (created)
+إنشاء عملية جديدة
     ↓
-[تلقائي] → معتمدة (approved)        ← جميع الأنواع ما عدا 'receipt' المعلّق
-    ↓                    ↓
-  نشطة              معلّقة (pending)  ← عمليات الاستلام بين المندوبين
-    ↓                    ↓
-  عكس (reversed)    موافقة/رفض
-    ↓                    ↓
- مؤرشفة            نشطة/مرفوضة
+IF type = 'receipt' AND يحتاج موافقة:
+    approval_status = 'pending'
+    قيد: SUSP_<tx_id> ← AGT_<sender>
+ELSE:
+    approval_status = 'approved'
+    قيد طبيعي حسب النوع
+    ↓
+IF موافقة على receipt المعلّق:
+    قيد تحويل: AGT_<receiver> ← SUSP_<tx_id>
+IF رفض:
+    قيد عكسي على SUSP
+IF عكس (reversal):
+    عملية جديدة بـ reverses_id
+    قيود معاكسة
 ```
 
-**قواعد الموافقة:**
-- IF نوع = `receipt` AND المُرسِل أو المستلم ليس المدير: → `approval_status = 'pending'`
-- THEN يجب على المدير أو مساعد المدير الموافقة أو الرفض
-- عند الموافقة: يُحوَّل القيد من `SUSP_<tx_id>` إلى `AGT_<to_agent_id>`
+---
 
-## 3.4 قواعد عكس العمليات
+## 3.5 صلاحيات التبويبات
 
-- فقط Admin يمكنه عكس عملية
-- العكس يُنشئ قيودًا محاسبية معاكسة (mirror entries)
-- يُخزَّن `reversed_by` و `reversed_at` و `reversal_reason`
-- لا يمكن عكس عملية معكوسة بالفعل
-- لا يمكن عكس عملية مُرفَضة
+### المدير `admin` — ثابت، لا يُخصَّص:
+من `ADMIN_TABS` في config.js:178-191:
+1. `dashboard` — لوحة المعلومات
+2. `data-entry` — إدخال البيانات
+3. `daily-summary` — الملخص اليومي
+4. `bank-accounts` — الحسابات البنكية
+5. `debtors` — العملاء المديونين
+6. `failed-deposits` — الإيداعات الفاشلة
+7. `notifications` — الإشعارات
+8. `all-operations` — جميع العمليات
+9. `audit-log` — سجل التدقيق
+10. `users` — إدارة المستخدمين
+11. `account-management` — إدارة الحسابات
+12. `settings` — الإعدادات
 
-## 3.5 إغلاق اليومية
+### المساعد الإداري `admin_assistant` — قابل للتخصيص:
+يُقرأ من `users.allowed_tabs` (مصفوفة). إذا كانت فارغة أو null → يحصل على `AGENT_TABS` افتراضيًا (AuthService.js:1840-1844). يمكن للمدير تخصيص أي تبويبات من القائمة الكاملة.
 
-**الشرط المسبق:** لا توجد عمليات معلّقة (pending) في اليوم المطلوب إغلاقه.
+### المندوب `agent` — ثابت، لا يُخصَّص:
+من `AGENT_TABS` في config.js:167-175:
+1. `data-entry`
+2. `daily-summary`
+3. `bank-accounts`
+4. `debtors`
+5. `failed-deposits`
+6. `notifications`
+7. `settings`
 
-**الخطوات (ذرّية في RPC):**
-1. التحقق من صلاحيات المدير
-2. حساب ملخص اليوم (مجموع التحصيل، الإيداع، المصروفات، ...)
-3. حفظ سجل في `daily_closings`
-4. إشعار جميع المستخدمين بإغلاق اليومية
+### وضع Offline — بغض النظر عن الدور:
+3 تبويبات فقط (AuthService.js:1820-1826):
+1. `data-entry`
+2. `failed-deposits`
+3. `notifications`
 
-**ما بعد الإغلاق:** لا يمكن تعديل أو إضافة عمليات لتاريخ مُغلَق (تحقق على مستوى قاعدة البيانات).
+---
 
-## 3.6 الصلاحيات التفصيلية
+## 3.6 صلاحيات البيانات للمندوب
 
-### Admin (مدير)
+من `users` جدول — حقول الصلاحيات (migration 20260612000008):
 
-| الوظيفة | مسموح؟ |
-|---------|--------|
-| إنشاء/تعديل/حذف المستخدمين | ✅ |
-| الاطلاع على جميع العمليات لكل المندوبين | ✅ |
-| الموافقة/رفض عمليات الاستلام | ✅ |
-| عكس أي عملية | ✅ |
-| إغلاق اليومية | ✅ |
-| الاطلاع على سجل التدقيق | ✅ |
-| تعديل الإعدادات | ✅ |
-| إعادة تعيين البيانات | ✅ (RPC خاص) |
-| إدارة الحسابات المحاسبية | ✅ |
+| الحقل | المعنى | قاعدة القراءة |
+|-------|--------|--------------|
+| `allowed_companies` | TEXT[] | مصفوفة فارغة `{}` = كل الشركات مسموحة |
+| `allowed_banks` | TEXT[] | مصفوفة فارغة `{}` = كل البنوك مسموحة |
+| `allowed_users` | TEXT[] | مصفوفة فارغة `{}` = كل المستخدمين مسموحون |
 
-### Admin Assistant (مساعد مدير)
+المدير والمساعد الإداري: `null` → كل الشركات/البنوك/المستخدمين مسموحون (AuthService.js:1803-1815).
 
-| الوظيفة | مسموح؟ |
-|---------|--------|
-| إدخال عمليات | ✅ |
-| مراجعة جميع العمليات | ✅ |
-| الموافقة على الاستلام | ✅ |
-| إدارة الحسابات البنكية والمدينين | ✅ |
-| إغلاق اليومية | ❌ |
-| سجل التدقيق | ❌ |
-| إدارة المستخدمين | ❌ |
+---
 
-### Agent (مندوب)
+## 3.7 صلاحيات RLS الفعلية (من migrations)
 
-| الوظيفة | مسموح؟ |
-|---------|--------|
-| إدخال عمليات خاصة به | ✅ |
-| الاطلاع على عملياته فقط | ✅ |
-| مدينيه المُعيَّنون له فقط | ✅ |
-| إدخال إيداع/سحب بنكي | ✅ |
-| عمليات مندوبين آخرين | ❌ |
-| إغلاق اليومية | ❌ |
-| عكس العمليات | ❌ |
+**transactions** (migration 20260619000001):
+- المدير/المساعد: SELECT/INSERT/UPDATE/DELETE كامل
+- المندوب SELECT: عملياته الخاصة `agent_id = auth.uid()`
+- المندوب SELECT إيداع/سحب: عمليات اليوم الحالي فقط `date = CURRENT_DATE AND type IN ('deposit','bank_withdrawal')`
+- المندوب INSERT: `agent_id = auth.uid()`
+- المندوب UPDATE: `sync_status, synced_at` فقط
+- المندوب DELETE: ❌ ممنوع تمامًا
 
-## 3.7 قواعد المزامنة دون اتصال
+**account_ledger** (migration 20260619000001):
+- المندوب SELECT: `account_id = 'AGT_' || auth.uid()::text` فقط
 
-### اكتشاف الاتصال
-- `navigator.onLine` + اختبار `fetch()` فعلي
-- حدث `app:onlineStatusChange` يُطلَق عند التغيير
+**account_balances** (migration 20260619000001):
+- المندوب SELECT: `account_id = 'AGT_' || auth.uid()::text` فقط
 
-### عند الانقطاع
+**debtors:**
+- المدير فقط: CRUD كامل (migration 20260617000002)
+- المندوب: INSERT فقط للمدينين المُعيَّنين له (migration 20260617000003)
+
+**audit_log:** Admin فقط (لا RLS صريح في المستودع — يُستنتج من UI)
+
+---
+
+## 3.8 إعدادات الأداء والمزامنة (config.js)
+
+```javascript
+SYNC_CONFIG = {
+  MAX_RETRIES      : 5,
+  CHUNK_SIZE       : 20,        // عمليات لكل دفعة
+  CHUNK_DELAY_MS   : 50,        // ms بين الدفعات
+  BASE_BACKOFF_MS  : 1_000,
+  MAX_BACKOFF_MS   : 60_000,
+  JITTER_PERCENT   : 0.2,       // ±20%
+  MAX_QUEUE_SIZE   : 5_000,
+  STALE_QUEUE_DAYS : 30,
+}
+
+CACHE_CONFIG = {
+  TTL_MINUTES     : 5,
+  MAX_TRANSACTIONS: 10_000,
+  STALE_DAYS      : 90,
+  MAX_STORAGE_MB  : 50,
+}
+
+PAGINATION_CONFIG = {
+  DEFAULT_PAGE_SIZE : 20,
+  PAGE_SIZE_OPTIONS : [20, 50, 100],
+}
+
+AMOUNT_CONFIG = { MIN: 0.01, MAX: 10_000_000 }
+
+SECURITY_CONFIG = {
+  MAX_LOGIN_ATTEMPTS : 5,
+  LOCKOUT_MINUTES    : 15,      // المرجع العام — المنطق الفعلي أدق (انظر 3.9)
+}
 ```
-IF offline:
-  → كل العمليات الجديدة تُحفظ في IndexedDB
-  → sync_status = 'pending'
-  → كل عملية لها idempotency_key (UUID)
-  → تُعرض رسالة "أنت غير متصل"
+
+---
+
+## 3.9 حدود المزامنة في الاستعلامات (config.js:298-317)
+
+| المجموعة | الحد |
+|---------|------|
+| `BANK_ACCOUNTS` | 200 |
+| `COMPANIES` | 200 |
+| `EXPENSE_ACCOUNTS` | 200 |
+| `DEBTORS` | 500 |
+| `SYSTEM_SETTINGS` | 100 |
+| `USERS` | 200 |
+| `TRANSACTIONS_SYNC` | 200 |
+| `NOTIFICATIONS_SYNC` | 50 |
+| `LEDGER_ENTRIES` | 1,000 |
+| `REVERSAL_ENTRIES` | 20 |
+| `CONFLICTS` | 100 |
+
+---
+
+## 3.10 منطق قفل الحسابات
+
+### تسجيل الدخول بالبريد وكلمة المرور (AuthService.js:124-126)
+| عدد المحاولات الفاشلة | مدة القفل |
+|----------------------|----------|
+| ≥ 5 | 5 دقائق |
+| ≥ 10 | 15 دقيقة |
+| ≥ 20 | 60 دقيقة |
+
+التخزين: localStorage (يبقى عبر الجلسات).
+
+### الدخول السريع (AuthService.js:112-113)
+| عدد المحاولات الفاشلة | مدة القفل |
+|----------------------|----------|
+| ≥ 5 | 10 دقائق |
+| ≥ 10 | 60 دقيقة |
+
+التخزين: localStorage، مُتتَبَّع بـ `ahu_quick_attempts_<userId>`.
+
+### PIN الـ Offline (OfflineAuthService.js)
+| عدد المحاولات الفاشلة | مدة القفل |
+|----------------------|----------|
+| ≥ 3 | 5 دقائق |
+| ≥ 5 | 15 دقيقة |
+| ≥ 10 | **قفل دائم** (~100 سنة) |
+
+التخزين: sessionStorage + localStorage (مزدوج).
+
+---
+
+## 3.11 مهل الخمول التلقائي (IdleTimer.js)
+
+| الدور | المهلة | المصدر |
+|-------|--------|--------|
+| `agent` | **5 دقائق** (`5 * 60 * 1000` ms) | IdleTimer.js:28 |
+| `admin` أو `admin_assistant` | **90 دقيقة** (`90 * 60 * 1000` ms) | IdleTimer.js:31 |
+| تحذير مسبق | 60 ثانية قبل انتهاء المهلة | IdleTimer.js:34 |
+
+أحداث النشاط التي تُعيد المهلة: `mousemove, keydown, click, scroll, touchstart, touchmove`
+
+---
+
+## 3.12 صلاحية الجلسة
+
+- جلسة Supabase JWT: **8 ساعات** (AuthService.js:1111: `now + 8*60*60*1000`)
+- Offline session (PIN): تنتهي بعد **90 يومًا** (migration 20260612000000: `DEFAULT now()+90d`)
+- Quick Login token: تنتهي بعد **30 يومًا** (AuthService.js:859)
+- إعادة مصادقة Offline بعد: **30 دقيقة** من آخر تحقق (`_OFFLINE_REAUTH_MS = 30 * 60 * 1000`)
+
+---
+
+## 3.13 معادلة هاش الدخول السريع
+
+```
+normalize(equation) → إزالة المسافات: "12 + 88" → "12+88"
+token = SHA-256( userId + ":" + normalize(equation) + ":" + "ahu_secure_salt_v1_2024" )
 ```
 
-### عند العودة للاتصال
-```
-1. عرض نافذة إعادة الاتصال
-2. إعادة المصادقة (إذا انتهت الجلسة)
-3. معالجة قائمة الانتظار (FIFO - بترتيب الإنشاء)
-4. لكل عملية:
-   IF خطأ 23505 (idempotency_key موجود): → تخطّ (تكرار)
-   IF تعارض إصدار (version): → اكتشاف تعارض → مراجعة يدوية
-   IF نجاح: → sync_status = 'synced'
-5. تحديث الأرصدة من الخادم
-```
+الـ salt ثابت في الكود. يُدوَّر الرمز (token rotation) عند كل دخول ناجح.
 
-### معاملات قائمة الانتظار
-- الحجم الأقصى: 5,000 عملية معلّقة
-- تنظيف تلقائي: عمليات أقدم من 30 يومًا
-- إعادة المحاولة: حد أقصى 5 مرات مع backoff تربيعي (1s → 2s → 4s → 8s → 16s → 60s كحد أقصى)
+---
+
+## 3.14 أوامر النظام المركزية
+
+- يستطلع App.js جدول `system_commands` كل **30 ثانية** (App.js:1143)
+- أيضًا عند حدث `online` فورًا
+- الأمر الوحيد المُنفَّذ حاليًا: `RESET_ALL_DATA`
+  - يمسح Dexie
+  - يمسح مفاتيح localStorage المحددة (`ahu_stmt_filter_pref`, `ahu_quick_banner_dismissed`, `favBanks_*`)
+  - يُحدِّث `executed_at` لمنع إعادة التنفيذ
+  - يُعيد تحميل الصفحة بعد 2.5 ثانية
 
 ---
 
 # الجزء الرابع: تدفقات المستخدم وسيناريوهات التشغيل
 
-## السيناريو 1: تسجيل الدخول السريع (Quick Login)
+## السيناريو 1: تسجيل الدخول بالبريد وكلمة المرور
 
-**الممثل:** أي مستخدم فعّل الدخول السريع مسبقًا
-
-**الشرط المسبق:** وجود رمز دخول سريع مفعّل في جدول `quick_login_tokens`
-
-**الخطوات:**
-1. يفتح المستخدم التطبيق → يرى شاشة الدخول
-2. يختار "الدخول السريع" (أو يُدخل اسم المستخدم ثم ينتقل لتبويب الدخول السريع)
-3. يُدخل المعادلة الرياضية (مثل: `12 + 88`)
-4. يضغط "دخول"
-5. النظام يحسب: `SHA-256(userId:normalizedEquation:salt)` ويقارنه بالهاش المخزَّن
-6. إذا تطابق: يُصدر Supabase Auth JWT ويُدوِّر الرمز (token rotation)
-7. يُعيَّن المستخدم في الجلسة ويُعرض له لوحة التحكم
-
-**شرط لاحق:** المستخدم مسجَّل دخوله بجلسة صالحة 8 ساعات
-
-**سيناريو الفشل:**
-- IF 5 محاولات فاشلة: → قفل 10 دقائق (localStorage)
-- IF 10 محاولات فاشلة: → قفل ساعة (localStorage)
-- IF الرمز منتهي الصلاحية: → رسالة خطأ + إعادة توجيه لتسجيل الدخول التقليدي
-
----
-
-## السيناريو 2: تسجيل الدخول التقليدي
-
-**الممثل:** أي مستخدم
+**الشرط المسبق:** الجهاز متصل بالإنترنت.
 
 **الخطوات:**
 1. يُدخل البريد الإلكتروني وكلمة المرور
-2. النظام يُرسل بيانات الاعتماد لـ Supabase Auth
-3. عند النجاح: يجلب بيانات المستخدم من جدول `users`
-4. يُخزَّن JWT وبيانات المستخدم في الجلسة
-5. إذا لم يكن الدخول السريع مفعَّلًا: تظهر رسالة ترقيم لتفعيله
+2. التحقق من قفل الحساب (localStorage)
+3. إرسال لـ Supabase Auth
+4. عند النجاح: جلب بيانات المستخدم من `users` بما فيها `allowed_tabs, allowed_companies, allowed_banks, allowed_users, quick_login_enabled`
+5. تسجيل الجهاز في `user_devices` عبر RPC `register_device`
+6. تحديث `last_login` في الخلفية
+7. إذا `quick_login_enabled = false`: يظهر banner لتفعيل الدخول السريع (QuickLoginBanner.js)
+8. تحديد مهلة الخمول حسب الدور
 
-**سيناريو الفشل:**
-- IF كلمة المرور خاطئة 5 مرات: → قفل 15 دقيقة (sessionStorage)
+**شرط لاحق:** مستخدم مسجَّل دخوله، JWT صالح 8 ساعات.
+
+**الفشل:**
+- ≥5 محاولات: قفل 5 دقائق
+- ≥10: قفل 15 دقيقة
+- ≥20: قفل 60 دقيقة
 
 ---
 
-## السيناريو 3: الدخول بدون اتصال (Offline PIN)
+## السيناريو 2: تسجيل الدخول السريع (Quick Login)
 
-**الممثل:** أي مستخدم فعّل PIN مسبقًا
-
-**الشرط المسبق:** جلسة offline نشطة في `offline_sessions`؛ بيانات الاعتماد المشفَّرة في SessionVault
+**الشرط المسبق:** `quick_login_enabled = true`، رمز نشط في `quick_login_tokens`.
 
 **الخطوات:**
-1. يفتح التطبيق دون اتصال → يرى شاشة إدخال PIN
-2. يُدخل رمز PIN (4-6 أرقام)
-3. النظام يُشفِّر الإدخال ويقارنه بالهاش المحلي (PBKDF2 + AES-GCM)
-4. عند التطابق: يُستعاد بيانات الجلسة المحلية
-5. يُعمَل في وضع Offline مع رسالة توضيحية
+1. يُدخل اسم المستخدم (أو يُختار)
+2. يُدخل المعادلة الرياضية
+3. النظام يحسب: `SHA-256(userId:normalize(equation):salt)`
+4. يُرسَل الهاش لـ RPC `verify_quick_login_token`
+5. الـ RPC يتحقق من الهاش ويُدوِّر الرمز ويُصدر JWT
+6. جلب بيانات المستخدم كاملة
 
-**سيناريو الفشل:**
-- IF 5 محاولات خاطئة: → قفل 15 دقيقة
-- IF 10 محاولات: → قفل دائم يستلزم دخولًا تقليديًا من الإدارة
+**الفشل:**
+- ≥5 محاولات: قفل 10 دقائق
+- ≥10: قفل 60 دقيقة
 
 ---
 
-## السيناريو 4: إدخال عملية تحويل (مندوب)
+## السيناريو 3: الدخول بدون اتصال (PIN)
 
-**الممثل:** Agent أو Admin أو Admin Assistant
-
-**الشرط المسبق:** المستخدم مسجَّل دخوله
+**الشرط المسبق:** `offline_sessions` نشطة، SessionVault يحتوي بيانات مشفَّرة.
 
 **الخطوات:**
-1. ينتقل إلى شاشة "إدخال البيانات"
-2. يختار نوع العملية من: [تحصيل، إيداع، مصروف، استلام، تسليم، سحب بنكي]
-3. يُكمل الحقول المطلوبة لنوع العملية (المبلغ، التاريخ، الطرف الآخر، ...)
-4. ينقر "حفظ" أو Ctrl+S
-5. IF online:
-   - يُرسَل الطلب لـ RPC `create_transaction_with_entries`
-   - تُولَّد القيود المحاسبية ذريًا
-   - يُعرَض تأكيد نجاح
-6. IF offline:
-   - تُحفَظ في IndexedDB مع `idempotency_key` جديد
-   - تُعرَض رسالة "محفوظة محليًا - ستُزامَن عند الاتصال"
+1. الجهاز يكتشف غياب الاتصال (`navigator.onLine = false` أو فشل fetch)
+2. يُعرَض حقل PIN (4-6 أرقام) أو WebAuthn passkey
+3. PIN يُشفَّر ويُقارَن بـ SessionVault (PBKDF2 + AES-GCM)
+4. `AuthState.isOffline = true`
+5. المتاح: 3 تبويبات فقط (`data-entry`, `failed-deposits`, `notifications`)
 
-**شرط لاحق:** 
-- إذا كان نوع = `receipt`: العملية تنتظر الموافقة
-- غيرها: نشطة ومحاسبيًا مسجَّلة فورًا
-
-**سيناريو الفشل:**
-- مبلغ = 0 أو سالب: رسالة خطأ فورية
-- حساب بنكي بدون شركة مرتبطة: خطأ واضح قبل الإرسال
+**الفشل:**
+- ≥3: قفل 5 دقائق
+- ≥5: قفل 15 دقيقة
+- ≥10: قفل دائم
 
 ---
 
-## السيناريو 5: مراجعة العمليات والموافقة (مساعد مدير)
+## السيناريو 4: إدخال عملية مالية
 
-**الممثل:** Admin أو Admin Assistant
+**الممثل:** أي مستخدم مسجَّل دخوله لديه `data-entry`
 
 **الخطوات:**
-1. ينتقل إلى "جميع العمليات"
-2. يُفلتر بـ: التاريخ، المندوب، النوع، الحالة (معلّق)
-3. يختار العملية المعلّقة
-4. يراجع التفاصيل
-5. ينقر "موافقة" أو "رفض" مع ذكر السبب
-6. NPC `approve_transaction` أو `reject_transaction` تُنفَّذ
-7. يُحوَّل القيد من SUSP إلى AGT (عند الموافقة)
+1. اختيار النوع من 7 أنواع
+2. إدخال البيانات المطلوبة (تتغير حسب النوع)
+3. التحقق المحلي من الصحة (المبلغ 0.01-10,000,000)
+4. `Ctrl+S` أو زر الحفظ
+5. IF online: إرسال لـ RPC `create_transaction_with_entries` (ذري)
+6. IF offline: حفظ في Dexie مع `sync_status='pending'`, `idempotency_key=UUID جديد`
+
+**شرط لاحق online:** قيود محاسبية مُولَّدة، `account_balances` مُحدَّث.
+
+**أخطاء خادم:**
+- `42501`: ليس لديك صلاحية
+- `23502`: حقل مطلوب مفقود
+- `23503`: الحساب البنكي غير مرتبط بشركة
+- `P0001`: رسالة الخادم مباشرةً
 
 ---
 
-## السيناريو 6: إغلاق اليومي وإنشاء التقارير (مدير)
+## السيناريو 5: المزامنة عند استعادة الاتصال
 
-**الممثل:** Admin فقط
-
-**الشرط المسبق:** لا توجد عمليات معلّقة في اليوم المطلوب
+**المُشغِّل:** حدث `app:onlineStatusChange` أو `online`
 
 **الخطوات:**
-1. ينتقل إلى "الملخص اليومي"
-2. يختار التاريخ
-3. يراجع الملخص: تحصيل/إيداع/مصروف/استلام/تسليم + أرصدة المندوبين
-4. ينقر "إغلاق اليومية"
-5. RPC `perform_daily_close` تُنفَّذ ذريًا
-6. يُنشأ تقرير PDF أو Excel
-7. يُرسَل إشعار لجميع المستخدمين
-
-**سيناريو الفشل:**
-- IF توجد عمليات معلّقة: رسالة خطأ + عرض قائمة العمليات المعلّقة
+1. عرض نافذة "تم استعادة الاتصال"
+2. IF انتهت جلسة JWT: إعادة مصادقة
+3. `OutboxService.processOutbox()` يعالج الانتظار FIFO:
+   - دفعات 20 عملية، تأخير 50ms بين الدفعات
+   - IF خطأ `23505` (idempotency_key موجود): تخطّ (مكرر)
+   - IF تعارض version: علامة `conflict`
+   - IF خطأ مؤقت: retry حتى 5 مرات (backoff تربيعي + jitter ±20%)
+   - IF خطأ دائم (`23502`,`23514`,`42703`,`42501`,`P0001`,`22P02`,`23503`,`22003`): لا إعادة محاولة
+4. تحديث `account_balances` من الخادم
+5. `AppStore.refreshData()`
 
 ---
 
-## السيناريو 7: المزامنة مع الخادم في وضع عدم الاتصال
+## السيناريو 6: إغلاق اليومية
 
-**الممثل:** النظام (تلقائي)
+**الممثل:** admin فقط (تبويب `daily-summary`)
 
-**الخطوات عند استعادة الاتصال:**
-1. حدث `online` يُطلَق
-2. تظهر نافذة "تم استعادة الاتصال"
-3. IF انتهت الجلسة: طلب إعادة دخول
-4. `OutboxService.processOutbox()` يُعالِج قائمة الانتظار FIFO:
-   - يُرسَل كل عملية بترتيب `created_at`
-   - IF 23505 error: عملية مكررة → تخطّ
-   - IF تعارض version: → علامة conflict
-   - IF نجاح: → `sync_status = 'synced'`
-5. تُحدَّث الأرصدة من الخادم
-6. تُحدَّث الواجهة
+**الشرط المسبق:** لا توجد عمليات `approval_status='pending'` في اليوم المطلوب.
+
+**الخطوات:**
+1. اختيار التاريخ في `DailySummaryComponent`
+2. مراجعة الملخص
+3. النقر على "إغلاق اليومية"
+4. RPC `perform_daily_close(p_date)` يُنفَّذ ذريًا
+5. يُنشأ سجل في `daily_closings` (UNIQUE على `date`)
+6. إشعار للمستخدمين
+
+---
+
+## السيناريو 7: الموافقة على عملية استلام
+
+**الممثل:** admin أو admin_assistant (إذا كان لديه `all-operations`)
+
+**الخطوات:**
+1. في `AllOperationsComponent` → فلتر `approval_status='pending'`
+2. اختيار العملية
+3. "موافقة" → RPC `approve_transaction`
+   - قيد: `AGT_<receiver>` مدين ← `SUSP_<tx_id>` دائن
+4. أو "رفض" → RPC `reject_transaction` مع السبب
+   - قيد عكسي على `SUSP`
 
 ---
 
 ## السيناريو 8: إدارة المدينين
 
-**الممثل:** Admin أو Admin Assistant أو Agent (مدينوه فقط)
-
-**إضافة مدين:**
-1. ينتقل إلى "المدينون"
-2. يُدخل: الاسم، الهاتف، المبلغ المستحق، المندوبين المُكلَّفين
-3. يحفظ
+**الممثل:** admin (CRUD كامل)؛ agent (يرى ويضيف مدينيه فقط)
 
 **تحصيل من مدين:**
-1. في "إدخال البيانات" → اختيار "تحصيل"
-2. اختيار المدين من القائمة (بدلًا من شركة)
-3. إدخال المبلغ → يُولَّد قيد مدين: `AGT_` ← `DEBTOR_SETTLEMENT`
-4. يُخفَّض `amount_owed` للمدين بالمبلغ المحصَّل
+1. `data-entry` → نوع `collection`
+2. اختيار مدين من القائمة (بدلًا من شركة)
+3. قيد: `AGT_<agent>` مدين ← `DEBTOR_SETTLEMENT` دائن
+4. `amount_owed` للمدين يُخفَّض بالمبلغ المحصَّل
 
 ---
 
-## السيناريو 9: إدارة الحسابات البنكية
+## السيناريو 9: صلاحيات الحسابات البنكية للمندوب
 
-**الممثل:** Admin أو Admin Assistant
-
-**إضافة حساب بنكي:**
-1. ينتقل إلى "الحسابات البنكية"
-2. يُدخل: اسم الحساب، رقم الحساب، اسم البنك
-3. **يختار الشركة المرتبطة** (إلزامي — بدونها تفشل عمليات الإيداع/السحب)
-4. يُدخل الرصيد الافتتاحي (اختياري)
-5. يحفظ
+- المندوب يرى فقط البنوك الواردة في `allowed_banks` (إذا غير فارغة)
+- يرى إيداعات/سحوبات اليوم الحالي فقط (RLS: `date = CURRENT_DATE AND type IN ('deposit','bank_withdrawal')`)
 
 ---
 
 # الجزء الخامس: واجهة المستخدم وسلوكها
 
-## 5.1 هيكل التنقل (Navigation)
+## 5.1 شاشة الدخول (`LoginComponent.js`)
+
+**التبويبات:**
+- الدخول بالبريد وكلمة المرور
+- الدخول السريع (يظهر إذا `quick_login_enabled = true`)
+- الدخول بدون اتصال (PIN / WebAuthn)
+
+**السلوك:**
+- اكتشاف تلقائي لحالة الاتصال عند الفتح
+- عرض banner تفعيل الدخول السريع بعد أول دخول ناجح
+
+---
+
+## 5.2 الهيكل العام للتطبيق (App.js)
 
 ```
-شاشة الدخول
-└── تبويبات المصادقة:
-    ├── الدخول التقليدي (بريد + كلمة مرور)
-    ├── الدخول السريع (معادلة رياضية)
-    └── الدخول بدون اتصال (PIN)
+<header>
+  شعار النظام (من system_settings)
+  اسم المستخدم + دوره
+  مؤشر الاتصال (أخضر/أحمر)
+  عداد الإشعارات
+  زر تغيير المظهر (ThemeManager)
+  زر تسجيل الخروج
+</header>
 
-لوحة التطبيق الرئيسية (بعد الدخول):
-├── شريط علوي: [اسم المستخدم، الدور، مؤشر الاتصال، الإشعارات، تغيير المظهر، تسجيل الخروج]
-├── قائمة جانبية (RTL): روابط التنقل بحسب الدور
-└── منطقة المحتوى الرئيسية
+<nav> تبويبات حسب الدور </nav>
 
-روابط القائمة الجانبية:
-├── لوحة التحكم (Dashboard)          — Admin, Admin Assistant
-├── إدخال البيانات                    — الجميع
-├── الملخص اليومي                    — الجميع
-├── الحسابات البنكية                  — الجميع
-├── المدينون                          — الجميع
-├── الإيداعات الفاشلة                 — الجميع
-├── الإشعارات                        — الجميع
-├── جميع العمليات                     — Admin, Admin Assistant
-├── سجل التدقيق                      — Admin فقط
-├── إدارة المستخدمين                  — Admin فقط
-├── إدارة الحسابات المحاسبية          — Admin فقط
-└── الإعدادات / الملف الشخصي         — الجميع
+<main> محتوى التبويب النشط </main>
+
+<div> شريط Offline (يظهر عند انقطاع الاتصال) </div>
 ```
 
-## 5.2 شاشة لوحة التحكم (Dashboard)
+---
 
-**الغرض:** عرض ملخص أداء شامل لليوم/الأسبوع/الشهر
+## 5.3 تبويب لوحة المعلومات (`DashboardComponent.js`)
 
-**العناصر:**
-- بطاقات KPI: إجمالي التحصيل، الإيداع، المصروفات، صافي الحركة
-- رسم بياني خطي: الحركة المالية عبر الزمن
-- رسم بياني شريطي: مقارنة أداء المندوبين
-- قائمة آخر العمليات
-- مؤشر حالة الاتصال
+متاح: admin فقط.
 
-**البيانات:** مجمَّعة من RPC `get_admin_dashboard`
+**المحتوى:**
+- بطاقات KPI (مجموع التحصيل، الإيداع، المصروفات، ...)
+- بيانات من RPC `get_admin_dashboard`
+- رسوم بيانية (Chart.js)
+- ملخصات أداء المندوبين
 
-## 5.3 شاشة إدخال البيانات (Data Entry)
+---
 
-**الغرض:** تسجيل العمليات المالية
+## 5.4 تبويب إدخال البيانات (`DataEntryComponent.js`)
 
-**العناصر:**
-- تبويبات نوع العملية: [تحصيل | إيداع | مصروف | استلام | تسليم | سحب بنكي]
-- حقول ديناميكية تتغير حسب النوع:
-  - **تحصيل:** المبلغ، التاريخ، الشركة أو المدين، اسم العميل، ملاحظات
-  - **إيداع/سحب:** المبلغ، التاريخ، الحساب البنكي، ملاحظات
-  - **مصروف:** المبلغ، التاريخ، نوع المصروف، ملاحظات
-  - **استلام/تسليم:** المبلغ، التاريخ، المندوب الآخر، ملاحظات
-- زر "حفظ" (Ctrl+S)
-- مؤشر حالة الحفظ (جاري الحفظ / تم الحفظ / خطأ)
+**الحقول حسب نوع العملية:**
 
-**السلوكيات الخاصة:**
-- الشركة/الحساب البنكي: قائمة منسدلة من البيانات المحلية (مخزَّنة في IndexedDB)
-- عند الإرسال الناجح: مسح الحقول + رسالة نجاح + تحديث الأرصدة
+| النوع | الحقول |
+|-------|--------|
+| `collection` | المبلغ، التاريخ، الشركة أو المدين، اسم العميل، ملاحظات |
+| `deposit` | المبلغ، التاريخ، الحساب البنكي، ملاحظات |
+| `bank_withdrawal` | المبلغ، التاريخ، الحساب البنكي، ملاحظات |
+| `expense` | المبلغ، التاريخ، نوع المصروف، ملاحظات |
+| `receipt` | المبلغ، التاريخ، المندوب المُرسِل، ملاحظات |
+| `delivery` | المبلغ، التاريخ، المندوب المُستلِم، ملاحظات |
+| `refund_settlement` | المبلغ، التاريخ، الشركة (اختياري)، ملاحظات |
 
-## 5.4 شاشة الملخص اليومي
+**حد المبلغ:** 0.01 – 10,000,000 SAR  
+**اختصار:** `Ctrl+S` = حفظ
 
-**الغرض:** عرض إجماليات اليوم مع تفصيل لكل مندوب
+---
 
-**العناصر:**
-- منتقي التاريخ (يعرض الأيام التي فيها عمليات)
-- جدول: المندوب | التحصيل | الإيداع | المصروفات | الاستلام | التسليم | الرصيد الختامي
-- إجمالي في الأسفل
-- أزرار: [طباعة | تصدير Excel | تصدير PDF]
-- زر "إغلاق اليومية" (Admin فقط، متوفر فقط إذا لا توجد عمليات معلّقة)
+## 5.5 تبويب الملخص اليومي (`DailySummaryComponent.js`)
 
-## 5.5 شاشة جميع العمليات
+- منتقي تاريخ
+- بطاقات KPI لليوم
+- جدول تفصيل لكل مندوب
+- أزرار تصدير (Excel عبر SheetJS، PDF عبر html2pdf)
+- زر "إغلاق اليومية" — admin فقط، ويظهر فقط إذا لا توجد عمليات معلّقة
 
-**الغرض:** عرض وتصفية وبحث في كل العمليات
+---
 
-**عناصر الفلتر:**
-- نطاق التاريخ (من - إلى)
-- المندوب (قائمة منسدلة)
-- نوع العملية
-- حالة الموافقة (معلّقة / معتمدة / مرفوضة)
-- بحث نصي (اسم العميل، الوصف)
+## 5.6 تبويب الحسابات البنكية (`BankAccountsComponent.js`)
 
-**عناصر الجدول:**
-- التاريخ | النوع | المبلغ | المندوب | الطرف الآخر | الحالة | إجراءات
+**للمندوب:**
+- يرى البنوك من `allowed_banks` فقط (إذا غير فارغة)
+- يرى إيداعات/سحوبات اليوم الحالي فقط (RLS)
+- إجمالي الإيداع اليومي
+- مؤشر نسبة السقف اليومي
 
-**الإجراءات لكل صف:**
-- Admin: [موافقة | رفض | عكس | تفاصيل]
-- Admin Assistant: [موافقة | رفض | تفاصيل]
-- Agent: [تفاصيل فقط]
+**للمدير/المساعد:**
+- كل الحسابات
+- إضافة/تعديل حساب (يجب ربطه بشركة)
 
-**ترقيم الصفحات:** 20 / 50 / 100 سجل في الصفحة
+---
 
-## 5.6 شاشة إدارة المستخدمين (Admin)
+## 5.7 تبويب الإيداعات الفاشلة (`FailedDepositsComponent.js`)
 
-**الغرض:** إنشاء وتعديل وتعطيل حسابات المستخدمين
+- جدول بالإيداعات وحالاتها: `pending` | `claimed` | `refunded` | `rejected`
+- إمكانية تغيير الحالة حسب الصلاحية
 
-**العناصر:**
-- جدول المستخدمين: الاسم | الدور | الحالة | رقم الحساب | إجراءات
-- زر "إضافة مستخدم جديد"
-- نموذج الإضافة/التعديل: [البريد الإلكتروني، كلمة المرور (للإنشاء فقط)، الاسم، الدور، الحالة]
-- إمكانية تعطيل المستخدم (soft delete)
+---
 
-## 5.7 حالات الواجهة الخاصة
+## 5.8 تبويب جميع العمليات (`AllOperationsComponent.js`)
 
-### حالة التحميل (Loading State)
-- هيكل عظمي (Skeleton) يظهر مكان البيانات
-- مؤشر دوار في الأزرار عند الحفظ
+متاح: admin و admin_assistant (إذا في allowed_tabs).
 
-### الحالة الفارغة (Empty State)
-- رسالة توضيحية + أيقونة مناسبة
-- زر لإنشاء أول سجل (حيث ينطبق)
+- فلاتر: التاريخ، المندوب، النوع، حالة الموافقة، بحث نصي
+- ترقيم: 20/50/100 لكل صفحة
+- إجراءات: موافقة / رفض / عكس / تفاصيل (حسب الصلاحية)
 
-### حالة عدم الاتصال (Offline State)
-- شريط تحذير أعلى الشاشة: "أنت غير متصل بالإنترنت"
-- مؤشر دائري أحمر بجانب اسم المستخدم
-- عند الاتصال: شريط أخضر + نافذة مزامنة
+---
 
-### الأخطاء
-- رسائل الخطأ تظهر أسفل الحقل مباشرةً (validation) أو كـ toast أعلى الشاشة (server errors)
-- خطأ الشبكة: "حدث خطأ في الاتصال. جاري الحفظ محليًا."
+## 5.9 تبويب سجل التدقيق (`AuditLogComponent.js`)
 
-## 5.8 اختصارات لوحة المفاتيح
+متاح: admin فقط.
+
+- يعرض `changed_fields` من `audit_logs`
+- فلتر بالتاريخ، المستخدم، نوع السجل
+- يحذف حقول النظام (`version, updated_at, ...`) من العرض
+
+---
+
+## 5.10 تبويب إدارة المستخدمين (`UsersComponent.js`)
+
+متاح: admin فقط.
+
+- جدول المستخدمين: الاسم، الدور، الحالة، رقم الحساب
+- إنشاء مستخدم جديد: بريد + كلمة مرور + اسم + دور
+- تعيين التبويبات المسموحة للمساعد الإداري (`allowed_tabs`)
+- تعيين الشركات/البنوك/المستخدمين المسموحين للمندوب
+- تعطيل/تفعيل الحساب (soft toggle على `is_active`)
+
+---
+
+## 5.11 تبويب إدارة الحسابات (`AccountManagementComponent.js`)
+
+متاح: admin فقط.
+
+- هيكل الحسابات الهرمي من RPC `get_chart_of_accounts`
+- كشف الحساب من RPC `get_account_statement` مع أرصدة افتتاحية/ختامية
+- طباعة
+
+---
+
+## 5.12 تبويب الإعدادات (`SettingsComponent.js` + `ProfileSettingsComponent.js`)
+
+- إعدادات النظام: شعار، اسم الشركة، ... (admin)
+- إعدادات الملف الشخصي: تفعيل الدخول السريع، إعداد PIN، تغيير كلمة المرور
+- تغيير المظهر (ThemeManager)
+
+---
+
+## 5.13 حالات الواجهة الخاصة
+
+**شريط Offline:** يظهر أعلى الصفحة عند `AuthState.isOffline = true` أو `navigator.onLine = false`
+
+**حالة التحميل:** هيكل عظمي (skeleton) مكان البيانات + مؤشر دوار في الأزرار
+
+**حالة فارغة:** رسالة توضيحية + أيقونة
+
+**Toast:** رسائل النجاح/الخطأ تظهر أعلى الشاشة مؤقتًا
+
+**مربعات الحوار:** `PasswordDialog.js` لإدخال كلمة المرور، `PinDialog.js` لإدخال PIN
+
+---
+
+## 5.14 اختصارات لوحة المفاتيح (من App.js)
 
 | الاختصار | الوظيفة |
 |----------|---------|
-| Ctrl+S | حفظ العملية الحالية |
-| Ctrl+F | التركيز على حقل البحث |
-| Ctrl+O | مزامنة فورية |
-| Ctrl+L | تسجيل الخروج |
-| Escape | إغلاق النافذة المنبثقة |
-| F5 | تحديث البيانات (بدون إعادة تحميل) |
-| ? | عرض قائمة الاختصارات |
+| `Ctrl/Cmd + S` | حفظ العملية الحالية |
+| `Ctrl/Cmd + F` | التركيز على البحث |
+| `Ctrl/Cmd + O` | مزامنة فورية |
+| `Ctrl/Cmd + L` | تسجيل الخروج |
+| `Escape` | إغلاق النافذة المنبثقة |
+| `F5` | تحديث البيانات |
+| `?` | عرض قائمة الاختصارات |
 
 ---
 
 # الجزء السادس: المتطلبات غير الوظيفية
 
-## 6.1 الأداء
+## 6.1 الأداء (من config.js)
 
-| العملية | الهدف |
-|---------|-------|
-| تحميل التطبيق (أول مرة) | < 3 ثوانٍ |
-| تحميل قائمة العمليات (20 سجل) | < 1 ثانية |
-| حفظ عملية جديدة (online) | < 2 ثانية |
-| حفظ عملية جديدة (offline) | < 200ms |
-| تحميل الملخص اليومي | < 2 ثانية |
-| مزامنة 100 عملية معلّقة | < 30 ثانية |
-| البحث والفلترة | < 500ms |
+| القياس | القيمة |
+|--------|--------|
+| TTL كاش Supabase | 5 دقائق |
+| حجم IndexedDB | أقصاه 50MB |
+| أقصى معاملات في Dexie | 10,000 |
+| حذف تلقائي للمعاملات القديمة | 90 يوم |
+| حذف تلقائي للعمليات المعلّقة | 30 يوم |
 
-## 6.2 الأمان
+## 6.2 الأمان (من الكود المصدري)
 
-| الجانب | المتطلب |
+| الجانب | التنفيذ |
 |--------|---------|
-| المصادقة | JWT صالح لـ 8 ساعات؛ تجديد تلقائي |
-| التفويض | RLS على كل جدول في قاعدة البيانات |
-| كلمات المرور | لا تُخزَّن محليًا أبدًا؛ Supabase Auth يتولى ذلك |
-| بيانات الاعتماد المحلية | PBKDF2 (100,000 تكرار) + AES-GCM |
-| الهاش | SHA-256 فقط؛ ممنوع `eval()` و `Function()` |
+| JWT | Supabase Auth — 8 ساعات |
+| PIN محلي | PBKDF2 + AES-GCM (SessionVault.js) |
+| هاش الدخول السريع | SHA-256 |
+| `eval()` | ممنوع تمامًا |
 | XSS | كل إدراج DOM عبر `textContent` أو `escapeHtml()` |
-| سجل التدقيق | كل تغيير (UPDATE/DELETE) على الجداول الحرجة مسجَّل |
-| القفل عند الخمول | 5 دقائق للمندوب، 30 دقيقة للمدير/مساعد المدير |
-| Content Security Policy | مُطبَّق في `<head>` |
+| CSP | مُطبَّق في `<head>` |
+| سجل التدقيق | كل UPDATE/DELETE على الجداول الحرجة |
+| Supabase Keys | في `config.js` — يجب تأمينه في الإنتاج |
 
-## 6.3 التوفر
+## 6.3 التوافق
 
-- **Uptime مستهدف:** 99.5% (Supabase managed)
-- **وضع Offline:** يجب أن يعمل النظام بالكامل لمدة 24+ ساعة دون اتصال
-- **استعادة البيانات:** لا فقدان لأي عملية مسجَّلة محليًا حتى عند انقطاع الكهرباء (IndexedDB persistent)
+التطبيق SPA (Single Page Application) بـ Vanilla JavaScript. لا bundler — المكتبات من CDN:
 
-## 6.4 التوافق
+| المكتبة | الإصدار | المصدر |
+|---------|---------|--------|
+| Supabase JS | 2.x | CDN |
+| Dexie.js | 3.2.4 | CDN |
+| Chart.js | 4.4.0 | CDN |
+| Lucide Icons | 0.263.0 | CDN |
+| Tailwind CSS | — | CDN |
+| expr-eval | 2.0.2 | CDN |
+| SheetJS (xlsx) | 0.18.5 | CDN |
+| html2pdf.js | 0.10.1 | CDN |
 
-| البيئة | المتطلب |
-|--------|---------|
-| المتصفحات | Chrome 90+، Firefox 88+، Safari 14+، Edge 90+ |
-| أنظمة التشغيل | Windows 10+، macOS 11+، Ubuntu 20+، Android 10+، iOS 14+ |
-| أحجام الشاشات | من 360px (موبايل) إلى 1920px+ (سطح مكتب) |
-| اتجاه الواجهة | RTL (يمين إلى يسار) بالكامل |
-| IndexedDB | مطلوب (للعمل offline) |
-| WebCrypto API | مطلوب (للتشفير) |
-
-## 6.5 التوسع
-
-| المقياس | التوقع |
-|---------|--------|
-| عدد المستخدمين المتزامنين | 50-100 |
-| عمليات يوميًا | 500-2,000 |
-| إجمالي العمليات (سنويًا) | ~500,000 |
-| حجم IndexedDB | أقصاه 50MB لكل جهاز |
-| الاحتفاظ بالبيانات المحلية | آخر 90 يومًا |
-| أقصى عمليات معلّقة | 5,000 |
-
-## 6.6 التدويل
-
-- اللغة: العربية بالكامل (RTL)
-- الأرقام: أرقام عربية عند الاقتضاء **[افتراض تصميمي قابل للمراجعة: قد تُستخدم أرقام غربية للمبالغ]**
-- تنسيق التاريخ: YYYY-MM-DD أو DD/MM/YYYY حسب السياق
-- المنطقة الزمنية: Asia/Riyadh
-- التقويم: ميلادي **[افتراض تصميمي قابل للمراجعة: دعم هجري اختياري]**
-- العملة: ريال سعودي (SAR)، تنسيق: `1,234.50 ر.س`
+**المتطلبات الوظيفية:**
+- IndexedDB مدعومة (offline)
+- Web Crypto API (تشفير)
 
 ---
 
-# الجزء السابع: تحليل الديون التقنية في النظام الحالي
+# الجزء السابع: تحليل الديون التقنية
 
-## 7.1 ديون على مستوى الهندسة المعمارية
+## 7.1 معمارية
 
-### 7.1.1 ملف `App.js` الضخم (3000+ سطر)
-- **المشكلة:** ملف واحد يحتوي على منطق التوجيه، إدارة الحالة، معالجة الأحداث، وبعض منطق الأعمال.
-- **التأثير:** صعوبة الصيانة، اختبار وحدات مستحيل، تعارضات merge متكررة في الفريق.
-- **التوصية:** تقسيم إلى: Router، StateManager، EventBus، App shell — كل منها في ملف مستقل.
+| المشكلة | التأثير |
+|---------|---------|
+| `App.js` 3000+ سطر يجمع التوجيه والحالة ومنطق الأعمال | صعوبة الصيانة وتعارضات merge |
+| 15 Component كل منها يبني DOM يدويًا بلا template موحَّد | تكرار كود وعدم اتساق |
+| المكتبات كلها من CDN | يفشل الجهاز في بيئات مغلقة الشبكة؛ لا تحكم في الإصدارات |
+| لا bundler ولا build step | لا tree-shaking، لا minification |
 
-### 7.1.2 تكرار كود الواجهة
-- **المشكلة:** 15 Component كل منها يُنشئ DOM يدويًا بشكل مخصَّص دون نظام Template موحَّد.
-- **التأثير:** تكرار الكود، عدم اتساق في الواجهة، صعوبة التغيير الشامل.
-- **التوصية:** اعتماد نظام Component حقيقي (React أو Svelte أو حتى LitElement).
+## 7.2 كود
 
-### 7.1.3 غياب Dependency Injection
-- **المشكلة:** الخدمات تعتمد على متغيرات عالمية (globals) مُعرَّفة في `config.js` و `App.js`.
-- **التأثير:** صعوبة الاختبار (mocking)، اقتران شديد بين المكونات.
-- **التوصية:** حقن الاعتمادات صراحةً عبر constructor parameters.
+| المشكلة | التأثير |
+|---------|---------|
+| `config.js` يحتوي على Supabase keys كـ plain text مرفوعة في المستودع | خطر أمني إذا أصبح المستودع عامًا |
+| اختبارات تغطي خدمات فقط — لا اختبارات UI أو E2E | أخطاء انحدار غير مكتشفة |
+| لا CI/CD — نشر يدوي | خطر نشر نسخة خاطئة |
+| لا error monitoring في الإنتاج | أخطاء صامتة |
 
-## 7.2 ديون على مستوى الكود
+## 7.3 بيانات
 
-### 7.2.1 CDN لجميع المكتبات
-- **المشكلة:** Chart.js، Lucide، Tailwind، SheetJS، html2pdf كلها محمَّلة من CDN في وقت التشغيل.
-- **التأثير:** يفشل التطبيق في البيئات مغلقة الإنترنت؛ لا تحكم في الإصدارات.
-- **التوصية:** حزم المكتبات محليًا (npm + bundler).
+| المشكلة | التأثير |
+|---------|---------|
+| `account_balances.account_id` و `system_settings.key` كـ PK (ليس `id`) | يستلزم معالجة استثنائية في Repository.js |
+| `debtors.assigned_agents` مصفوفة في عمود واحد (لا جدول وسيط) | لا FK constraints، استعلامات معقدة |
+| `notifications.target` تخزين مرن (TEXT أو JSONB) | غموض في التعامل مع القيم |
 
-### 7.2.2 نقص تغطية الاختبارات
-- **المشكلة:** 6 ملفات اختبار لـ 55+ ملف كود؛ مكونات الواجهة غير مُختبَرة.
-- **التأثير:** تعود أخطاء الانحدار (regression) بعد كل تعديل.
-- **التوصية:** هدف 70%+ تغطية؛ اختبارات E2E للسيناريوهات الحرجة.
+## 7.4 عمليات
 
-### 7.2.3 Supabase Keys في كود المصدر
-- **المشكلة:** `SUPABASE_URL` و `ANON_KEY` في `config.js` مرفوعان في المستودع.
-- **التأثير:** خطر أمني لو أصبح المستودع عامًا.
-- **التوصية:** استخدام متغيرات البيئة (`.env`) مع إضافتها لـ `.gitignore`.
-
-## 7.3 ديون على مستوى البيانات
-
-### 7.3.1 مفاتيح أساسية غير متسقة
-- **المشكلة:** جداول `account_balances` و `system_settings` تستخدم `account_id` و `key` كـ PK بدلًا من `id` — يتطلب معالجة خاصة في كود الـ Repository.
-- **التوصية:** توحيد نمط المفاتيح الأساسية أو توثيق الاستثناءات بوضوح.
-
-### 7.3.2 مصفوفات UUID كعلاقات
-- **المشكلة:** `debtors.assigned_agents` و `notifications.targets` مخزَّنة كـ UUID[] بدلًا من جدول علاقة وسيط.
-- **التأثير:** صعوبة الفهرسة، استعلامات معقدة، لا يمكن وضع FK constraints.
-- **التوصية:** جداول وسيطة (`debtor_agents`, `notification_targets`).
-
-### 7.3.3 منطق حساب الأرصدة المحلية معقد
-- **المشكلة:** الرصيد في وضع Offline يُحسَب بجمع كل قيود account_ledger محليًا — قد يصبح بطيئًا مع كثرة القيود.
-- **التوصية:** تخزين snapshot دوري للرصيد في IndexedDB وتحديثه تدريجيًا.
-
-## 7.4 ديون على مستوى العمليات
-
-### 7.4.1 لا مسار نشر موثَّق (CI/CD)
-- **المشكلة:** النشر يدوي (نقل الملفات يدويًا).
-- **التأثير:** خطر نشر نسخة خاطئة، لا اختبارات تلقائية قبل النشر.
-- **التوصية:** GitHub Actions أو Netlify/Vercel مع فحوصات تلقائية.
-
-### 7.4.2 مراقبة الأخطاء (Error Monitoring)
-- **المشكلة:** الأخطاء تُطبَع فقط في Console؛ لا مركزية لمراقبة الإنتاج.
-- **التوصية:** Sentry أو LogRocket.
+| المشكلة | التأثير |
+|---------|---------|
+| لا CI/CD | لا اختبارات تلقائية قبل النشر |
+| لا مراقبة أخطاء (Sentry أو ما شابه) | صعوبة تتبع المشاكل في الإنتاج |
 
 ---
 
 # الجزء الثامن: توصيات لإعادة البناء
 
-## 8.1 المبادئ التوجيهية للمعمارية الجديدة
+## 8.1 المبادئ
 
-1. **Offline-First بشكل صريح:** البيانات المحلية هي الحقيقة الأولى، والخادم للمزامنة — عكس النهج الحالي (Online-First with Offline fallback). **[افتراض تصميمي قابل للمراجعة]**
-2. **فصل المخاوف بصرامة (Separation of Concerns):** UI لا تعرف شيئًا عن قاعدة البيانات؛ Services لا تعرف شيئًا عن DOM.
-3. **Event-Driven:** الأحداث هي وسيلة التواصل بين الطبقات.
-4. **Immutable State:** الحالة تُحدَّث عبر reducers فقط (CQRS-lite).
-5. **Fail-Safe:** كل عملية إما تنجح كاملة أو تُلغَى كاملة (atomicity).
+1. فصل صارم: UI لا تعرف DB؛ Services لا تعرف DOM
+2. TypeScript لمنع أخطاء الأنواع (خاصةً معرّفات الحسابات)
+3. حزم المكتبات محليًا (npm + Vite) بدلًا من CDN
+4. متغيرات بيئة (`.env`) بدلًا من keys في الكود
+5. الإبقاء على Supabase + Dexie — البنية المحاسبية صحيحة، المشكلة في طبقة الـ UI
 
-## 8.2 التقنيات المقترحة مع التبرير
-
-| الطبقة | التقنية المقترحة | التبرير |
-|--------|-----------------|---------|
-| **Frontend Framework** | SvelteKit | حجم bundle صغير، RTL ممتاز، SSR اختياري، TypeScript أول |
-| **قاعدة البيانات المحلية** | Dexie.js (الإبقاء) | ناضج، TypeScript-friendly، API نظيف |
-| **قاعدة البيانات السحابية** | Supabase (الإبقاء) | PostgreSQL + RLS + Realtime + Auth |
-| **State Management** | Svelte Stores + Zustand | بسيط، تفاعلي، قابل للاختبار |
-| **TypeScript** | TypeScript 5+ | الأمان النوعي يمنع فئة كاملة من الأخطاء |
-| **Bundler** | Vite | سريع، دعم ممتاز لـ ES modules |
-| **اختبارات** | Vitest + Playwright | Vitest للوحدات، Playwright للـ E2E |
-| **CSS** | Tailwind CSS v4 (مُحزَّم) | بدلًا من CDN |
-| **مزامنة Offline** | PowerSync أو ElectricSQL | **[افتراض تصميمي قابل للمراجعة]** بدلًا من كتابة محرك مزامنة مخصَّص |
-
-## 8.3 هيكل المشروع المقترح
+## 8.2 هيكل مشروع مقترح
 
 ```
-project-root/
-├── src/
-│   ├── lib/
-│   │   ├── db/
-│   │   │   ├── local/          # Dexie schema & repositories
-│   │   │   ├── remote/         # Supabase client & queries
-│   │   │   └── sync/           # Sync engine & conflict resolution
-│   │   ├── services/
-│   │   │   ├── auth/           # AuthService, SessionVault, OfflineAuth
-│   │   │   ├── accounting/     # AccountingService (double-entry)
-│   │   │   ├── sync/           # SyncService, OutboxService
-│   │   │   └── notifications/  # NotificationService
-│   │   ├── stores/             # Svelte stores (reactive state)
-│   │   ├── types/              # TypeScript interfaces & enums
-│   │   └── utils/              # helpers, formatters, validators
-│   ├── routes/                 # SvelteKit pages
-│   │   ├── (auth)/             # Login pages (unauthenticated)
-│   │   │   └── login/
-│   │   └── (app)/              # Protected pages (authenticated)
-│   │       ├── dashboard/
-│   │       ├── data-entry/
-│   │       ├── daily-summary/
-│   │       ├── bank-accounts/
-│   │       ├── debtors/
-│   │       ├── failed-deposits/
-│   │       ├── notifications/
-│   │       ├── all-operations/
-│   │       ├── audit-log/
-│   │       ├── users/
-│   │       ├── accounts/
-│   │       └── settings/
-│   └── components/             # Reusable Svelte components
-│       ├── ui/                 # Generic UI (Button, Input, Table, Modal)
-│       ├── forms/              # Transaction forms
-│       ├── charts/             # Chart components
-│       └── layout/             # Shell, Sidebar, Header
-├── supabase/
-│   ├── migrations/             # SQL migrations (الإبقاء)
-│   └── functions/              # Edge functions (اختياري)
-├── tests/
-│   ├── unit/                   # Vitest unit tests
-│   ├── integration/            # Vitest integration tests
-│   └── e2e/                    # Playwright E2E tests
-├── .env                        # Variables (لا تُرفَع)
-├── .env.example                # نموذج المتغيرات
-├── package.json
-├── vite.config.ts
-├── svelte.config.js
-└── tsconfig.json
+src/
+├── types/           # TypeScript: TransactionType, UserRole, AccountId, ...
+├── config/          # ثوابت النظام (بدون keys)
+├── db/
+│   ├── local/       # Dexie schema + local repositories
+│   └── remote/      # Supabase client + RPC wrappers
+├── services/        # AccountingService, AuthService, SyncEngine, ...
+├── store/           # إدارة الحالة المركزية
+├── components/      # مكونات UI (بإطار عمل)
+│   ├── ui/          # Button, Input, Table, Toast, Modal
+│   ├── forms/       # TransactionForm (7 أنواع)
+│   └── pages/       # كل تبويب كمكوّن منفصل
+└── utils/           # helpers, formatters, validators
 ```
 
-## 8.4 استراتيجية إدارة الحالة
+## 8.3 استراتيجية الاختبارات
 
-```
-┌──────────────────────────────────────────────┐
-│              Global Stores                   │
-│  authStore    → currentUser, isOffline       │
-│  uiStore      → activeTab, theme, loading    │
-│  syncStore    → pendingCount, lastSync       │
-└───────────────────┬──────────────────────────┘
-                    │ read/write
-┌───────────────────▼──────────────────────────┐
-│            Page-level Stores                 │
-│  transactionsStore  → list, filters, page    │
-│  dailySummaryStore  → date, data             │
-│  debtorsStore       → list                   │
-└───────────────────┬──────────────────────────┘
-                    │ derived from
-┌───────────────────▼──────────────────────────┐
-│              Data Layer                      │
-│  LocalRepository  → IndexedDB (Dexie)        │
-│  RemoteRepository → Supabase                 │
-└──────────────────────────────────────────────┘
-```
+| المستوى | الأداة | ما يُختبَر |
+|---------|--------|-----------|
+| وحدات | Vitest | AccountingService (مصفوفة القيود كاملة)، AuthService، validators |
+| تكامل | Vitest | SyncEngine، OutboxService، Repository |
+| E2E | Playwright | دخول، إدخال عملية offline، مزامنة، موافقة |
 
-**القاعدة:** Components تقرأ من Stores فقط. لا component يقرأ من قاعدة البيانات مباشرةً. كل تعديل يمر عبر Service.
+## 8.4 خريطة الطريق
 
-## 8.5 استراتيجية المزامنة دون اتصال
-
-### النهج المقترح: Outbox Pattern + Optimistic UI
-
-```
-عند إنشاء عملية جديدة:
-1. حفظ في IndexedDB فورًا (Optimistic) + إظهارها في الواجهة
-2. إضافة للـ Outbox مع idempotency_key
-3. IF online: إرسال للخادم فورًا
-4. IF offline: الانتظار في قائمة الـ Outbox
-
-عند المزامنة:
-1. معالجة FIFO من الـ Outbox
-2. لكل عملية:
-   - إرسال للخادم
-   - IF 23505 (duplicate): حذف من Outbox
-   - IF conflict: تحديد نوع التعارض:
-     * قيمة متغيرة من مستخدم آخر → عرض للمراجعة
-     * عملية مُعكَّسة من Admin → تحديث محلي
-   - IF نجاح: تحديث sync_status
-3. تحديث الأرصدة من الخادم
-```
-
-## 8.6 استراتيجية الاختبارات
-
-| المستوى | الأداة | ما يُختبَر | الهدف |
-|---------|--------|-----------|-------|
-| **وحدات (Unit)** | Vitest | AccountingService، AuthService، validators، formatters | 80% تغطية |
-| **تكامل (Integration)** | Vitest + Dexie mock | Sync Engine، Repository، OutboxService | 70% تغطية |
-| **E2E** | Playwright | سيناريوهات كاملة: دخول، إدخال عملية، مزامنة offline | السيناريوهات الحرجة الـ 9 |
-| **أمان** | يدوي + OWASP ZAP | XSS، injection، session management | قبل كل إصدار |
-
-## 8.7 خريطة طريق الإصدار
-
-### الحد الأدنى للمنتج القابل للإطلاق (MVP) — 8 أسابيع
-
-| الأسبوع | المهام |
-|---------|--------|
-| 1-2 | إعداد المشروع + Auth (الثلاثة أنواع) + هيكل التنقل |
-| 3-4 | إدخال البيانات (5 أنواع) + محرك القيد المزدوج |
-| 5 | الملخص اليومي + إغلاق اليومية |
-| 6 | وضع Offline (IndexedDB + Outbox + مزامنة) |
-| 7 | الحسابات البنكية + المدينون + الإيداعات الفاشلة |
-| 8 | اختبارات + مراجعة أمان + نشر تجريبي |
-
-### الإصدار 1.1 — 4 أسابيع إضافية
-
-- لوحة التحكم مع الرسوم البيانية
-- سجل التدقيق الكامل
-- تصدير PDF/Excel
-- إشعارات الوقت الفعلي (Supabase Realtime)
-- WebAuthn (Passkey) للدخول دون اتصال
-
-### الإصدار 2.0 — أسابيع مستقبلية
-
-- تطبيق جوال (PWA كامل أو React Native)
-- تقارير متقدمة مع فلاتر مخصَّصة
-- دعم متعدد الفروع
-- API خارجي للتكامل مع أنظمة أخرى
+| المرحلة | المحتوى |
+|---------|---------|
+| MVP | Auth (3 أنواع) + data-entry (7 أنواع) + offline + مزامنة |
+| v1.1 | daily-summary + إغلاق + bank-accounts + debtors + failed-deposits |
+| v1.2 | dashboard + all-operations + audit-log + users + account-management |
+| v2.0 | PWA كامل + تقارير متقدمة |
 
 ---
 
-# ملحق أ: عمليات RPC الضرورية في الخادم
+# ملحق أ: دوال RPC المُنفَّذة في الـ Migrations
 
-| RPC | الوصف | المُدخَلات | المُخرَجات |
-|-----|-------|-----------|-----------|
-| `create_transaction_with_entries` | إنشاء عملية + قيود محاسبية ذريًا | بيانات العملية + القيود | معرّف العملية الجديدة |
-| `verify_quick_login_token` | التحقق من رمز الدخول السريع + تدوير الرمز | user_id, equation_hash | JWT أو خطأ |
-| `perform_daily_close` | إغلاق اليومية | date | ملخص اليوم |
-| `reverse_transaction` | عكس عملية + إنشاء قيود معاكسة | transaction_id, reason | نجاح/خطأ |
-| `approve_transaction` | الموافقة على عملية معلّقة + تحويل قيد SUSP→AGT | transaction_id | نجاح/خطأ |
-| `reject_transaction` | رفض عملية معلّقة | transaction_id, reason | نجاح/خطأ |
-| `get_admin_dashboard` | بيانات KPIs لوحة التحكم | date_range | مجموعات إحصائية |
-| `get_daily_summary` | ملخص يومي مُجمَّع | date | إجماليات لكل مندوب |
-| `get_chart_of_accounts` | هيكل الحسابات الهرمي | — | قائمة الحسابات وأرصدتها |
-| `get_account_statement` | كشف حساب مع أرصدة افتتاحية/ختامية | account_id, date_range | قيود مرتّبة |
-| `get_audit_logs` | سجل التدقيق مع فلاتر | filters | قائمة سجلات التدقيق |
-| `reset_all_operational_data` | إعادة تعيين كل البيانات التشغيلية | كلمة مرور التأكيد | نجاح/خطأ |
+| الدالة | الغرض | المصدر |
+|--------|--------|--------|
+| `create_transaction_with_entries` | إنشاء عملية + قيود ذريًا | أصلي |
+| `verify_quick_login_token` | تحقق + تدوير رمز الدخول السريع | migration 20260612000001 |
+| `create_quick_login_token` | إنشاء رمز دخول سريع | migration 20260612000001 |
+| `perform_daily_close` | إغلاق اليومية | أصلي |
+| `reverse_transaction` | عكس عملية | أصلي |
+| `approve_transaction` | موافقة على receipt معلّق | أصلي |
+| `reject_transaction` | رفض receipt معلّق | أصلي |
+| `get_admin_dashboard` | KPIs للوحة التحكم | أصلي |
+| `get_daily_summary` | ملخص يومي | أصلي |
+| `get_chart_of_accounts` | هيكل الحسابات | أصلي |
+| `get_account_statement` | كشف حساب | أصلي |
+| `get_audit_logs` | سجل التدقيق | أصلي |
+| `reset_all_operational_data` | إعادة تعيين كاملة | migration 20260612000004 |
+| `register_device` | تسجيل جهاز | migration 20260615000002 |
+| `revoke_device` | إلغاء جهاز | migration 20260615000002 |
+| `touch_device` | تحديث last_seen_at | migration 20260615000002 |
+| `generate_account_number` | توليد رقم حساب | migration 20260612000008 |
+| `get_next_voucher_number` | رقم قيد جديد | أصلي |
 
 ---
 
-# ملحق ب: تعريفات ثوابت النظام
+# ملحق ب: ثوابت TypeScript المستخرجة من الكود
 
 ```typescript
-// أنواع العمليات
 type TransactionType = 
-  | 'collection'       // تحصيل
-  | 'deposit'          // إيداع بنكي
-  | 'expense'          // مصروف
-  | 'receipt'          // استلام
-  | 'delivery'         // تسليم
-  | 'bank_withdrawal'; // سحب بنكي
+  | 'collection' | 'deposit' | 'bank_withdrawal'
+  | 'expense' | 'receipt' | 'delivery' | 'refund_settlement';
 
-// أدوار المستخدمين
 type UserRole = 'admin' | 'admin_assistant' | 'agent';
 
-// حالات الموافقة
-type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+type ApprovalStatus = 'approved' | 'pending' | 'rejected';
 
-// حالات العمليات
-type TransactionStatus = 'active' | 'reversed';
+type SyncStatus = 'synced' | 'pending' | 'conflict';
 
-// حالات المزامنة المحلية
-type SyncStatus = 'pending' | 'synced' | 'conflict';
+type SyncAction = 'create' | 'update' | 'delete' | 'batch';
 
-// حالات الإيداعات الفاشلة
-type FailedDepositStatus = 'pending' | 'resolved' | 'cancelled';
+type FailedDepositStatus = 'pending' | 'claimed' | 'refunded' | 'rejected';
 
-// بادئات الحسابات المحاسبية
+type NotificationType = 'info' | 'warning' | 'success' | 'error';
+
 const ACCOUNT_PREFIXES = {
   AGENT    : 'AGT_',
   COMPANY  : 'COMP_',
-  BANK     : 'BNK_',
+  BANK     : 'BNK_',    // وسم فقط — لا يدخل دفتر الأستاذ
   CUSTOMER : 'CUST_',
   EXPENSE  : 'EXP_',
   REVENUE  : 'REV_',
   SUSPENSE : 'SUSP_',
 } as const;
 
-// الحسابات الموحّدة الثابتة
 const SPECIAL_ACCOUNTS = {
   DEBTOR_SETTLEMENT : 'DEBTOR_SETTLEMENT',
-  GENERAL_FUND      : 'GENERAL_FUND',
   EXP_GENERAL       : 'EXP_GENERAL',
+  GENERAL_FUND      : 'GENERAL_FUND',  // refund_settlement بلا شركة فقط
 } as const;
 ```
 
 ---
 
-# ملحق ج: معادلة هاش الدخول السريع
-
-```
-token = SHA-256( userId + ":" + normalize(equation) + ":" + "ahu_secure_salt_v1_2024" )
-
-normalize(equation):
-  → إزالة جميع المسافات
-  → مثال: "12 + 88" → "12+88"
-
-أمثلة:
-  userId    = "abc123"
-  equation  = "12 + 88"
-  input     = "abc123:12+88:ahu_secure_salt_v1_2024"
-  token     = SHA-256(input) → hex string
-```
-
-> ⚠️ **ملاحظة أمنية:** الـ salt ثابت في الكود المصدري — يُنصَح في النظام الجديد باستخدام salt عشوائي لكل مستخدم مُخزَّن في قاعدة البيانات.
-
----
-
-# ملحق د: قواعد RLS (Row Level Security)
-
-| الجدول | Admin | Admin Assistant | Agent |
-|--------|-------|-----------------|-------|
-| `users` | CRUD كامل | قراءة فقط | قراءة نفسه فقط |
-| `transactions` | CRUD كامل | قراءة كاملة + إنشاء | CRUD لعملياته فقط |
-| `bank_accounts` | CRUD كامل | CRUD كامل | قراءة فقط |
-| `debtors` | CRUD كامل | CRUD كامل | CRUD لمدينيه فقط |
-| `failed_deposits` | CRUD كامل | CRUD كامل | CRUD لعملياته فقط |
-| `notifications` | CRUD كامل | قراءة المرسَلة له | قراءة المرسَلة له |
-| `audit_logs` | قراءة فقط | ❌ | ❌ |
-| `account_ledger` | قراءة كاملة | قراءة كاملة | قراءة قيوده فقط |
-| `quick_login_tokens` | CRUD كامل | لنفسه فقط | لنفسه فقط |
-| `offline_sessions` | CRUD كامل | لنفسه فقط | لنفسه فقط |
-| `system_settings` | CRUD كامل | قراءة فقط | ❌ |
-
----
-
-> **نهاية وثيقة AISpec v1.0**  
-> أي نموذج أو مطور يقرأ هذه الوثيقة يمتلك كل المعلومات اللازمة لإعادة بناء النظام من الصفر.  
-> الأقسام المُوسَّمة بـ [افتراض تصميمي قابل للمراجعة] تحتاج تأكيدًا من أصحاب المصلحة قبل التنفيذ.
+> **نهاية AISpec v2.0**  
+> كل قيمة في هذه الوثيقة مستخرجة مباشرةً من ملفات الكود المصدري — لا توثيق خارجي، لا افتراضات غير مُوسَّمة.
