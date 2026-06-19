@@ -24,6 +24,11 @@ const AuthState = {
   isLoggingOut  : false,   // حارس إعادة الدخول: يمنع تنفيذ logout المتكرر/المتداخل
 };
 
+// ── Offline Activity Timer ───────────────────────────────────────────────────
+// يتتبع setInterval الخاص بجلسة Offline لإتاحة حذفه عند logout
+// لا يُستخدم إلا من داخل _checkOfflineSessionFallback و logout
+let _offlineActivityInterval = null;
+
 // ── تطبيع المعادلة ─────────────────────────────────────────────────────────
 // 3.1: إزالة المسافات قبل حساب الهاش لضمان "12 + 88" == "12+88"
 function normalizeEquation(eq) {
@@ -212,6 +217,12 @@ async function logout(clearLocalData = false) {
   try {
     if (window.unsubscribeAll) await unsubscribeAll();
     if (window.SyncQueue) SyncQueue.clearRetryTimers();
+
+    // تنظيف timer جلسة Offline فوراً (لا ننتظر الدورة التالية بعد 5 دقائق)
+    if (_offlineActivityInterval !== null) {
+      clearInterval(_offlineActivityInterval);
+      _offlineActivityInterval = null;
+    }
 
     // ✅ حذف وقت انتهاء الجلسة الدائمة عند الخروج
     const uid = AuthState.currentUser?.id;
@@ -403,8 +414,18 @@ async function _checkOfflineSessionFallback() {
           } catch { /* تجاهل */ }
         };
         _refreshLastActivity();
-        const _activityInterval = setInterval(() => {
-          if (!AuthState.isOffline) { clearInterval(_activityInterval); return; }
+
+        // إلغاء أي interval سابق قبل إنشاء واحد جديد (يمنع تراكم timers عند تعدد الجلسات)
+        if (_offlineActivityInterval !== null) {
+          clearInterval(_offlineActivityInterval);
+          _offlineActivityInterval = null;
+        }
+        _offlineActivityInterval = setInterval(() => {
+          if (!AuthState.isOffline) {
+            clearInterval(_offlineActivityInterval);
+            _offlineActivityInterval = null;
+            return;
+          }
           _refreshLastActivity();
         }, 5 * 60 * 1000);
 
@@ -1722,35 +1743,52 @@ function isAdminOrAssistant() {
 function canAccessTab(tabId) { return getAllowedTabs().includes(tabId); }
 
 /**
+ * يُحلّل قائمة صلاحيات من حقل JSON أو مصفوفة.
+ * - null/undefined/''  → null  (لا قيود — كل العناصر مسموحة)
+ * - مصفوفة فارغة      → null  (بالتصميم: agent بلا تقييد)
+ * - مصفوفة بعناصر     → المصفوفة كما هي (مقيَّد بهذه العناصر فقط)
+ * - JSON نصي صحيح     → نفس قواعد المصفوفة أعلاه
+ * - JSON مشوه          → ['__parse_error__'] ← SENTINEL لا يطابق أي UUID حقيقي
+ *                        التصميم الآمن: الفشل يُحجب، لا يُفتح
+ * @param {*} raw - القيمة الخام من AuthState.currentUser
+ * @returns {Array|null}
+ */
+function _parseAllowedList(raw) {
+  if (raw == null) return null;
+  if (Array.isArray(raw)) return raw.length ? raw : null;
+  if (typeof raw === 'string') {
+    if (!raw.trim()) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      return parsed.length ? parsed : null;
+    } catch {
+      console.error('[AuthService] حقل صلاحيات يحتوي JSON مشوه:', raw);
+      // الـ sentinel لا يطابق أي UUID → المندوب لا يرى أي عنصر (fail-safe)
+      return ['__parse_error__'];
+    }
+  }
+  return null;
+}
+
+/**
  * يعيد قائمة معرفات الشركات المسموحة للمندوب.
  * المدير/المساعد: null (كل الشركات مسموحة).
  * المندوب: المصفوفة المخزنة في allowed_companies (فارغة = كل الشركات).
  */
 function getAllowedCompanies() {
   if (isAdminOrAssistant()) return null;
-  const raw = AuthState.currentUser?.allowed_companies;
-  if (!raw) return null;
-  const arr = Array.isArray(raw) ? raw :
-    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
-  return arr.length ? arr : null;
+  return _parseAllowedList(AuthState.currentUser?.allowed_companies);
 }
 
 function getAllowedBanks() {
   if (isAdminOrAssistant()) return null;
-  const raw = AuthState.currentUser?.allowed_banks;
-  if (!raw) return null;
-  const arr = Array.isArray(raw) ? raw :
-    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
-  return arr.length ? arr : null;
+  return _parseAllowedList(AuthState.currentUser?.allowed_banks);
 }
 
 function getAllowedUsers() {
   if (isAdminOrAssistant()) return null;
-  const raw = AuthState.currentUser?.allowed_users;
-  if (!raw) return null;
-  const arr = Array.isArray(raw) ? raw :
-    (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : []);
-  return arr.length ? arr : null;
+  return _parseAllowedList(AuthState.currentUser?.allowed_users);
 }
 
 function getAllowedTabs() {

@@ -127,7 +127,10 @@ async function callRPC(fnName, params = {}) {
 // مراقبة حالة الاتصال
 // ============================================================
 
-let _isOnline = navigator.onLine;
+// navigator.onLine === false  → مقطوع صراحةً
+// navigator.onLine === true   → متصل
+// navigator.onLine === undefined (بيئات نادرة) → نفترض الاتصال (fail-open صحيح هنا)
+let _isOnline = (navigator.onLine !== false);
 
 window.addEventListener('online', () => {
   _isOnline = true;
@@ -144,7 +147,7 @@ window.addEventListener('offline', () => {
 function isOnline() {
   // وضع Offline النشط يتجاوز حالة navigator.onLine
   if (window.AuthState?.isOffline) return false;
-  return _isOnline;
+  return _isOnline === true;
 }
 
 /**
