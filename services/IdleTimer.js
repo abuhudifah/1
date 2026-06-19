@@ -27,8 +27,8 @@ const IdleTimer = (function () {
   /** مهلة الخمول الافتراضية للمندوب: 5 دقائق */
   const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
-  /** مهلة الخمول للمدير والمساعد: 30 دقيقة */
-  const ADMIN_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+  /** مهلة الخمول للمدير والمساعد: 90 دقيقة */
+  const ADMIN_IDLE_TIMEOUT_MS = 90 * 60 * 1000;
 
   /** مهلة التحذير المسبق: 60 ثانية قبل انتهاء المهلة */
   const WARNING_BEFORE_MS = 60 * 1000;
@@ -161,28 +161,15 @@ const IdleTimer = (function () {
   function _scheduleTimers() {
     _clearTimers();
 
-    // مؤقت التحذير المسبق — للمندوب فقط (المدير لا يُطرد)
-    if (!_isAdmin) {
-      _warningTimer = setTimeout(() => {
-        if (_running) _showWarning();
-      }, _timeoutMs - WARNING_BEFORE_MS);
-    }
+    // مؤقت التحذير المسبق — لجميع الأدوار
+    _warningTimer = setTimeout(() => {
+      if (_running) _showWarning();
+    }, _timeoutMs - WARNING_BEFORE_MS);
 
-    // المؤقت الرئيسي
+    // المؤقت الرئيسي — تسجيل خروج لجميع الأدوار
     _idleTimer = setTimeout(async () => {
       if (!_running) return;
 
-      if (_isAdmin) {
-        // مدير / مساعد: تحذير فقط + إعادة جدولة (لا خروج)
-        console.log('⏱️  IdleTimer: خمول المدير — تحذير فقط');
-        if (typeof showToast === 'function') {
-          showToast('تنبيه: لا يوجد نشاط منذ فترة. انقر أي مكان للاستمرار.', 'warning', 8000);
-        }
-        _scheduleTimers();
-        return;
-      }
-
-      // مندوب: تسجيل خروج تلقائي
       console.log('⏱️  IdleTimer: انتهت مهلة الخمول — تسجيل خروج تلقائي');
       _hideWarning();
       _running = false;
@@ -262,7 +249,6 @@ const IdleTimer = (function () {
       ? timeoutMs
       : AGENT_IDLE_TIMEOUT_MS;
 
-    // تحديد السلوك بناءً على الدور: مدير/مساعد → تحذير فقط، مندوب → خروج
     const role = (typeof AuthService !== 'undefined') ? AuthService.getCurrentRole?.() : null;
     _isAdmin = role === 'admin' || role === 'admin_assistant';
 
@@ -278,7 +264,7 @@ const IdleTimer = (function () {
     _running = true;
     _scheduleTimers();
 
-    console.log(`✅ IdleTimer: بدأ — ${_timeoutMs / 60000} دقيقة${_isAdmin ? ' (مدير — تحذير فقط)' : ''}`);
+    console.log(`✅ IdleTimer: بدأ — ${_timeoutMs / 60000} دقيقة`);
   }
 
   /**

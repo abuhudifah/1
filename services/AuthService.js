@@ -754,13 +754,17 @@ async function enableQuickLogin(equation) {
         // بذرة استرجاع المعادلة — تتيح تجديد التوكن تلقائياً بعد الخروج
         await _storeEquationSeed(uid, normalized);
 
-        // تحديث quick_equation_hash في Supabase/Dexie/AuthState (للتوافق مع المسار القديم والواجهة)
+        // تحديث quick_equation_hash + quick_login_enabled في Supabase/Dexie/AuthState
         try {
           const hash = await hashSHA256(normalized, uid);
-          if (AuthState.currentUser) AuthState.currentUser.quick_equation_hash = hash;
-          await supabaseClient.from(TABLES.USERS).update({ quick_equation_hash: hash }).eq('id', uid);
+          if (AuthState.currentUser) {
+            AuthState.currentUser.quick_equation_hash = hash;
+            AuthState.currentUser.quick_login_enabled = true;
+          }
+          await supabaseClient.from(TABLES.USERS)
+            .update({ quick_equation_hash: hash, quick_login_enabled: true }).eq('id', uid);
           if (typeof db !== 'undefined' && db.isOpen())
-            await db.users.update(uid, { quick_equation_hash: hash });
+            await db.users.update(uid, { quick_equation_hash: hash, quick_login_enabled: true });
         } catch (e) { console.warn('[enableQuickLogin] تحديث quick_equation_hash فشل:', e?.message); }
 
         _rememberVaultSecret(V.SECRET.EQUATION, normalized); // لمزامنة الدوران أثناء الجلسة
@@ -821,11 +825,11 @@ async function enableQuickLogin(equation) {
     console.log('[enableQuickLogin] ✅ تم حفظ quickData في localStorage');
 
     AuthState.currentUser.quick_equation_hash = hash;
+    AuthState.currentUser.quick_login_enabled  = true;
 
-    // حفظ في Supabase حتى يظهر الوضع الصحيح بعد checkSession
     try {
       await supabaseClient.from(TABLES.USERS)
-        .update({ quick_equation_hash: hash })
+        .update({ quick_equation_hash: hash, quick_login_enabled: true })
         .eq('id', uid);
     } catch (e) {
       console.warn('[enableQuickLogin] تحديث Supabase فشل:', e.message);
@@ -833,7 +837,7 @@ async function enableQuickLogin(equation) {
 
     try {
       if (typeof db !== 'undefined' && db.isOpen())
-        await db.users.update(uid, { quick_equation_hash: hash });
+        await db.users.update(uid, { quick_equation_hash: hash, quick_login_enabled: true });
     } catch (e) {
       console.warn('[enableQuickLogin] تحديث Dexie فشل:', e.message);
     }
@@ -1230,7 +1234,7 @@ async function disableQuickLogin() {
 
     try {
       const { error: supaErr } = await supabaseClient.from(TABLES.USERS)
-        .update({ quick_equation_hash: null })
+        .update({ quick_equation_hash: null, quick_login_enabled: false })
         .eq('id', uid);
       if (supaErr) {
         console.warn('⚠️ [disableQuickLogin] Supabase تحديث فشل:', supaErr.message);
@@ -1249,10 +1253,11 @@ async function disableQuickLogin() {
     _forgetVaultSecrets(); // مسح أسرار الجلسة من الذاكرة
     _qlBfReset(uid); // 3.3: إعادة تعيين عداد المحاولات عند الإلغاء
     AuthState.currentUser.quick_equation_hash = null;
+    AuthState.currentUser.quick_login_enabled  = false;
 
     try {
       if (typeof db !== 'undefined' && db.isOpen())
-        await db.users.update(uid, { quick_equation_hash: null });
+        await db.users.update(uid, { quick_equation_hash: null, quick_login_enabled: false });
     } catch (e) { console.warn('⚠️ [disableQuickLogin] Dexie تحديث فشل:', e.message); }
 
     return ok(true);
@@ -1554,7 +1559,7 @@ function _preloadEssentialData(profile) {
       if (profile.role === ROLES.ADMIN || profile.role === ROLES.ADMIN_ASSISTANT) {
         tasks.push(
           supabaseClient.from(TABLES.USERS)
-            .select('id,username,display_name,role,is_active,allowed_tabs,account_number,quick_equation_hash')
+            .select('id,username,display_name,role,is_active,allowed_tabs,account_number,quick_login_enabled')
             .order('display_name')
             .limit(QUERY_LIMITS.USERS)
             .then(({ data }) => {
