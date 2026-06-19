@@ -647,7 +647,7 @@ const BankAccountsComponent = {
 
     const users = AppStore.getState('users') || [];
     const date  = formatDateArabic(this._selectedDate);
-    const tz    = APP_CONFIG.TIMEZONE || 'Asia/Riyadh';
+    const tz    = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.TIMEZONE) ? APP_CONFIG.TIMEZONE : 'Asia/Riyadh';
 
     const rows = list.map((op, i) => {
       const time = op.created_at
@@ -667,8 +667,8 @@ const BankAccountsComponent = {
     const totalDep      = deposits.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
     const totalWd       = withdrawals.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
     const net           = totalDep - totalWd;
-    const pct           = ceiling > 0 ? Math.round((total / ceiling) * 100) : 0;
-    const remain        = Math.max(0, ceiling - total);
+    const pct           = ceiling > 0 ? Math.round((totalDep / ceiling) * 100) : 0;
+    const remain        = Math.max(0, ceiling - totalDep);
 
     const text = [
       `🏦 كشف حساب بنكي — ${bank.name}`,

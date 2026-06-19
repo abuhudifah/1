@@ -648,7 +648,7 @@ const PrintService = (() => {
     const allRows = [headers, ...rows];
     const ws = XLSX.utils.aoa_to_sheet(allRows);
 
-    ws['!views']  = [{ RTL: true }];
+    ws['!views']  = [{ rightToLeft: true }];
     ws['!freeze'] = { xSplit: 0, ySplit: 1 };
     ws['!cols']   = headers.map((h, ci) => {
       const maxLen = allRows.reduce((m, r) => Math.max(m, String(r[ci] ?? '').length), 0);
@@ -676,7 +676,7 @@ const PrintService = (() => {
       await navigator.clipboard.writeText(text);
       if (window.showToast) showToast('✅ ' + successMsg, 'success', 2000);
     } catch {
-      if (window.showToast) showToast('✅ ' + text.slice(0, 60) + '…', 'info', 3000);
+      if (window.showToast) showToast('❌ تعذّر النسخ — حاول يدوياً', 'error', 3000);
     }
   }
 
