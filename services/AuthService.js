@@ -35,8 +35,8 @@ function normalizeEquation(eq) {
 }
 
 // ── فحص الاتصال الشبكي الحقيقي ───────────────────────────────────────────────
-// يختلف عن isOnline() الذي يُرجع false متى كان AuthState.isOffline=true (وضع
-// Offline اليدوي). إدارة المعادلة السريعة عملية خادم: تهمّها الشبكة الفعلية فقط.
+// يُستخدم حيث نحتاج التحقق من الشبكة صراحةً بمعزل عن isOfflineMode().
+// إدارة المعادلة السريعة عملية خادم: تهمّها الشبكة الفعلية ووجود JWT صالح.
 function _hasRealConnection() {
   try { return navigator.onLine !== false; } catch (e) { return true; }
 }
@@ -973,9 +973,9 @@ async function enableQuickLogin(equation) {
     const hash = await hashSHA256(normalized, uid);
 
     // ✅ إنشاء Token من الخادم — لا نخزن كلمة المرور إطلاقاً
-    // ملاحظة: إدارة المعادلة عملية خادم تتطلب اتصالاً حقيقياً + جلسة JWT صالحة،
-    // ولا علاقة لها باختيار المستخدم وضع Offline اليدوي. لذا نفحص الاتصال الشبكي
-    // الحقيقي (navigator.onLine) ووجود authUser، لا isOnline() المرتبط بـ AuthState.isOffline.
+    // إدارة المعادلة عملية خادم: تتطلب شبكة حقيقية + JWT صالح.
+    // نفحص _hasRealConnection() مباشرةً لأن isOnline() الآن شبكة-فقط أيضاً،
+    // لكن isOfflineMode() || !isOnline() هو الحارس الصحيح للشبكة+الوضع معاً.
     if (!_hasRealConnection() || !AuthState.authUser) {
       console.error('[enableQuickLogin] فشل: لا اتصال حقيقي أو لا جلسة JWT');
       return err('تفعيل الدخول السريع يتطلب اتصالاً بالإنترنت وجلسة نشطة');
