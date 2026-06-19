@@ -20,6 +20,19 @@
 // (جميع الجداول الأخرى تحتفظ بهذه الحقول في Dexie فقط)
 const _TABLES_WITH_SERVER_SYNC = new Set([TABLES.TRANSACTIONS]);
 
+// الجداول التي لا تملك عمود updated_at في Supabase
+// يجب إبقاء هذه القائمة متزامنة مع _REPO_TABLES_WITHOUT_UPDATED_AT في Repository.js و SyncQueue.js
+const _TABLES_WITHOUT_UPDATED_AT = new Set([
+  'account_balances',
+  'accounts',
+  'audit_logs',
+  'companies',
+  'daily_closings',
+  'notifications',
+  'quick_login_rate_limit',
+  'user_beneficiaries',
+]);
+
 // ============================================================
 // OutboxService
 // ============================================================
@@ -203,7 +216,7 @@ const OutboxService = {
 
   async _executeCreate(tableName, data) {
     try {
-      const clean = this._cleanForServer(data);
+      const clean = this._cleanForServer(data, tableName);
 
       // فقط جداول Supabase التي تملك sync_status و idempotency_key تستقبلهما
       const payload = _TABLES_WITH_SERVER_SYNC.has(tableName)
@@ -246,10 +259,10 @@ const OutboxService = {
       if (txOp && entryOps.length > 0) {
         const rpcResult = await callRPC(RPC.CREATE_TRANSACTION_WITH_ENTRIES, {
           p_transaction : {
-            ...this._cleanForServer(txOp.data),
+            ...this._cleanForServer(txOp.data, TABLES.TRANSACTIONS),
             idempotency_key: txOp.data?.idempotency_key || txOp.data?.id,
           },
-          p_entries     : entryOps.map(op => this._cleanForServer(op.data)),
+          p_entries     : entryOps.map(op => this._cleanForServer(op.data, TABLES.ACCOUNT_LEDGER)),
         });
 
         if (!isOk(rpcResult)) {
@@ -314,7 +327,7 @@ const OutboxService = {
     }
   },
 
-  _cleanForServer(record) {
+  _cleanForServer(record, tableName = null) {
     if (!record) return {};
     const cleaned = { ...record };
     delete cleaned.sync_status;
@@ -322,8 +335,13 @@ const OutboxService = {
     delete cleaned.error_message;
     delete cleaned._local_only;
     delete cleaned._preEditUpdatedAt;
+    delete cleaned._preEditVersion;
     delete cleaned.local_timestamp;
     delete cleaned.device_id;
+    // يُحذف updated_at للجداول التي لا تملكه في Supabase لتفادي خطأ 42703
+    if (tableName && _TABLES_WITHOUT_UPDATED_AT.has(tableName)) {
+      delete cleaned.updated_at;
+    }
     return cleaned;
   },
 

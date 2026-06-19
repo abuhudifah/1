@@ -303,57 +303,77 @@ const SyncQueue = {
 
   /**
    * تنفيذ عملية UPDATE على Supabase مع كشف التعارض الحقيقي
-   * ✅ إصلاح: مقارنة updated_at المحلي بـ updated_at الخادم لكشف التعارض
+   * الأولوية: version (محصّن ضد side-effects التريغر) → updated_at (احتياطي)
+   * CAS ذري: WHERE version=N يمنع تعارض السباق بين الفحص والتحديث
    * @private
    */
   async _executeUpdate(tableName, recordId, changes) {
     try {
-      const pkCol = _sqGetPKColumn(tableName);
+      const pkCol      = _sqGetPKColumn(tableName);
+      const hasVersion = this._TABLES_WITH_VERSION.has(tableName);
+      const hasUpdatedAt = !this._TABLES_WITHOUT_UPDATED_AT.has(tableName);
 
-      // جلب updated_at الحالي من الخادم
+      // جلب version و updated_at الحاليَّين من الخادم
+      const selectFields = [
+        'id',
+        hasVersion   && 'version',
+        hasUpdatedAt && 'updated_at',
+      ].filter(Boolean).join(', ');
+
       const { data: current, error: fetchError } = await supabaseClient
         .from(tableName)
-        .select('updated_at')
+        .select(selectFields)
         .eq(pkCol, recordId)
         .single();
 
       if (fetchError) {
-        // السجل محذوف من الخادم — تعارض
-        if (fetchError.code === 'PGRST116') {
-          return err('السجل غير موجود على الخادم');
-        }
+        if (fetchError.code === 'PGRST116') return err('السجل غير موجود على الخادم');
         return err(fetchError.message);
       }
 
-      // كشف التعارض الحقيقي: مقارنة لقطة ما قبل التعديل بقيمة الخادم الحالية
-      const preEditUpdatedAt = changes?._preEditUpdatedAt;
-      if (
-        current?.updated_at &&
-        preEditUpdatedAt &&
-        current.updated_at !== preEditUpdatedAt
-      ) {
-        return err(
-          `تعارض: السجل عُدِّل من مصدر آخر ` +
-          `(خادم: ${current.updated_at} | قبل التعديل: ${preEditUpdatedAt})`
-        );
+      const preEditVersion   = changes?._preEditVersion   ?? null;
+      const preEditUpdatedAt = changes?._preEditUpdatedAt ?? null;
+
+      // كشف التعارض: version أولاً (محصّن ضد تحديثات التريغر)
+      if (hasVersion && current?.version !== undefined && preEditVersion !== null) {
+        if (current.version !== preEditVersion) {
+          return err(
+            `تعارض: السجل عُدِّل من مصدر آخر ` +
+            `(إصدار الخادم: ${current.version} | إصدار ما قبل التعديل: ${preEditVersion})`
+          );
+        }
+      } else if (hasUpdatedAt && current?.updated_at && preEditUpdatedAt) {
+        // احتياطي: updated_at للجداول بدون version
+        if (current.updated_at !== preEditUpdatedAt) {
+          return err(
+            `تعارض: السجل عُدِّل من مصدر آخر ` +
+            `(خادم: ${current.updated_at} | قبل التعديل: ${preEditUpdatedAt})`
+          );
+        }
       }
 
-      const hasUpdatedAt = !this._TABLES_WITHOUT_UPDATED_AT.has(tableName);
       const cleanChanges = {
         ...this._cleanRecord(changes, tableName),
         ...(hasUpdatedAt ? { updated_at: new Date().toISOString() } : {}),
       };
 
-      const { data: saved, error } = await supabaseClient
+      // CAS ذري: WHERE version=N يضمن عدم تغيير السجل بين الفحص والتحديث
+      let updateQuery = supabaseClient
         .from(tableName)
         .update(cleanChanges)
-        .eq(pkCol, recordId)
-        .select()
-        .single();
+        .eq(pkCol, recordId);
+      if (hasVersion && preEditVersion !== null) {
+        updateQuery = updateQuery.eq('version', preEditVersion);
+      }
 
+      const { data: saved, error } = await updateQuery.select().single();
+
+      // لا صفوف = السجل تغيّر في نافذة السباق بين الفحص والتحديث
+      if (error?.code === 'PGRST116' || (!error && !saved)) {
+        return err('تعارض حقيقي: السجل عُدِّل من مصدر آخر بين الفحص والتحديث');
+      }
       if (error) return err(error.message);
 
-      // تحديث Dexie
       const dexieTable = db[tableName];
       if (dexieTable && saved) {
         await dexieTable.put({ ...saved, sync_status: SYNC_STATUS.SYNCED });
@@ -568,9 +588,14 @@ const SyncQueue = {
         // فرض نسخة العميل — إعادة الإرسال لـ Supabase
         const clientData = JSON.parse(conflict.client_data || '{}');
         const pkCol = _sqGetPKColumn(conflict.table_name);
+        // لا يُضاف updated_at لجداول لا تملكه في Supabase (تتطابق مع _TABLES_WITHOUT_UPDATED_AT)
+        const hasUpdatedAt = !this._TABLES_WITHOUT_UPDATED_AT.has(conflict.table_name);
+        const upsertPayload = { ...clientData };
+        if (hasUpdatedAt) upsertPayload.updated_at = new Date().toISOString();
+        else              delete upsertPayload.updated_at;
         const { error } = await supabaseClient
           .from(conflict.table_name)
-          .upsert({ ...clientData, updated_at: new Date().toISOString() }, { onConflict: pkCol })
+          .upsert(upsertPayload, { onConflict: pkCol })
           .select();
 
         if (error) return err(`فشل فرض نسخة العميل: ${error.message}`);
@@ -607,13 +632,30 @@ const SyncQueue = {
    * @returns {object}
    * @private
    */
-  // الجداول التي لا تحتوي على عمود updated_at
+  // الجداول التي لا تحتوي على عمود updated_at في Supabase
+  // يجب إبقاء هذه القائمة متزامنة مع _REPO_TABLES_WITHOUT_UPDATED_AT في Repository.js و OutboxService.js
   _TABLES_WITHOUT_UPDATED_AT: new Set([
     'account_balances',
     'accounts',
     'audit_logs',
+    'companies',              // لا يوجد عمود updated_at في Supabase
     'daily_closings',
+    'notifications',          // لا يوجد عمود updated_at في Supabase
     'quick_login_rate_limit',
+    'user_beneficiaries',
+  ]),
+
+  // الجداول التي تملك عمود version في Supabase (Optimistic Locking)
+  // يجب إبقاء هذه القائمة متزامنة مع _REPO_TABLES_WITH_VERSION في Repository.js
+  // المصدر: migration 20260612000000_phase_0_schema_enhancement.sql → trg_increment_version
+  _TABLES_WITH_VERSION: new Set([
+    'accounts',
+    'bank_accounts',
+    'companies',
+    'debtors',
+    'failed_deposits',
+    'transactions',
+    'users',
   ]),
 
   _cleanRecord(record, tableName) {
@@ -622,6 +664,7 @@ const SyncQueue = {
     delete cleaned._local_only;
     delete cleaned.error_message;
     delete cleaned._preEditUpdatedAt;
+    delete cleaned._preEditVersion;
     if (tableName && this._TABLES_WITHOUT_UPDATED_AT.has(tableName)) {
       delete cleaned.updated_at;
     }

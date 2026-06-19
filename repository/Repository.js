@@ -55,14 +55,30 @@ function _getPKColumn(tableName) {
   return TABLE_PRIMARY_KEYS[tableName] || 'id';
 }
 
-// الجداول التي لا تحتوي على عمود updated_at
+// الجداول التي لا تحتوي على عمود updated_at في Supabase
+// يجب إبقاء هذه القائمة متزامنة مع _TABLES_WITHOUT_UPDATED_AT في SyncQueue.js و OutboxService.js
 const _REPO_TABLES_WITHOUT_UPDATED_AT = new Set([
   'account_balances',
   'accounts',
   'audit_logs',
+  'companies',              // لا يوجد عمود updated_at في Supabase
   'daily_closings',
+  'notifications',          // لا يوجد عمود updated_at في Supabase
   'quick_login_rate_limit',
   'user_beneficiaries',
+]);
+
+// الجداول التي تملك عمود version في Supabase (Optimistic Locking)
+// يجب إبقاء هذه القائمة متزامنة مع _TABLES_WITH_VERSION في SyncQueue.js
+// المصدر: migration 20260612000000_phase_0_schema_enhancement.sql → trg_increment_version
+const _REPO_TABLES_WITH_VERSION = new Set([
+  'accounts',
+  'bank_accounts',
+  'companies',
+  'debtors',
+  'failed_deposits',
+  'transactions',
+  'users',
 ]);
 
 // ============================================================
@@ -192,6 +208,8 @@ const repo = {
         created_at : data.created_at || new Date().toISOString(),
         ...(hasUpdatedAt ? { updated_at: data.updated_at || new Date().toISOString() } : {}),
       };
+      // إذا أحضر ...data عمود updated_at لجدول لا يملكه، نحذفه صراحةً
+      if (!hasUpdatedAt) delete record.updated_at;
 
       // للتوافق مع الكود القديم الذي يتوقع record.id
       if (pkColumn !== 'id' && !record.id) {
@@ -242,21 +260,26 @@ const repo = {
       const pkColumn = _getPKColumn(tableName);
       const hasUpdatedAt = !_REPO_TABLES_WITHOUT_UPDATED_AT.has(tableName);
 
-      // التقاط لقطة updated_at قبل التعديل من Dexie (لكشف التعارض الحقيقي لاحقاً)
+      const hasVersion = _REPO_TABLES_WITH_VERSION.has(tableName);
+
+      // التقاط لقطة updated_at و version قبل التعديل من Dexie (للكشف عن التعارض الحقيقي لاحقاً)
       let preEditUpdatedAt = null;
-      if (hasUpdatedAt) {
+      let preEditVersion   = null;
+      if (hasUpdatedAt || hasVersion) {
         try {
           if (typeof db !== 'undefined' && db.isOpen() && db[tableName]) {
-            const existing = await db[tableName].get(id);
-            preEditUpdatedAt = existing?.updated_at || null;
+            const existing  = await db[tableName].get(id);
+            preEditUpdatedAt = hasUpdatedAt ? (existing?.updated_at || null) : null;
+            preEditVersion   = hasVersion   ? (existing?.version    ?? null) : null;
           }
         } catch { /* تجاهل — Dexie ليست مصدر الحقيقة */ }
       }
 
       const updatedChanges = {
         ...changes,
-        ...(hasUpdatedAt ? { updated_at: new Date().toISOString() } : {}),
-        ...(preEditUpdatedAt ? { _preEditUpdatedAt: preEditUpdatedAt } : {}),
+        ...(hasUpdatedAt      ? { updated_at        : new Date().toISOString() } : {}),
+        ...(preEditUpdatedAt  ? { _preEditUpdatedAt : preEditUpdatedAt          } : {}),
+        ...(preEditVersion !== null ? { _preEditVersion : preEditVersion        } : {}),
       };
 
       if (!isOnline()) {
@@ -270,7 +293,8 @@ const repo = {
       }
 
       // FIX-4: استخدام pkColumn الصحيح بدلاً من 'id' الثابت
-      const { _preEditUpdatedAt: _strip, ...supabaseChanges } = updatedChanges;
+      // حذف حقول الـ metadata الداخلية قبل إرسالها لـ Supabase
+      const { _preEditUpdatedAt: _strip, _preEditVersion: _stripV, ...supabaseChanges } = updatedChanges;
       const { data: saved, error } = await supabaseClient
         .from(tableName)
         .update(supabaseChanges)
@@ -477,11 +501,14 @@ const repo = {
       // FIX-4: استخدام pkColumn كعمود تعارض افتراضي إذا لم يُحدَّد
       const resolvedConflictColumns = conflictColumns || [pkColumn];
 
+      const hasUpdatedAt = !_REPO_TABLES_WITHOUT_UPDATED_AT.has(tableName);
       const record = {
         ...data,
-        updated_at : new Date().toISOString(),
         created_at : data.created_at || new Date().toISOString(),
       };
+      // يُضاف updated_at فقط للجداول التي تملكه فعلياً في Supabase
+      if (hasUpdatedAt) record.updated_at = new Date().toISOString();
+      else              delete record.updated_at; // يُزال حتى لو أحضره ...data
 
       // ضمان وجود قيمة PK
       if (!record[pkColumn] && pkColumn === 'id') {

@@ -579,6 +579,7 @@ const APP_SALT = 'ahu_secure_salt_v1_2024';
  * @returns {Promise<string>} - الهاش بصيغة hex
  */
 async function hashSHA256(text, userId = null) {
+  if (!APP_SALT) throw new Error('[hashSHA256] APP_SALT غير مُهيَّأ — تحقق من ترتيب تحميل الملفات');
   const salted  = userId
     ? `${userId}:${String(text)}:${APP_SALT}`
     : `${String(text)}:${APP_SALT}`;

@@ -192,7 +192,16 @@ const OfflineAuthService = {
           source: 'vault', createdAt: new Date().toISOString(),
           lastActivity: Date.now(),
         }));
-      } catch { /* localStorage غير متاح */ }
+      } catch (storageErr) {
+        if (storageErr?.name === 'QuotaExceededError') {
+          // التخزين ممتلئ — الجلسة في SessionVault لكن استعادتها بعد إغلاق المتصفح ستتطلب إعادة تسجيل
+          console.warn('[OfflineAuthService] localStorage ممتلئ — علامة الجلسة لم تُحفظ');
+          if (typeof showToast === 'function') {
+            showToast('تحذير: التخزين الداخلي ممتلئ — قد يتطلب PIN عند إعادة فتح التطبيق', 'warning', 6000);
+          }
+        }
+        // أخطاء أخرى (SecurityError في بعض iframe) — نتجاهلها، الجلسة محفوظة في Vault
+      }
 
       return ok(true);
     } catch (e) {
