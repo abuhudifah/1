@@ -68,6 +68,19 @@ const _REPO_TABLES_WITHOUT_UPDATED_AT = new Set([
   'user_beneficiaries',
 ]);
 
+// الجداول التي تملك عمود version في Supabase (Optimistic Locking)
+// يجب إبقاء هذه القائمة متزامنة مع _TABLES_WITH_VERSION في SyncQueue.js
+// المصدر: migration 20260612000000_phase_0_schema_enhancement.sql → trg_increment_version
+const _REPO_TABLES_WITH_VERSION = new Set([
+  'accounts',
+  'bank_accounts',
+  'companies',
+  'debtors',
+  'failed_deposits',
+  'transactions',
+  'users',
+]);
+
 // ============================================================
 // دوال مساعدة للفلاتر
 // ============================================================
@@ -247,21 +260,26 @@ const repo = {
       const pkColumn = _getPKColumn(tableName);
       const hasUpdatedAt = !_REPO_TABLES_WITHOUT_UPDATED_AT.has(tableName);
 
-      // التقاط لقطة updated_at قبل التعديل من Dexie (لكشف التعارض الحقيقي لاحقاً)
+      const hasVersion = _REPO_TABLES_WITH_VERSION.has(tableName);
+
+      // التقاط لقطة updated_at و version قبل التعديل من Dexie (للكشف عن التعارض الحقيقي لاحقاً)
       let preEditUpdatedAt = null;
-      if (hasUpdatedAt) {
+      let preEditVersion   = null;
+      if (hasUpdatedAt || hasVersion) {
         try {
           if (typeof db !== 'undefined' && db.isOpen() && db[tableName]) {
-            const existing = await db[tableName].get(id);
-            preEditUpdatedAt = existing?.updated_at || null;
+            const existing  = await db[tableName].get(id);
+            preEditUpdatedAt = hasUpdatedAt ? (existing?.updated_at || null) : null;
+            preEditVersion   = hasVersion   ? (existing?.version    ?? null) : null;
           }
         } catch { /* تجاهل — Dexie ليست مصدر الحقيقة */ }
       }
 
       const updatedChanges = {
         ...changes,
-        ...(hasUpdatedAt ? { updated_at: new Date().toISOString() } : {}),
-        ...(preEditUpdatedAt ? { _preEditUpdatedAt: preEditUpdatedAt } : {}),
+        ...(hasUpdatedAt      ? { updated_at        : new Date().toISOString() } : {}),
+        ...(preEditUpdatedAt  ? { _preEditUpdatedAt : preEditUpdatedAt          } : {}),
+        ...(preEditVersion !== null ? { _preEditVersion : preEditVersion        } : {}),
       };
 
       if (!isOnline()) {
@@ -275,7 +293,8 @@ const repo = {
       }
 
       // FIX-4: استخدام pkColumn الصحيح بدلاً من 'id' الثابت
-      const { _preEditUpdatedAt: _strip, ...supabaseChanges } = updatedChanges;
+      // حذف حقول الـ metadata الداخلية قبل إرسالها لـ Supabase
+      const { _preEditUpdatedAt: _strip, _preEditVersion: _stripV, ...supabaseChanges } = updatedChanges;
       const { data: saved, error } = await supabaseClient
         .from(tableName)
         .update(supabaseChanges)

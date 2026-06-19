@@ -335,6 +335,7 @@ const OutboxService = {
     delete cleaned.error_message;
     delete cleaned._local_only;
     delete cleaned._preEditUpdatedAt;
+    delete cleaned._preEditVersion;
     delete cleaned.local_timestamp;
     delete cleaned.device_id;
     // يُحذف updated_at للجداول التي لا تملكه في Supabase لتفادي خطأ 42703
