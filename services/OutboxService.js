@@ -169,6 +169,15 @@ const OutboxService = {
     }
 
     console.log(`✅ OutboxService.processOutbox: ${processed} ناجحة, ${failed} فاشلة من ${pending.length}`);
+
+    if (processed > 0 && typeof showToast === 'function') {
+      showToast(
+        `✅ تمت مزامنة ${processed} عملية معلقة — التقارير محدّثة`,
+        'success',
+        4000
+      );
+    }
+
     return ok({ processed, failed, total: pending.length });
   },
 
@@ -322,6 +331,9 @@ const OutboxService = {
         sync_status : SYNC_STATUS.SYNCED,
         synced_at   : new Date().toISOString(),
       });
+      if (tableName === TABLES.TRANSACTIONS) {
+        window.dispatchEvent(new CustomEvent('accounting:transactionSynced', { detail: { id, tableName } }));
+      }
     } catch (e) {
       console.warn(`[OutboxService] _markSynced(${tableName}, ${id}):`, e.message);
     }
