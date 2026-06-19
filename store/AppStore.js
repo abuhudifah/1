@@ -83,6 +83,7 @@ function setCurrentUser(profile) {
 
 function clearCurrentUser() {
   _state = { ..._initialState, isOnline: navigator.onLine };
+  invalidateCache();
   AppStore.dispatchEvent(new CustomEvent('store:userCleared'));
   AppStore.dispatchEvent(new CustomEvent('store:stateChanged', { detail: { state: _state } }));
 }
@@ -221,15 +222,32 @@ async function refreshData() {
 // دوال تحميل البيانات — Online-First
 // ============================================================
 
+// TTL cache — تجنّب استعلامات Supabase المتكررة عند تبديل التبويبات
+const _cacheTs = {};
+const _CACHE_TTL_MS = 5 * 60 * 1000; // 5 دقائق
+
+function invalidateCache(tableName = null) {
+  if (tableName) delete _cacheTs[tableName];
+  else Object.keys(_cacheTs).forEach(k => delete _cacheTs[k]);
+}
+
 /**
- * جلب من Supabase أولاً، Dexie احتياطي عند offline
- * كتابة Dexie في الخلفية بعد نجاح Supabase
+ * جلب من Supabase أولاً، Dexie احتياطي عند offline.
+ * إذا كانت البيانات محمّلة حديثاً (< 5 دقائق) تُعاد من Dexie فوراً بلا شبكة.
  */
 async function _fetchFromSupabaseWithFallback(tableName, supabaseQuery, dexieFallback) {
   if (isOnline()) {
+    const age = Date.now() - (_cacheTs[tableName] || 0);
+    if (age < _CACHE_TTL_MS) {
+      // البيانات طازجة — أعِد من Dexie فوراً
+      const cached = await dexieFallback();
+      if (cached && cached.length > 0) return cached;
+      // Dexie فارغة → تابع للشبكة
+    }
     try {
       const { data, error } = await supabaseQuery();
       if (!error && data) {
+        _cacheTs[tableName] = Date.now();
         // كتابة Dexie في الخلفية
         (async () => {
           try {
@@ -487,6 +505,7 @@ Object.assign(AppStore, {
   setKpiData, setKpiLoading,
   addBeneficiaryCompany, addBeneficiaryBank, addBeneficiaryUser,
   getBeneficiaryCompanies, getBeneficiaryBanks, getBeneficiaryUsers,
+  invalidateCache,
 });
 
 window.AppStore = AppStore;

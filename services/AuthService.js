@@ -1653,12 +1653,12 @@ function _preloadEssentialData(profile) {
       // (التعارضات القديمة بلا قرار تراكمت وتسبب إشعارات وهمية)
       try {
         if (typeof db !== 'undefined' && db.isOpen() && db.sync_conflicts) {
-          const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+          const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
           const deleted = await db.sync_conflicts
             .where('created_at').below(cutoff)
             .delete();
           if (deleted > 0) {
-            console.log(`🧹 AuthService: حُذف ${deleted} تعارض قديم (>30 يوم) من Dexie`);
+            console.log(`🧹 AuthService: حُذف ${deleted} تعارض قديم (>7 أيام) من Dexie`);
             window.dispatchEvent(new CustomEvent('sync:queueCountChanged', { detail: {} }));
           }
         }
