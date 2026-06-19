@@ -1,17 +1,16 @@
 /**
- * services/AuthService.js — v5.1 (BEHAVIOR FIXED)
+ * services/AuthService.js — v6.0
  * نظام أبو حذيفة
  *
- * التغييرات الجوهرية (السلوك الرابع):
- * ─────────────────────────────────────────────────────────
- * ✅ generateAccountNumber أصبح يُعيد account_number المخزن في جدول users
- *    بدلاً من توليد رقم وهمي من المعرف.
+ * v5.1 — السلوك الرابع:
+ * ✅ generateAccountNumber يُعيد account_number من جدول users.
+ * ✅ fetchAndUpdateAccountNumber / getUserAccountNumber.
  *
- * ✅ إضافة fetchAndUpdateAccountNumber: تحديث account_number إذا كان null
- *    باستخدام generate_account_number RPC الموجودة في قاعدة البيانات.
- *
- * ✅ إضافة getUserAccountNumber: جلب رقم الحساب لمستخدم محدد.
- * ─────────────────────────────────────────────────────────
+ * v6.0 — Phase 2: فصل وضع Offline عن حالة الشبكة:
+ * ✅ login() يضبط AuthState.isOffline = false صراحةً عند الدخول Online.
+ * ✅ loginOffline() مسار جديد للدخول الصريح بدون إنترنت (Q3=A).
+ * ✅ getAllowedTabs() تستخدم isOfflineMode() بدلاً من AuthState.isOffline مباشرةً.
+ * ✅ _preloadEssentialData() / verifyIsActive() تستخدمان isOfflineMode().
  */
 
 'use strict';
@@ -169,6 +168,7 @@ async function login(email, password) {
     AuthState.currentUser   = profile;
     AuthState.authUser      = authData.user;
     AuthState.isInitialized = true;
+    AuthState.isOffline     = false;   // Online login → دائماً Online mode
 
     await _setupDeviceToken(profile.id);
 
@@ -286,6 +286,113 @@ async function logout(clearLocalData = false) {
     return ok(true);
   } finally {
     AuthState.isLoggingOut = false;
+  }
+}
+
+// ============================================================
+// 2b. الدخول الصريح بدون إنترنت — loginOffline (Q3=A)
+// ============================================================
+/**
+ * مسار الدخول الصريح عبر زر "الدخول بدون إنترنت" في شاشة تسجيل الدخول.
+ * يختلف عن _checkOfflineSessionFallback() في أنه:
+ * - يُستدعى بشكل صريح من إجراء المستخدم (ليس كاحتياط تلقائي)
+ * - يطلب PIN دائماً بغض النظر عن مدة الخمول
+ * - يُعيد خطأ واضحاً إذا لم تكن هناك جلسة محفوظة
+ */
+async function loginOffline() {
+  try {
+    if (typeof db === 'undefined' || !db.isOpen()) {
+      return err('لا توجد بيانات محفوظة. سجّل دخولك عبر الإنترنت أولاً');
+    }
+
+    // البحث عن جلسة Offline محفوظة
+    let sessionData = null;
+    let sessionKey  = null;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('ahu_offline_session_')) continue;
+      try {
+        const data = JSON.parse(localStorage.getItem(key) || '{}');
+        if (data?.userId && data?.hasPin) {
+          sessionData = data;
+          sessionKey  = key;
+          break;
+        }
+      } catch { continue; }
+    }
+
+    if (!sessionData) {
+      return err('لا توجد جلسة محفوظة للعمل بدون إنترنت. سجّل دخولك عبر الإنترنت أولاً');
+    }
+
+    const profile = await db.users.get(sessionData.userId);
+    if (!profile?.is_active) {
+      return err('الحساب غير نشط أو بيانات المستخدم غير متوفرة محلياً');
+    }
+
+    // طلب PIN دائماً عند الدخول الصريح
+    const PD = (typeof PinDialog !== 'undefined') ? PinDialog : null;
+    if (!PD) return err('مكوّن إدخال PIN غير محمّل');
+
+    const pin = await PD.show({
+      userId  : sessionData.userId,
+      title   : `مرحباً ${profile.display_name}`,
+      subtitle: 'أدخل رمز PIN للدخول بدون إنترنت',
+    });
+
+    if (!pin) return err('تم إلغاء الدخول');
+
+    const OA = (typeof OfflineAuthService !== 'undefined') ? OfflineAuthService : null;
+    if (!OA) return err('خدمة المصادقة غير محمّلة');
+
+    const verifyResult = await OA.verifyOfflineSession(sessionData.userId, pin);
+    if (!isOk(verifyResult)) {
+      return err(verifyResult.error || 'PIN غير صحيح');
+    }
+
+    // تحديث lastActivity وبدء التجديد الدوري
+    const _refreshLastActivity = () => {
+      try {
+        const d = JSON.parse(localStorage.getItem(sessionKey) || '{}');
+        d.lastActivity = Date.now();
+        localStorage.setItem(sessionKey, JSON.stringify(d));
+      } catch { /* تجاهل */ }
+    };
+    _refreshLastActivity();
+
+    if (_offlineActivityInterval !== null) {
+      clearInterval(_offlineActivityInterval);
+      _offlineActivityInterval = null;
+    }
+    _offlineActivityInterval = setInterval(() => {
+      if (!AuthState.isOffline) {
+        clearInterval(_offlineActivityInterval);
+        _offlineActivityInterval = null;
+        return;
+      }
+      _refreshLastActivity();
+    }, 5 * 60 * 1000);
+
+    // ✅ ضبط الحالة — isOffline = true هو جوهر هذا المسار
+    AuthState.currentUser   = profile;
+    AuthState.isOffline     = true;
+    AuthState.isInitialized = true;
+    AuthState.authUser      = null;
+
+    saveSession({
+      userId       : profile.id,
+      displayName  : profile.display_name,
+      username     : profile.username,
+      isOffline    : true,
+      accountNumber: profile.account_number,
+    });
+
+    console.log('✅ [loginOffline] دخول صريح بدون إنترنت:', profile.display_name);
+    return ok({ profile, offline: true });
+
+  } catch (e) {
+    console.error('❌ AuthService.loginOffline():', e);
+    return err(formatErrorMessage(e));
   }
 }
 
@@ -1620,7 +1727,7 @@ function _saveToDexieBackground(profile) {
 function _preloadEssentialData(profile) {
   (async () => {
     try {
-      if (!isOnline()) return;
+      if (isOfflineMode()) return;
       const tasks = [
         supabaseClient.from(TABLES.SYSTEM_SETTINGS).select('*').limit(QUERY_LIMITS.SYSTEM_SETTINGS).then(({ data }) => {
           if (data && typeof db !== 'undefined' && db.isOpen())
@@ -1732,7 +1839,7 @@ async function verifyIsActive() {
   if (!user) return err('لا يوجد مستخدم مسجّل');
 
   const now = Date.now();
-  const useCache = !isOnline() || (now - _lastActiveCheckTs) < _ACTIVE_CHECK_INTERVAL_MS;
+  const useCache = isOfflineMode() || (now - _lastActiveCheckTs) < _ACTIVE_CHECK_INTERVAL_MS;
   if (useCache) return user.is_active ? ok(true) : err('تم تعطيل هذا الحساب');
 
   try {
@@ -1817,7 +1924,7 @@ function getAllowedUsers() {
 
 function getAllowedTabs() {
   // وضع Offline → 3 تبويبات فقط بغض النظر عن الدور
-  if (AuthState.isOffline) {
+  if (isOfflineMode()) {
     const t = typeof TABS !== 'undefined' ? TABS : {};
     return [
       t.DATA_ENTRY      || 'data-entry',
@@ -1883,7 +1990,7 @@ async function signOutAllDevices() {
 // تصدير
 // ============================================================
 const AuthService = {
-  login, logout, checkSession, refreshSession,
+  login, loginOffline, logout, checkSession, refreshSession,
   enableQuickLogin, quickLogin, quickLoginWithWebAuthn, enableBiometricQuickLogin, disableQuickLogin,
   getDeviceToken, getCurrentUser, getCurrentRole, getCurrentUserId,
   isAdmin, isAgent, isAdminAssistant, isAdminOrAssistant,
@@ -1897,4 +2004,4 @@ const AuthService = {
 
 window.AuthService = AuthService;
 window.AuthState   = AuthState;   // مطلوب لـ LoginComponent._offlineLogin و OfflineAuthService
-console.log('✅ AuthService.js v6.1 — المرحلة 3: تطبيع المعادلة + رسائل آمنة + Rate Limiting localStorage للدخول السريع + ترقية التوكنات القديمة');
+console.log('✅ AuthService.js v6.0 — Phase 2: loginOffline() + isOfflineMode() + فصل وضع Offline عن الشبكة');
