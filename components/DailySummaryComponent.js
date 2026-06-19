@@ -469,9 +469,12 @@ const DailySummaryComponent = {
     const fmt = n => Math.abs(Math.round(n)).toLocaleString('en-US');
 
     const headers = [...pd.columns, 'الحالة'];
-    const allTxs  = AppStore.getState('transactions');
-    const rows    = allTxs.map((tx, i) => {
-      const base   = pd.rows[i] || ['—','—','—','—','—','—'];
+    // خريطة id → صف pd لتجنب خلط الفهارس مع العمليات المعكوسة
+    const pdRowMap = new Map(txs.map((tx, i) => [tx.id, pd.rows[i]]));
+    const allTxs   = AppStore.getState('transactions');
+    const rows     = allTxs.map(tx => {
+      const base   = pdRowMap.get(tx.id) || [tx.date || '—', tx.time ? tx.time.substring(0, 5) : '—',
+        (window.TRANSACTION_TYPE_LABELS?.[tx.type] || tx.type), '0', '0', '—'];
       const status = tx.is_reversed ? 'مُعكوس' : (tx.sync_status === SYNC_STATUS.PENDING ? 'معلق' : 'مزامَن');
       return [...base, status];
     });

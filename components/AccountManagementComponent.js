@@ -1745,23 +1745,22 @@ const AccountManagementComponent = {
       showToast('خدمة المشاركة غير متوفرة', 'error');
       return;
     }
-    const name = this._selectedAccountName || '';
-    const from = document.getElementById('stmt-from')?.value || '';
-    const to   = document.getElementById('stmt-to')?.value   || '';
-
-    const tbl = document.getElementById('stmt-print-table');
-    const rows = tbl ? [...tbl.querySelectorAll('tbody tr')].map(tr =>
-      [...tr.querySelectorAll('td')].map(td => td.textContent.trim()).join(' | ')) : [];
-
-    const periodDisplay = this._lastStatement?.periodText || `الفترة: ${from} → ${to}`;
-    const lines = [
+    const st = this._lastStatement;
+    if (!st || !st.rows || !st.rows.length) {
+      showToast('لا توجد بيانات للمشاركة — حمّل الكشف أولاً', 'warning');
+      return;
+    }
+    const name   = this._selectedAccountName || '';
+    const rows   = st.rows.map(r => r.join(' | '));
+    const lines  = [
       `📄 كشف حساب: ${name}`,
-      `🗓️ ${periodDisplay}`,
+      `🗓️ ${st.periodText || ''}`,
       '─'.repeat(30),
       ...rows,
       '─'.repeat(30),
+      st.totalsText || '',
       `نظام أبو حذيفة للصرافة والتحويلات`,
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     PrintService.share(lines, { title: `كشف حساب ${name}` });
   },
