@@ -132,9 +132,23 @@ const ProfileSettingsComponent = {
   // ────────────────────────────────────────────────────────
   _buildQuickLoginCard(user) {
     // التفعيل في نموذج الخزنة محلّي (لا يُكتب على الخادم) → نكشفه من الخزنة المحلية
-    const hasQuick = (typeof SessionVault !== 'undefined'
-        && SessionVault.has(user.id, SessionVault.SECRET.EQUATION))
-      || !!user.quick_equation_hash;
+    const hasVault = typeof SessionVault !== 'undefined'
+        && SessionVault.has(user.id, SessionVault.SECRET.EQUATION);
+    const hasQuick = hasVault || !!user.quick_equation_hash;
+
+    // كشف المسار القديم (legacy): مفعّل لكن بدون خزنة مشفّرة محلية
+    let isLegacyPath = false;
+    try {
+      if (hasQuick && !hasVault) {
+        const legacyRaw = localStorage.getItem(`ahu_quick_${user.id}`);
+        if (legacyRaw) {
+          const legacyData = JSON.parse(legacyRaw);
+          const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          isLegacyPath = uuidRe.test(legacyData?.token || '');
+        }
+      }
+    } catch { /* تجاهل */ }
+
     const supportsWA = !!window.PublicKeyCredential;
     let hasQuickWebAuthn = false;
     try {
@@ -153,6 +167,20 @@ const ProfileSettingsComponent = {
     card.setAttribute('data-psc-quick-card', '');
 
     card.innerHTML += `
+      ${isLegacyPath ? `
+      <div id="psc-legacy-banner" style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
+        background:#fef3c7;border:1px solid #fbbf24;border-radius:10px;margin-bottom:16px;">
+        <span style="font-size:1.2rem;flex-shrink:0;margin-top:1px;">🔒</span>
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:.86rem;color:#92400e;margin-bottom:4px;">
+            تفعيل الدخول الآمن (مطلوب)
+          </div>
+          <div style="font-size:.81rem;color:#78350f;line-height:1.65;margin-bottom:8px;">
+            جهازك يستخدم مسار الدخول القديم. أعد إدخال معادلتك أدناه واضغط <strong>«تفعيل الدخول الآمن»</strong>
+            لتحديثه إلى المسار الآمن المشفّر محلياً.
+          </div>
+        </div>
+      </div>` : ''}
       <div style="padding:12px 14px;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);
         border-radius:10px;margin-bottom:16px;">
         <p style="font-size:.84rem;color:var(--text-primary);font-weight:600;margin:0 0 6px;">
@@ -206,7 +234,7 @@ const ProfileSettingsComponent = {
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button id="psc-eq-save" class="btn btn-primary btn-sm" style="min-width:140px;">
           <i data-lucide="zap" style="width:13px;height:13px;"></i>
-          ${hasQuick ? 'تحديث المعادلة' : 'تفعيل الدخول السريع'}
+          ${isLegacyPath ? 'تفعيل الدخول الآمن' : hasQuick ? 'تحديث المعادلة' : 'تفعيل الدخول السريع'}
         </button>
         ${hasQuick ? `
         <button id="psc-eq-disable" class="btn btn-sm"
