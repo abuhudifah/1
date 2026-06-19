@@ -377,7 +377,7 @@ async function _loadAgentDebtors(agentId) {
       const { data: res } = await supabaseClient
         .from(TABLES.DEBTORS)
         .select('*')
-        .contains('assigned_agents', [agentId])
+        .filter('assigned_agents', 'cs', JSON.stringify([agentId]))
         .order('name')
         .limit(QUERY_LIMITS.DEBTORS);
       data = res || [];
