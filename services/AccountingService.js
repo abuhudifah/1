@@ -300,6 +300,27 @@ async function buildEntries(tx) {
 }
 
 // ============================================================
+// تصنيف أخطاء RPC: دائم (لا يُجدي إعادة المحاولة) أم مؤقت (شبكة)
+// ============================================================
+
+const _FATAL_PG_CODES = new Set(['23502', '23514', '42703', '42501', 'P0001', '22P02', '23503', '22003']);
+
+function _isFatalRpcError(error) {
+  return _FATAL_PG_CODES.has(error?.code);
+}
+
+function _humanizeRpcError(error) {
+  switch (error?.code) {
+    case '42501': return 'ليس لديك صلاحية لتنفيذ هذه العملية — تواصل مع المدير';
+    case '23502': return 'حقل مطلوب مفقود في بيانات العملية — تحقق من اكتمال البيانات';
+    case '23503': return 'مرجع غير موجود — تحقق من ارتباط الحساب البنكي بالشركة';
+    case '23514': return `قيد بيانات مخالَف: ${error.message}`;
+    case 'P0001': return error.message;
+    default:      return `خطأ في الخادم: ${error.message}`;
+  }
+}
+
+// ============================================================
 // إنشاء معاملة مالية مع قيودها
 // ============================================================
 
@@ -343,13 +364,14 @@ async function createTransactionWithEntries(txData) {
     }));
 
     if (isOnline()) {
-      const rpcResult = await callRPC(RPC.CREATE_TRANSACTION_WITH_ENTRIES, {
-        p_transaction : cleanTransaction,
-        p_entries     : enrichedEntries,
-      });
+      // استدعاء مباشر للحصول على كود الخطأ (callRPC يفقد الكود)
+      const { data: rpcData, error: rpcError } = await supabaseClient.rpc(
+        RPC.CREATE_TRANSACTION_WITH_ENTRIES,
+        { p_transaction: cleanTransaction, p_entries: enrichedEntries }
+      );
 
-      if (isOk(rpcResult)) {
-        const realTxId = rpcResult.data?.transaction_id;
+      if (!rpcError) {
+        const realTxId = rpcData?.transaction_id;
 
         if (typeof db !== 'undefined' && db.isOpen()) {
           await db.transactions.put({
@@ -383,10 +405,18 @@ async function createTransactionWithEntries(txData) {
         return ok({
           transaction : { ...transaction, id: realTxId || transaction.id },
           entries     : enrichedEntries,
+          confirmed   : true,
         });
       }
 
-      console.warn('⚠️ RPC فشل، الحفظ في الطابور:', rpcResult.error);
+      // خطأ دائم في البيانات أو الصلاحيات — لا يُجدي قائمة الانتظار
+      if (_isFatalRpcError(rpcError)) {
+        console.error(`❌ AccountingService: خطأ دائم (${rpcError.code}): ${rpcError.message}`);
+        return err(_humanizeRpcError(rpcError));
+      }
+
+      // خطأ مؤقت (شبكة / خادم) — يُحفظ للمزامنة لاحقاً
+      console.warn(`⚠️ RPC فشل مؤقتاً (${rpcError.code || 'شبكة'}) — الحفظ في الطابور: ${rpcError.message}`);
     }
 
     const pendingTransaction = { ...cleanTransaction, sync_status: SYNC_STATUS.PENDING };
@@ -428,7 +458,7 @@ async function createTransactionWithEntries(txData) {
       detail: { transaction: pendingTransaction, entries: enrichedEntries, pending: true },
     }));
 
-    return ok({ transaction: pendingTransaction, entries: enrichedEntries, pending: true });
+    return ok({ transaction: pendingTransaction, entries: enrichedEntries, pending: true, confirmed: false });
 
   } catch (e) {
     console.error('❌ AccountingService.createTransactionWithEntries():', e);

@@ -169,6 +169,15 @@ const OutboxService = {
     }
 
     console.log(`✅ OutboxService.processOutbox: ${processed} ناجحة, ${failed} فاشلة من ${pending.length}`);
+
+    if (processed > 0 && typeof showToast === 'function') {
+      showToast(
+        `✅ تمت مزامنة ${processed} عملية معلقة — التقارير محدّثة`,
+        'success',
+        4000
+      );
+    }
+
     return ok({ processed, failed, total: pending.length });
   },
 
@@ -257,29 +266,43 @@ const OutboxService = {
       const entryOps = operations.filter(op => op.table === TABLES.ACCOUNT_LEDGER);
 
       if (txOp && entryOps.length > 0) {
-        const rpcResult = await callRPC(RPC.CREATE_TRANSACTION_WITH_ENTRIES, {
-          p_transaction : {
-            ...this._cleanForServer(txOp.data, TABLES.TRANSACTIONS),
-            idempotency_key: txOp.data?.idempotency_key || txOp.data?.id,
-          },
-          p_entries     : entryOps.map(op => this._cleanForServer(op.data, TABLES.ACCOUNT_LEDGER)),
-        });
+        // استدعاء مباشر للحصول على كود الخطأ (callRPC يفقد الكود)
+        const { data: rpcData, error: rpcError } = await supabaseClient.rpc(
+          RPC.CREATE_TRANSACTION_WITH_ENTRIES,
+          {
+            p_transaction : {
+              ...this._cleanForServer(txOp.data, TABLES.TRANSACTIONS),
+              idempotency_key: txOp.data?.idempotency_key || txOp.data?.id,
+            },
+            p_entries: entryOps.map(op => this._cleanForServer(op.data, TABLES.ACCOUNT_LEDGER)),
+          }
+        );
 
-        if (!isOk(rpcResult)) {
-          const errStr = String(rpcResult.error || '');
-          // 23505 قد يصل عبر نص رسالة الخطأ من RPC
+        if (rpcError) {
+          const errCode = rpcError.code || '';
+          const errMsg  = String(rpcError.message || '');
+
+          // idempotency: العملية موجودة بالفعل = نجاح
           if (
-            errStr.includes('23505') ||
-            errStr.includes('unique_violation') ||
-            errStr.includes('already exists')
+            errCode === '23505' ||
+            errMsg.includes('unique_violation') ||
+            errMsg.includes('already exists')
           ) {
             await this._markSynced(TABLES.TRANSACTIONS, txOp.data?.id);
             return ok({ skipped: true, reason: 'already_synced' });
           }
-          return rpcResult;
+
+          // خطأ دائم لا يُجدي إعادة المحاولة — يُوقف الطابور فوراً
+          const _FATAL = new Set(['23502','23514','42703','42501','P0001','22P02','23503','22003']);
+          if (_FATAL.has(errCode) || errMsg.includes('does not exist')) {
+            console.error(`❌ OutboxService._executeBatch: خطأ دائم (${errCode}): ${errMsg}`);
+            return err(`خطأ دائم: ${errMsg}`);
+          }
+
+          return err(errMsg);
         }
 
-        const realId = rpcResult.data?.transaction_id || txOp.data?.id;
+        const realId = rpcData?.transaction_id || txOp.data?.id;
         await this._markSynced(TABLES.TRANSACTIONS, realId);
 
         if (typeof db !== 'undefined' && db.isOpen()) {
@@ -322,6 +345,9 @@ const OutboxService = {
         sync_status : SYNC_STATUS.SYNCED,
         synced_at   : new Date().toISOString(),
       });
+      if (tableName === TABLES.TRANSACTIONS) {
+        window.dispatchEvent(new CustomEvent('accounting:transactionSynced', { detail: { id, tableName } }));
+      }
     } catch (e) {
       console.warn(`[OutboxService] _markSynced(${tableName}, ${id}):`, e.message);
     }
@@ -330,6 +356,7 @@ const OutboxService = {
   _cleanForServer(record, tableName = null) {
     if (!record) return {};
     const cleaned = { ...record };
+    // حقول محلية فقط — لا تُرسل لـ Supabase
     delete cleaned.sync_status;
     delete cleaned.idempotency_key;   // يُعاد إضافته صراحةً للجداول التي تملكه
     delete cleaned.error_message;
@@ -338,6 +365,7 @@ const OutboxService = {
     delete cleaned._preEditVersion;
     delete cleaned.local_timestamp;
     delete cleaned.device_id;
+    delete cleaned.synced_at;
     // يُحذف updated_at للجداول التي لا تملكه في Supabase لتفادي خطأ 42703
     if (tableName && _TABLES_WITHOUT_UPDATED_AT.has(tableName)) {
       delete cleaned.updated_at;

@@ -660,7 +660,12 @@ const SyncQueue = {
 
   _cleanRecord(record, tableName) {
     const cleaned = { ...record };
+    // حقول محلية فقط — لا تُرسل لـ Supabase
     delete cleaned.sync_status;
+    delete cleaned.idempotency_key;
+    delete cleaned.local_timestamp;
+    delete cleaned.device_id;
+    delete cleaned.synced_at;
     delete cleaned._local_only;
     delete cleaned.error_message;
     delete cleaned._preEditUpdatedAt;

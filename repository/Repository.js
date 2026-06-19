@@ -658,9 +658,21 @@ const repo = {
       let synced = 0, failed = 0;
       const BATCH = 50;
 
+      // الحقول المحلية التي لا يجب إرسالها لـ Supabase
+      const _LOCAL_FIELDS = [
+        'sync_status', 'idempotency_key', 'local_timestamp', 'device_id',
+        'synced_at', '_local_only', 'error_message', '_preEditUpdatedAt', '_preEditVersion',
+      ];
+      const _stripLocalFields = (r) => {
+        const c = { ...r };
+        for (const f of _LOCAL_FIELDS) delete c[f];
+        if (_REPO_TABLES_WITHOUT_UPDATED_AT.has(tableName)) delete c.updated_at;
+        return c;
+      };
+
       for (let i = 0; i < realRecords.length; i += BATCH) {
         const batch = realRecords.slice(i, i + BATCH);
-        const clean = batch.map(({ sync_status, ...rest }) => rest);
+        const clean = batch.map(_stripLocalFields);
         // FIX-4: استخدام pkColumn الصحيح في onConflict
         const { error } = await supabaseClient
           .from(tableName)

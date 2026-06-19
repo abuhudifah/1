@@ -1357,12 +1357,16 @@ const DataEntryComponent = {
         const newDebt = Math.max(0, parseFloat(debtorRecord.debt_amount || 0) - rounded);
         try { await repo.update(TABLES.DEBTORS, customerId, { debt_amount: newDebt }); } catch (e) { console.warn('⚠️ DataEntry: فشل تحديث رصيد المدين:', e.message); }
       }
-      showToast('✅ تم حفظ التحصيل', 'success');
+      const _colPending = result.data?.pending === true;
+      showToast(
+        _colPending ? '💾 تم حفظ التحصيل محلياً — سيظهر في التقارير بعد المزامنة' : '✅ تم حفظ التحصيل وتأكيده',
+        _colPending ? 'info' : 'success'
+      );
       this._resetForm('col');
       const colBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
       const companyRecord = companyId ? (AppStore.getState('companies') || []).find(c => c.id === companyId) : null;
       await this._showResultModal({
-        title          : '✅ تم تسجيل تحصيل جديد',
+        title          : _colPending ? '💾 تم الحفظ — معلق المزامنة' : '✅ تم تسجيل تحصيل جديد',
         type           : 'تحصيل',
         amount         : rounded,
         customer       : customer || null,
@@ -1403,10 +1407,14 @@ const DataEntryComponent = {
     });
     restore();
     if (isOk(result)) {
-      showToast('✅ تم حفظ السحب البنكي', 'success');
+      const _wdPending = result.data?.pending === true;
+      showToast(
+        _wdPending ? '💾 تم حفظ السحب محلياً — سيظهر في التقارير بعد المزامنة' : '✅ تم حفظ السحب البنكي وتأكيده',
+        _wdPending ? 'info' : 'success'
+      );
       this._resetForm('wd');
       const wdBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      await this._showResultModal({ title:'✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate(), agentBalance: isOk(wdBalRes) ? wdBalRes.data : null });
+      await this._showResultModal({ title: _wdPending ? '💾 تم الحفظ — معلق المزامنة' : '✅ تم تسجيل سحب بنكي', type:'سحب بنكي', amount:rounded, bankName:bank?.name, agentId, date:AppStore.getState('selectedDate') || getCurrentSaudiDate(), agentBalance: isOk(wdBalRes) ? wdBalRes.data : null });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
@@ -1448,12 +1456,16 @@ const DataEntryComponent = {
     const result = await AccountingService.createTransactionWithEntries(txData);
     restore();
     if (isOk(result)) {
-      showToast('✅ تم حفظ الإيداع', 'success');
+      const _depPending = result.data?.pending === true;
+      showToast(
+        _depPending ? '💾 تم حفظ الإيداع محلياً — سيظهر في التقارير بعد المزامنة' : '✅ تم حفظ الإيداع وتأكيده',
+        _depPending ? 'info' : 'success'
+      );
       this._resetForm('dep');
       const ceil = Math.round(bank?.financial_ceiling || 0);
       const used = await AccountingService.getDailyDepositsTotal(bankId, getCurrentSaudiDate());
       const depBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      await this._showResultModal({ title:'✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: Math.max(0, ceil - used), agentBalance: isOk(depBalRes) ? depBalRes.data : null });
+      await this._showResultModal({ title: _depPending ? '💾 تم الحفظ — معلق المزامنة' : '✅ تم تسجيل إيداع بنكي', type:'إيداع بنكي', amount:rounded, bankName:bank?.name, agentId, date:txData.date, ceilingRemain: Math.max(0, ceil - used), agentBalance: isOk(depBalRes) ? depBalRes.data : null });
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
