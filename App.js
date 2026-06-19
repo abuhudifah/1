@@ -108,7 +108,7 @@ async function _bootApp(profile) {
   _buildOfflineBanner();
 
   // ── تحديث last_login في الخلفية ──
-  if (isOnline && !isOfflineMode() && isOnline()) {
+  if (!isOfflineMode() && isOnline()) {
     supabaseClient
       .from(TABLES.USERS)
       .update({ last_login: new Date().toISOString() })

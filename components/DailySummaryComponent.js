@@ -511,10 +511,27 @@ const DailySummaryComponent = {
     const net = s.collection+s.receipt+s.bank_withdrawal-s.deposit-s.expense-s.delivery;
     const agentId = AuthService.isAgent()
       ? AuthService.getCurrentUserId()
-      : (AppStore.getState('selectedAgentId')||AuthService.getCurrentUserId());
-    const balResult = await AccountingService.getAccountBalance(`AGT_${agentId}`);
-    const bal = isOk(balResult)?Math.round(balResult.data):net;
-    const user = AppStore.getState('users').find(u=>u.id===agentId)||AuthService.getCurrentUser();
+      : (AppStore.getState('selectedAgentId') || null);
+
+    let bal = net;
+    let user = AuthService.getCurrentUser();
+
+    if (agentId) {
+      // مندوب محدد — رصيده الفعلي من account_balances
+      const balResult = await AccountingService.getAccountBalance(`AGT_${agentId}`);
+      if (isOk(balResult)) bal = Math.round(balResult.data);
+      user = AppStore.getState('users').find(u => u.id === agentId) || user;
+    } else if (AuthService.isAdmin() || AuthService.isAdminAssistant()) {
+      // إجمالي جميع المناديب — مجموع أرصدتهم من account_balances
+      const allAgents = AppStore.getState('users').filter(u => u.role === ROLES.AGENT && u.is_active);
+      if (allAgents.length) {
+        const results = await Promise.all(
+          allAgents.map(a => AccountingService.getAccountBalance(`AGT_${a.id}`))
+        );
+        bal = results.reduce((sum, r) => sum + (isOk(r) ? Math.round(r.data) : 0), 0);
+      }
+      user = { display_name: 'إجمالي جميع المناديب' };
+    }
 
     const text = [
       `📊 *ملخص يوم ${formatDateArabic(date)}*`,

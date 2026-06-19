@@ -316,7 +316,7 @@ const OutboxService = {
           }
         }
 
-        return rpcResult;
+        return ok(rpcData);
       }
 
       // دفعة عامة (بدون معاملة مالية)
