@@ -730,19 +730,27 @@ const DataEntryComponent = {
 
     const isAgent = AuthService.isAgent();
     const uid     = AuthService.getCurrentUserId();
-    let allDebtors = AppStore.getState('debtors') || [];
 
-    if (isAgent) {
-      allDebtors = allDebtors.filter(d => {
-        const agents = Array.isArray(d.assigned_agents)
-          ? d.assigned_agents
-          : (typeof d.assigned_agents === 'string' ? JSON.parse(d.assigned_agents || '[]') : []);
-        return agents.includes(uid);
-      });
-    }
+    // يُقرأ من AppStore في كل استدعاء لـ render لضمان الحصول على البيانات
+    // حتى لو فُتح النموذج قبل اكتمال refreshData
+    const _getDebtors = () => {
+      let list = AppStore.getState('debtors') || [];
+      if (isAgent) {
+        list = list.filter(d => {
+          try {
+            const agents = Array.isArray(d.assigned_agents)
+              ? d.assigned_agents
+              : JSON.parse(d.assigned_agents || '[]');
+            return agents.includes(uid);
+          } catch { return false; }
+        });
+      }
+      return list;
+    };
 
     const render = q => {
-      const trimQ = q.trim().toLowerCase();
+      const trimQ    = q.trim().toLowerCase();
+      const allDebtors = _getDebtors();
       dd.innerHTML = '';
       const matches = trimQ
         ? allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ))
@@ -770,7 +778,9 @@ const DataEntryComponent = {
               debtInfo.style.display = '';
               debtInfo.style.background = 'rgba(5,150,105,0.08)';
               debtInfo.innerHTML = `✅ تم إنشاء عميل جديد: <strong>${escapeHtml(q.trim())}</strong>`;
-              allDebtors.push({ ...newDebtor, id: created?.id });
+              // تحديث AppStore حتى يظهر العميل الجديد فوراً في البحث
+              const _cur = AppStore.getState('debtors') || [];
+              AppStore.setState({ debtors: [..._cur, { ...newDebtor, id: created?.id }] }, 'store:debtorsLoaded');
             } else { showToast(`فشل إضافة العميل: ${r.error}`, 'error'); }
           } catch(e) { showToast(`خطأ: ${e.message}`, 'error'); }
           input.disabled = false;
