@@ -182,9 +182,8 @@ const PrintService = (() => {
   height:8px;background:#e2e8f0;border-radius:4px;margin-top:6px;overflow:hidden;
 }
 
-/* ══ إخفاء عناصر التحكم عند التقاط html2canvas (تُضاف آنياً قبل الالتقاط) ══ */
-#ps-overlay.ps-capturing .ps-toolbar{visibility:hidden !important;}
-#ps-overlay.ps-capturing .ps-scroll{overflow:visible !important;}
+/* ══ إخفاء شريط الأدوات عند الطباعة أو التقاط html2canvas ══ */
+#ps-overlay.ps-capturing .ps-toolbar{display:none !important;}
 
 /* ══ طباعة ══ */
 @media print{
@@ -283,17 +282,29 @@ const PrintService = (() => {
     /* بناء إعدادات html2pdf */
     const _pdfOpts = () => {
       const orient = document.getElementById('ps-orient').value;
-      const margin = parseInt(document.getElementById('ps-margin').value, 10);
       return {
-        margin      : [margin, margin, margin, margin],
+        margin      : 0,
         filename,
         image       : { type: 'jpeg', quality: 0.97 },
-        // FIX: إزالة scrollY:0 الذي يُدرج عناصر position:fixed (شريط الأدوات) في الـ PDF.
-        // windowScrollY يُحسب من موضع contentEl الفعلي في الصفحة.
-        html2canvas : { scale: 2, useCORS: true, logging: false,
-          scrollY: -window.scrollY, windowScrollY: 0 },
+        html2canvas : { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
         jsPDF       : { unit: 'mm', format: 'a4', orientation: orient },
       };
+    };
+
+    /* توليد PDF من عنصر الصفحة: ينقله مؤقتاً خارج الـ overlay لتجنب تأثيرات position:fixed */
+    const _genPdf = async (outputType = 'save') => {
+      await _ensurePdfLib();
+      const page   = document.getElementById('ps-a4-page');
+      const parent = page.parentNode;
+      const next   = page.nextSibling;
+      document.body.appendChild(page);
+      try {
+        const gen = window.html2pdf().set(_pdfOpts()).from(page);
+        return outputType === 'blob' ? gen.outputPdf('blob') : gen.save();
+      } finally {
+        if (next) parent.insertBefore(page, next);
+        else      parent.appendChild(page);
+      }
     };
 
     /* تحميل html2pdf — يجرب CDNs بالتسلسل */
@@ -343,24 +354,19 @@ const PrintService = (() => {
     /* زر حفظ PDF */
     document.getElementById('ps-btn-pdf').addEventListener('click', async () => {
       setSpin(true);
-      // FIX: إخفاء شريط الأدوات أثناء الالتقاط لمنع ظهوره في PDF
-      overlay.classList.add('ps-capturing');
       try {
-        await _ensurePdfLib();
-        await window.html2pdf().set(_pdfOpts()).from(contentEl).save();
+        await _genPdf('save');
         if (window.showToast) showToast('✅ تم حفظ ملف PDF بنجاح', 'success', 2500);
       } catch (e) {
         if (window.showToast) showToast('❌ خطأ في توليد PDF: ' + e.message, 'error');
         else console.error('PDF error:', e);
       }
-      overlay.classList.remove('ps-capturing');
       setSpin(false);
     });
 
     /* زر المشاركة */
     document.getElementById('ps-btn-share').addEventListener('click', async () => {
       setSpin(true);
-      overlay.classList.add('ps-capturing');
       const txt = shareText || `${title}\n${periodText}`;
 
       const _textShare = async () => {
@@ -375,15 +381,14 @@ const PrintService = (() => {
         /* حاول مشاركة PDF أولاً */
         let sharedAsPdf = false;
         try {
-          await _ensurePdfLib();
-          const blob = await window.html2pdf().set(_pdfOpts()).from(contentEl).outputPdf('blob');
+          const blob = await _genPdf('blob');
           const file = new File([blob], filename, { type: 'application/pdf' });
           if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({ title, text: txt, files: [file] });
             sharedAsPdf = true;
           }
         } catch (pdfErr) {
-          if (pdfErr.name === 'AbortError') throw pdfErr; // المستخدم ألغى
+          if (pdfErr.name === 'AbortError') throw pdfErr;
           /* CDN فاشل أو الجهاز لا يدعم مشاركة الملفات — تراجع للنص */
         }
         if (!sharedAsPdf) await _textShare();
@@ -392,7 +397,6 @@ const PrintService = (() => {
           if (window.showToast) showToast('❌ خطأ في المشاركة: ' + e.message, 'error');
         }
       }
-      overlay.classList.remove('ps-capturing');
       setSpin(false);
     });
 
