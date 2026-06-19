@@ -43,6 +43,7 @@ async function _onOnlineStatusChange(event) {
 
 async function _triggerSync(reason = 'manual') {
   if (_syncState.isRunning) return;
+  if (isOfflineMode()) return;
   if (!isOnline()) return;
 
   _syncState.isRunning = true;

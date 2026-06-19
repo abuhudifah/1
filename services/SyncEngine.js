@@ -36,6 +36,7 @@ const SyncEngine = {
    * @returns {Promise<{ok: boolean, data?: {synced, failed, total}, error?: string}>}
    */
   async syncAll() {
+    if (isOfflineMode()) return err('وضع Offline نشط — المزامنة متوقفة');
     if (!isOnline()) return err('لا يوجد اتصال بالإنترنت');
     if (typeof db === 'undefined' || !db.isOpen()) {
       return err('قاعدة البيانات المحلية غير متاحة');
@@ -201,6 +202,7 @@ const SyncEngine = {
    * @returns {Promise<{ok: boolean, data?: *, error?: string}>}
    */
   async startAutoSync() {
+    if (isOfflineMode()) return err('وضع Offline نشط — المزامنة متوقفة');
     if (!isOnline()) return err('لا يوجد اتصال بالإنترنت');
 
     if (typeof OutboxService === 'undefined') {
