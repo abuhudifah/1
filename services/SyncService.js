@@ -32,6 +32,9 @@ async function _onOnlineStatusChange(event) {
   const { online } = event.detail;
   window.dispatchEvent(new CustomEvent('store:setOnlineStatus', { detail: { online } }));
 
+  // في Offline Mode: تغييرات الشبكة لا تُغيّر الوضع — App.js يعالج الشريط فقط
+  if (isOfflineMode()) return;
+
   if (online) {
     showToast('تم استعادة الاتصال — جاري المزامنة...', 'info', 2500);
     await sleep(800);

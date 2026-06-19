@@ -350,9 +350,9 @@ function _buildHeader() {
   // مؤشر حالة الاتصال (Online / Offline)
   const connPill = document.createElement('div');
   connPill.id        = 'conn-status-pill';
-  connPill.className = 'header-conn-pill' + (AuthState.isOffline ? ' conn-offline' : ' conn-online');
-  connPill.title     = AuthState.isOffline ? 'وضع Offline نشط' : 'متصل بالخادم';
-  connPill.innerHTML = AuthState.isOffline
+  connPill.className = 'header-conn-pill' + (isOfflineMode() ? ' conn-offline' : ' conn-online');
+  connPill.title     = isOfflineMode() ? 'وضع Offline نشط' : 'متصل بالخادم';
+  connPill.innerHTML = isOfflineMode()
     ? `<span class="conn-dot"></span><span class="conn-label">Offline</span>`
     : `<span class="conn-dot"></span><span class="conn-label">Online</span>`;
   actions.appendChild(connPill);
@@ -528,7 +528,7 @@ async function _navigateTo(tabId) {
   }
 
   if (!AuthService.canAccessTab(tabId)) {
-    if (AuthState.isOffline) {
+    if (isOfflineMode()) {
       showToast('هذا التبويب غير متاح في وضع Offline — أدخل بياناتك واتصل بالإنترنت لمزامنتها', 'warning');
     } else {
       showToast('لا تملك صلاحية الوصول لهذا التبويب', 'error');
