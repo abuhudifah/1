@@ -701,29 +701,26 @@ function _updateConnStatus(isNowOnline) {
   const pill = document.getElementById('conn-status-pill');
   if (!pill) return;
 
-  const wasOffline = AuthState.isOffline;
-
-  if (isNowOnline && !wasOffline) {
-    pill.className = 'header-conn-pill conn-online';
-    pill.title     = 'متصل بالخادم';
-    pill.innerHTML = `<span class="conn-dot"></span><span class="conn-label">Online</span>`;
-  } else if (!isNowOnline && !wasOffline) {
-    pill.className = 'header-conn-pill conn-degraded';
-    pill.title     = 'انقطع الاتصال بالإنترنت';
-    pill.innerHTML = `<span class="conn-dot"></span><span class="conn-label">لا اتصال</span>`;
-    showToast('انقطع الاتصال. العمليات ستُحفظ محلياً.', 'warning', 4000);
-  }
-
-  // إعادة الاتصال أثناء وضع Offline → مزامنة تلقائية + تسجيل خروج تلقائي
-  if (isNowOnline && wasOffline) {
-    _autoSyncAndLogout();
+  if (isOfflineMode()) {
+    // في وضع Offline: مؤشر الشبكة لا يغيّر الوضع — فقط نُحدّث الشريط
+    _buildOfflineBanner();
     _updateSyncWidget();
     return;
   }
 
-  // إعادة الاتصال في وضع Online العادي → مزامنة الطابور المعلق
-  if (isNowOnline && typeof SyncEngine !== 'undefined') {
-    SyncEngine.startAutoSync().catch(e => console.warn('[App] SyncEngine:', e.message));
+  if (isNowOnline) {
+    pill.className = 'header-conn-pill conn-online';
+    pill.title     = 'متصل بالخادم';
+    pill.innerHTML = `<span class="conn-dot"></span><span class="conn-label">Online</span>`;
+    // إعادة الاتصال في وضع Online → مزامنة الطابور المعلق
+    if (typeof SyncEngine !== 'undefined') {
+      SyncEngine.startAutoSync().catch(e => console.warn('[App] SyncEngine:', e.message));
+    }
+  } else {
+    pill.className = 'header-conn-pill conn-degraded';
+    pill.title     = 'انقطع الاتصال بالإنترنت';
+    pill.innerHTML = `<span class="conn-dot"></span><span class="conn-label">لا اتصال</span>`;
+    showToast('انقطع الاتصال. سيُعاد المحاولة عند استعادة الإنترنت.', 'warning', 4000);
   }
   _updateSyncWidget();
 }
@@ -733,7 +730,7 @@ function _buildOfflineBanner() {
   const old = document.getElementById('offline-banner');
   if (old) old.remove();
 
-  if (!AuthState.isOffline) return;
+  if (!isOfflineMode()) return;
 
   const banner = document.createElement('div');
   banner.id        = 'offline-banner';
@@ -750,77 +747,6 @@ function _buildOfflineBanner() {
     if (header) banner.style.top = header.offsetHeight + 'px';
     _fixHeaderOverlap(); // إعادة حساب paddingTop للمحتوى
   });
-}
-
-let _reconnectionModalShown = false; // ✅ guard لمنع تكرار المودال
-
-/** مودال إعادة الاتصال: يظهر عند عودة الإنترنت في وضع Offline */
-function _showReconnectionModal() {
-  if (document.querySelector('.reconnection-modal')) return;
-  if (_reconnectionModalShown) return; // ✅ منع إعادة الظهور بعد إغلاقه
-  _reconnectionModalShown = true;
-
-  const modal = document.createElement('div');
-  modal.className = 'reconnection-modal';
-  modal.innerHTML = `
-    <div class="reconnection-modal-content">
-      <span class="reconnection-icon">🌐</span>
-      <h2>تمت معاودة الاتصال بالإنترنت</h2>
-      <p>
-        بياناتك المحفوظة تُزامن في الخلفية.<br>
-        يرجى تسجيل الدخول مرة أخرى للوصول لجميع المميزات.
-      </p>
-      <button id="btn-relogin" class="reconnection-btn">
-        العودة لشاشة تسجيل الدخول
-      </button>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  modal.querySelector('#btn-relogin').addEventListener('click', () => {
-    modal.remove();
-    _reconnectionModalShown = false; // ✅ إعادة الضبط عند الضغط
-    _handleReconnectionConfirm();
-  });
-}
-
-/** تسجيل الخروج وإعادة التحميل */
-async function _handleReconnectionConfirm() {
-  if (typeof AuthService !== 'undefined' && AuthService.logout) {
-    await AuthService.logout();
-  }
-  window.location.reload();
-}
-
-/**
- * عند عودة الإنترنت أثناء وضع Offline:
- * 1. يُزامن الطابور المعلق تلقائياً
- * 2. يُسجّل الخروج تلقائياً دون تدخّل المستخدم
- */
-async function _autoSyncAndLogout() {
-  if (typeof showToast === 'function') {
-    showToast('🌐 تمت معاودة الاتصال — جارٍ مزامنة بياناتك...', 'info', 8000);
-  }
-
-  try {
-    if (typeof OutboxService !== 'undefined') {
-      const result = await OutboxService.processOutbox();
-      if (result?.data?.failed > 0) {
-        console.warn(`[App] _autoSyncAndLogout: ${result.data.failed} عملية فشلت في المزامنة`);
-      }
-    }
-  } catch (e) {
-    console.warn('[App] _autoSyncAndLogout:', e.message);
-  }
-
-  if (typeof showToast === 'function') {
-    showToast('✅ تمت المزامنة — سيتم تسجيل الخروج تلقائياً...', 'success', 3000);
-  }
-
-  // تأخير قصير ليرى المستخدم إشعار النجاح قبل إعادة التحميل
-  await new Promise(r => setTimeout(r, 2500));
-  await _handleReconnectionConfirm();
 }
 
 // ============================================================
