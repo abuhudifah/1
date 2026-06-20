@@ -102,7 +102,7 @@ const UsersComponent = {
   async _load() {
     console.log('[UsersComponent] _load...');
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data, error } = await supabaseClient
           .from(TABLES.USERS)
           .select('id, username, display_name, role, is_active, allowed_tabs, last_login, created_at, allowed_companies, allowed_banks, allowed_users')
@@ -527,7 +527,7 @@ const UsersComponent = {
       if (this._editId) {
         await this._doUpdate(username, name, role, tabs, password, allowedCompanies, allowedBanks, allowedUsers);
       } else {
-        if (!isOnline()) { this._setErr('يجب الاتصال بالإنترنت لإنشاء مستخدم جديد'); return; }
+        if (isOfflineMode() || !isOnline()) { this._setErr('يجب الاتصال بالإنترنت لإنشاء مستخدم جديد'); return; }
         await this._doCreate(username, name, role, tabs, password, allowedCompanies, allowedBanks, allowedUsers, openingBalance);
       }
     } catch (e) {

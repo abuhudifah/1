@@ -1,14 +1,14 @@
 /**
- * repository/SupabaseClient.js — v2.1 (FIXED)
+ * repository/SupabaseClient.js — v3.0
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * الإصلاحات:
- * ✅ FIX-1: توحيد اسم المتغير — كان هناك تعارض بين المتغير المحلي
- *           `supabaseClient` وما يُصدَّر عبر `window.supabaseClient = supabase`
- *           (حيث supabase = window.supabase وليس نفس المتغير المحلي).
- *           الآن: متغير واحد `supabaseClient` يُنشأ ويُصدَّر بنفس الاسم.
- * ✅ FIX-2: استبدال كل استخدامات `supabase.` الخام (كانت تشير لـ window.supabase)
- *           بـ `supabaseClient.` الموحَّد داخل هذا الملف.
+ * v2.1:
+ * ✅ FIX-1: توحيد اسم المتغير — متغير واحد `supabaseClient` يُنشأ ويُصدَّر بنفس الاسم.
+ * ✅ FIX-2: استبدال كل استخدامات `supabase.` الخام بـ `supabaseClient.` الموحَّد.
+ *
+ * v3.0 — فصل وضع Offline عن حالة الشبكة:
+ * ✅ isOnline()      → حالة الشبكة الفعلية فقط (navigator.onLine)، لا علاقة لها بالوضع
+ * ✅ isOfflineMode() → وضع Offline المُفعَّل صراحةً (AuthState.isOffline)، لا علاقة بالشبكة
  */
 
 'use strict';
@@ -144,10 +144,23 @@ window.addEventListener('offline', () => {
   window.dispatchEvent(new CustomEvent('app:onlineStatusChange', { detail: { online: false } }));
 });
 
+/**
+ * هل الشبكة متصلة فعلياً؟
+ * يعكس حالة الشبكة الفعلية (navigator.onLine / _isOnline) فقط —
+ * مستقل تماماً عن وضع Offline (isOfflineMode).
+ * للتحقق من إمكانية إجراء عمليات Supabase استخدم: !isOfflineMode() && isOnline()
+ */
 function isOnline() {
-  // وضع Offline النشط يتجاوز حالة navigator.onLine
-  if (window.AuthState?.isOffline) return false;
   return _isOnline === true;
+}
+
+/**
+ * هل التطبيق في وضع Offline المُفعَّل يدوياً؟
+ * يعكس AuthState.isOffline فقط — مستقل تماماً عن حالة الشبكة.
+ * يُضبَط true عند الدخول بزر "الدخول بدون إنترنت"، ويُضبَط false عند تسجيل الدخول العادي.
+ */
+function isOfflineMode() {
+  return window.AuthState?.isOffline === true;
 }
 
 /**
@@ -230,9 +243,10 @@ window.isSessionActive       = isSessionActive;
 window.getAccessToken        = getAccessToken;
 window.callRPC               = callRPC;
 window.isOnline              = isOnline;
+window.isOfflineMode         = isOfflineMode;
 window.checkRealConnection   = checkRealConnection;
 window.pingSupabase          = pingSupabase;
 window.subscribeToTable      = subscribeToTable;
 window.unsubscribeAll        = unsubscribeAll;
 
-console.log('✅ SupabaseClient.js v2.1 — FIX-1: supabaseClient موحَّد (لا تعارض مع window.supabase)');
+console.log('✅ SupabaseClient.js v3.0 — isOnline (شبكة) / isOfflineMode (وضع) مفصولان تماماً');

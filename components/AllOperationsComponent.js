@@ -1,18 +1,39 @@
 /**
- * components/AllOperationsComponent.js — v2.0
- * إصلاحات:
- * 1. استخدام transactions_detailed view لعرض اسم المندوب والمنفذ
- * 2. عرض بيانات مفهومة: العميل / البنك / الشركة / نوع المصروف
- * 3. فلتر حسب المندوب
- * 4. عرض اسم المنفذ الفعلي (executed_by)
- * 5. تحسين بصري للجدول
+ * components/AllOperationsComponent.js — v3.1
+ *
+ * v3.0 — استعلام موحّد (Single-Query Architecture)
+ * v3.1 — Keyset Pagination (بدل OFFSET):
+ * ─────────────────────────────────────────────────────────
+ * OFFSET يتدهور عند 50k+ سجل (full table scan).
+ * Keyset: WHERE (date, created_at) < (cursor) → O(log n) دائماً.
+ *
+ * _cursors[]: stack من المؤشرات — يتيح السابق/التالي بدون إعادة حساب.
+ * العدد الكلي يُحسب مرة واحدة (الصفحة الأولى) ويُحفظ في _count.
+ * Fallback (Offline): يبقى OFFSET عبر repo.query (بيانات محلية محدودة).
  */
 'use strict';
 
+// الأعمدة المطلوبة من transactions_detailed — تُحدَّد هنا مرة واحدة
+// created_at مطلوب لـ Keyset Pagination كمفتاح ثانوي للترتيب
+const _DETAIL_COLS = [
+  'id','date','time','created_at','type','amount','details',
+  'agent_id','agent_name',
+  'executed_by_name',
+  'customer_name',
+  'company_id','company_name',
+  'bank_account_id','bank_account_name','bank_company_name',
+  'expense_type','expense_account_name',
+  'debtor_name',
+  'from_agent_id','to_agent_id',
+  'is_reversed','sync_status','error_message',
+].join(',');
+
 const AllOperationsComponent = {
-  _page       : 1,
   _pageSize   : 20,
-  _count      : 0,
+  _count      : 0,       // العدد الكلي — يُحسب مرة واحدة (الصفحة الأولى)
+  _cursors    : [null],  // stack: null = الصفحة الأولى، cursor = { date, created_at }
+  _cursorIdx  : 0,       // موضعنا الحالي في الـ stack
+  _hasNext    : false,
   _ops        : [],
   _detailedMap: {},
 
@@ -103,7 +124,7 @@ const AllOperationsComponent = {
 
     // ربط الأحداث
     filterCard.querySelector('#ao-date-mode').addEventListener('change',e=>this._switchDateMode(e.target.value));
-    filterCard.querySelector('#ao-apply-btn').addEventListener('click',()=>{ this._page=1; this._load(); });
+    filterCard.querySelector('#ao-apply-btn').addEventListener('click',()=>{ this._resetPagination(); this._load(); });
     filterCard.querySelector('#ao-export-btn').addEventListener('click',()=>this._exportOperationsExcel());
     filterCard.querySelector('#ao-reset-btn').addEventListener('click',()=>{
       filterCard.querySelector('#ao-type').value     = '';
@@ -111,7 +132,7 @@ const AllOperationsComponent = {
       filterCard.querySelector('#ao-date-mode').value= 'day';
       filterCard.querySelector('#ao-day').value      = getCurrentSaudiDate();
       this._switchDateMode('day');
-      this._page=1; this._load();
+      this._resetPagination(); this._load();
     });
 
     if (window.lucide) lucide.createIcons();
@@ -155,6 +176,74 @@ const AllOperationsComponent = {
     return filters;
   },
 
+  // ==========================================================
+  // _queryDetailedView — Keyset Pagination على transactions_detailed
+  //
+  // cursor = null        → الصفحة الأولى + count:exact
+  // cursor = {date, created_at} → الصفحات التالية بدون count (أسرع)
+  //
+  // يجلب pageSize+1 سجلاً لاكتشاف وجود صفحة تالية (_hasNext).
+  // ==========================================================
+  async _queryDetailedView(filters, pageSize, cursor = null) {
+    const needCount = cursor === null;
+    let q = supabaseClient
+      .from('transactions_detailed')
+      .select(_DETAIL_COLS, { count: needCount ? 'exact' : 'none' })
+      .order('date',       { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(pageSize + 1); // +1 لاكتشاف hasNext
+
+    // ── Keyset filter (الصفحات 2+) ──
+    // WHERE date < cursor.date OR (date = cursor.date AND created_at < cursor.created_at)
+    if (cursor) {
+      q = q.or(
+        `date.lt.${cursor.date},and(date.eq.${cursor.date},created_at.lt.${cursor.created_at})`
+      );
+    }
+
+    // ── فلاتر المستخدم ──
+    if (filters.type)     q = q.eq('type',     filters.type);
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id);
+
+    if (filters.date) {
+      if (typeof filters.date === 'string') {
+        q = q.eq('date', filters.date);
+      } else if (filters.date.op === 'between') {
+        q = q.gte('date', filters.date.val[0]).lte('date', filters.date.val[1]);
+      } else if (filters.date.op === 'gte') {
+        q = q.gte('date', filters.date.val);
+      } else if (filters.date.op === 'lte') {
+        q = q.lte('date', filters.date.val);
+      }
+    }
+
+    // المندوب: يرى عملياته فقط
+    const currentUser = AuthService.getCurrentUser();
+    if (currentUser?.role === ROLES.AGENT) {
+      q = q.eq('agent_id', currentUser.id);
+    }
+
+    const { data, error, count } = await q;
+    if (error) throw new Error(error.message);
+
+    const rows    = data || [];
+    const hasNext = rows.length > pageSize;
+    if (hasNext) rows.pop(); // أزل السجل الاستكشافي الزائد
+
+    return { data: rows, count: count ?? null, hasNext };
+  },
+
+  // إعادة تعيين حالة الصفحات عند تغيير الفلاتر
+  _resetPagination() {
+    this._cursors   = [null];
+    this._cursorIdx = 0;
+    this._hasNext   = false;
+    this._count     = 0;
+  },
+
+  // ==========================================================
+  // _load — Keyset Pagination (v3.1)
+  // ==========================================================
   async _load() {
     const listEl  = document.getElementById('ao-list');
     const pagerEl = document.getElementById('ao-pager');
@@ -163,18 +252,43 @@ const AllOperationsComponent = {
 
     listEl.innerHTML = `<div class="skeleton" style="height:52px;border-radius:8px;margin-bottom:6px;"></div>`.repeat(5);
 
-    const filters = this._buildFilters();
-    const result  = await repo.query(TABLES.TRANSACTIONS, filters, {
-      orderBy     : 'date',
-      ascending   : false,
-      page        : this._page,
-      pageSize    : this._pageSize,
-      forceRefresh: true,
-    });
+    const filters  = this._buildFilters();
+    const cursor   = this._cursors[this._cursorIdx]; // null = صفحة 1
+    let   data     = [];
+    let   useLocal = false;
 
-    const data  = isOk(result) ? (result.data.data||[])  : [];
-    this._count = isOk(result) ? (result.data.count||0) : 0;
-    this._ops   = data;
+    if (!isOfflineMode() && isOnline()) {
+      // ── المسار الأمثل: Keyset على transactions_detailed ──
+      try {
+        const res = await this._queryDetailedView(filters, this._pageSize, cursor);
+        data           = res.data;
+        this._hasNext  = res.hasNext;
+        // العدد الكلي: احفظه من الصفحة الأولى فقط (لا تُصفّره في الصفحات التالية)
+        if (res.count !== null) this._count = res.count;
+        this._ops      = data;
+        this._detailedMap = Object.fromEntries(data.map(r => [r.id, r]));
+      } catch (e) {
+        console.warn('⚠️ AllOperations: transactions_detailed غير متاحة، fallback:', e.message);
+        useLocal = true;
+      }
+    } else {
+      useLocal = true;
+    }
+
+    // ── مسار الـ Fallback (Offline أو فشل الـ view) — OFFSET مقبول لبيانات محلية ──
+    if (useLocal) {
+      const result = await repo.query(TABLES.TRANSACTIONS, filters, {
+        orderBy  : 'date',
+        ascending: false,
+        page     : this._cursorIdx + 1,
+        pageSize : this._pageSize,
+      });
+      data          = isOk(result) ? (result.data.data  || []) : [];
+      this._count   = isOk(result) ? (result.data.count || 0)  : 0;
+      this._hasNext = data.length === this._pageSize;
+      this._ops     = data;
+      this._detailedMap = {};
+    }
 
     if (countEl) countEl.textContent = `${this._count} عملية`;
 
@@ -186,25 +300,12 @@ const AllOperationsComponent = {
       return;
     }
 
-    // جلب بيانات مرتبطة
-    const users        = AppStore.getState('users');
-    const bankAccounts = AppStore.getState('bankAccounts');
-    const companies    = AppStore.getState('companies');
+    // بيانات AppStore للـ fallback (Offline) فقط — في Online تأتي من الـ view
+    const users        = useLocal ? (AppStore.getState('users')        || []) : [];
+    const bankAccounts = useLocal ? (AppStore.getState('bankAccounts') || []) : [];
+    const companies    = useLocal ? (AppStore.getState('companies')    || []) : [];
 
-    // للمدير: محاولة جلب بيانات من transactions_detailed عبر Supabase
-    let detailedMap = {};
-    if (isOnline() && AuthService.isAdmin()) {
-      try {
-        const ids = data.map(t=>t.id);
-        const { data: detailed } = await supabaseClient
-          .from('transactions_detailed')
-          .select('id,agent_name,executed_by_name,bank_account_name,bank_company_name,company_name,debtor_name,expense_account_name,customer_name')
-          .in('id', ids);
-        (detailed||[]).forEach(d=>{ detailedMap[d.id]=d; });
-      } catch (e) { console.warn('⚠️ AllOperations: تفاصيل العمليات غير متاحة:', e.message); }
-    }
-
-    this._detailedMap = detailedMap;
+    this._detailedMap = this._detailedMap || {};
     const currentRole = AuthService.getCurrentUser()?.role;
     const currentUid  = AuthService.getCurrentUserId();
     const canEdit     = currentRole === 'admin' || currentRole === 'admin_assistant';
@@ -230,7 +331,7 @@ const AllOperationsComponent = {
         </tr></thead>
         <tbody>
           ${data.map(tx=>{
-            const det    = detailedMap[tx.id] || {};
+            const det    = this._detailedMap[tx.id] || {};
             const agent  = det.agent_name || users.find(u=>u.id===tx.agent_id)?.display_name || '—';
             const execBy = det.executed_by_name || null;
             const color  = getTransactionColor(tx.type);
@@ -325,39 +426,49 @@ const AllOperationsComponent = {
       else if (action === 'delete') this._handleDelete(tx);
     });
 
-    // ترقيم الصفحات
+    // ── ترقيم الصفحات (Keyset: السابق / التالي) ──
     if (pagerEl) {
-      pagerEl.innerHTML='';
-      const pages = Math.ceil(this._count/this._pageSize);
-      if (pages>1) {
-        // زر السابق
-        if (this._page>1) {
+      pagerEl.innerHTML = '';
+      const hasPrev = this._cursorIdx > 0;
+
+      if (hasPrev || this._hasNext) {
+        if (hasPrev) {
           const prev = document.createElement('button');
-          prev.className='btn btn-secondary btn-sm';
-          prev.textContent='← السابق';
-          prev.addEventListener('click',()=>{ this._page--; this._load(); });
+          prev.className = 'btn btn-secondary btn-sm';
+          prev.textContent = '← السابق';
+          prev.addEventListener('click', () => {
+            this._cursorIdx--;
+            this._load();
+          });
           pagerEl.appendChild(prev);
         }
-        for (let p=Math.max(1,this._page-2);p<=Math.min(pages,this._page+2);p++) {
-          const pbtn=document.createElement('button');
-          pbtn.className=p===this._page?'btn btn-primary btn-sm':'btn btn-secondary btn-sm';
-          pbtn.textContent=p;
-          pbtn.style.minWidth='36px';
-          pbtn.addEventListener('click',()=>{ this._page=p; this._load(); });
-          pagerEl.appendChild(pbtn);
-        }
-        // زر التالي
-        if (this._page<pages) {
-          const next=document.createElement('button');
-          next.className='btn btn-secondary btn-sm';
-          next.textContent='التالي →';
-          next.addEventListener('click',()=>{ this._page++; this._load(); });
+
+        const info = document.createElement('span');
+        info.style.cssText = 'align-self:center;font-size:0.78rem;color:var(--text-muted);';
+        const pageNum = this._cursorIdx + 1;
+        const totalPages = this._count ? Math.ceil(this._count / this._pageSize) : '?';
+        info.textContent = `صفحة ${pageNum}${this._count ? ` من ${totalPages}` : ''} (${this._count} عملية)`;
+        pagerEl.appendChild(info);
+
+        if (this._hasNext) {
+          const next = document.createElement('button');
+          next.className = 'btn btn-secondary btn-sm';
+          next.textContent = 'التالي →';
+          next.addEventListener('click', () => {
+            // احفظ cursor من آخر سجل في الصفحة الحالية
+            const lastRow = this._ops[this._ops.length - 1];
+            if (lastRow) {
+              const newCursor = { date: lastRow.date, created_at: lastRow.created_at };
+              // إذا كنا نتقدم لصفحة لم نزرها بعد، أضف cursor جديد
+              if (this._cursorIdx + 1 >= this._cursors.length) {
+                this._cursors.push(newCursor);
+              }
+            }
+            this._cursorIdx++;
+            this._load();
+          });
           pagerEl.appendChild(next);
         }
-        const info=document.createElement('span');
-        info.style.cssText='align-self:center;font-size:0.78rem;color:var(--text-muted);';
-        info.textContent=`صفحة ${this._page} من ${pages}`;
-        pagerEl.appendChild(info);
       }
     }
 
@@ -369,20 +480,33 @@ const AllOperationsComponent = {
     if (exportBtn) { exportBtn.disabled = true; exportBtn.textContent = '⏳ ...'; }
     try {
       const filters = this._buildFilters();
-      const result  = await repo.query(TABLES.TRANSACTIONS, filters, {
-        orderBy: 'date', ascending: false, pageSize: 5000, forceRefresh: true,
-      });
-      const data  = isOk(result) ? (result.data.data || []) : [];
-      const users = AppStore.getState('users');
+      let data = [];
 
+      if (!isOfflineMode() && isOnline()) {
+        try {
+          const res = await this._queryDetailedView(filters, 5000, null);
+          data = res.data;
+        } catch (e) {
+          console.warn('⚠️ Export fallback:', e.message);
+        }
+      }
+
+      if (!data.length) {
+        const result = await repo.query(TABLES.TRANSACTIONS, filters, {
+          orderBy: 'date', ascending: false, pageSize: 5000, forceRefresh: true,
+        });
+        data = isOk(result) ? (result.data.data || []) : [];
+      }
+
+      const users = AppStore.getState('users') || [];
       const headers = ['التاريخ', 'الوقت', 'النوع', 'المبلغ (ر.س)', 'المندوب', 'التفاصيل', 'الحالة'];
       const rows = data.map(tx => [
         tx.date || '—',
         tx.time ? tx.time.substring(0, 5) : '—',
         TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
         Math.round(parseFloat(tx.amount || 0)),
-        users.find(u => u.id === tx.agent_id)?.display_name || '—',
-        tx.customer_name || tx.details || '—',
+        tx.agent_name || users.find(u => u.id === tx.agent_id)?.display_name || '—',
+        tx.debtor_name || tx.customer_name || tx.bank_account_name || tx.expense_account_name || tx.details || '—',
         tx.is_reversed ? 'مُعكوس' : 'نشط',
       ]);
 
@@ -574,7 +698,12 @@ const AllOperationsComponent = {
       }
     }
   },
+
+  async onResume() {
+    this._resetPagination();
+    await this._load();
+  },
 };
 
 window.AllOperationsComponent = AllOperationsComponent;
-console.log('✅ AllOperationsComponent v2.2 — BND-3.8: cleanupLocalTransaction يُحدِّث account_balances عند حذف المعلق');
+console.log('✅ AllOperationsComponent v3.1 — Keyset Pagination: O(log n) بدل OFFSET');

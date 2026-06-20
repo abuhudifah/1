@@ -120,7 +120,7 @@ const OutboxService = {
    * @returns {Promise<{ok: boolean, data?: {processed, failed, total}, error?: string}>}
    */
   async processOutbox() {
-    if (!isOnline()) {
+    if (isOfflineMode() || !isOnline()) {
       return ok({ processed: 0, failed: 0, total: 0, reason: 'offline' });
     }
     if (typeof db === 'undefined' || !db.isOpen()) {
@@ -316,7 +316,7 @@ const OutboxService = {
           }
         }
 
-        return rpcResult;
+        return ok(rpcData);
       }
 
       // دفعة عامة (بدون معاملة مالية)
@@ -371,6 +371,36 @@ const OutboxService = {
       delete cleaned.updated_at;
     }
     return cleaned;
+  },
+
+  // ==========================================================
+  // syncAndLogout — مزامنة ثم تسجيل خروج (Q4=C)
+  // يُستدعى من: زر المزامنة اليدوية في وضع Offline + تسجيل خروج Offline التلقائي
+  // ==========================================================
+
+  async syncAndLogout() {
+    if (typeof showToast === 'function') {
+      showToast('🔄 جارٍ مزامنة البيانات قبل الخروج...', 'info', 6000);
+    }
+
+    const result = await this.processOutbox();
+    const { failed = 0 } = result?.data || {};
+
+    if (failed > 0) {
+      const confirmed = typeof confirmDialog === 'function'
+        ? await confirmDialog(
+            `تعذّر مزامنة ${failed} عملية. هل تريد الخروج مع الاحتفاظ بها محلياً؟`,
+            'خروج', 'البقاء', 'warning'
+          )
+        : true;
+      if (!confirmed) return;
+    }
+
+    if (typeof AuthService !== 'undefined' && AuthService.logout) {
+      await AuthService.logout(false, true); // _skipOfflineSync=true لمنع حلقة لا نهائية
+    } else {
+      window.location.reload();
+    }
   },
 
   async _updatePendingCount() {

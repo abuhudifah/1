@@ -113,7 +113,7 @@ const BankAccountsComponent = {
       // جلب معرّفات البنوك النشطة اليوم (للترتيب وعرض بيانات النشاط فقط، لا للفلترة)
       this._agentActiveIds = new Set();
       try {
-        if (isOnline()) {
+        if (!isOfflineMode() && isOnline()) {
           const { data } = await supabaseClient.from('transactions')
             .select('bank_account_id')
             .eq('date', this._selectedDate)
@@ -152,7 +152,7 @@ const BankAccountsComponent = {
     /* جلب إجماليات وآخر نشاط لكل حساب (إيداع + سحب) */
     let dayActivity = {}; // bank_id → { depositTotal, withdrawTotal, list[], lastTime }
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data } = await supabaseClient.from('transactions')
           .select('bank_account_id,amount,type,agent_id,created_at')
           .eq('date', this._selectedDate)
@@ -852,6 +852,8 @@ const BankAccountsComponent = {
       showToast(`فشل الحذف: ${result.error}`, 'error');
     }
   },
+
+  async onResume() { await this._load(); },
 };
 
 window.BankAccountsComponent = BankAccountsComponent;

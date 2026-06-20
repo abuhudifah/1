@@ -90,7 +90,7 @@ const DataEntryComponent = {
     const agentId = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
     let allBanks  = [];
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data } = await supabaseClient
           .from('bank_accounts')
           .select('id,name,financial_ceiling,company_id,reset_time')
@@ -111,7 +111,7 @@ const DataEntryComponent = {
 
     let lastActivityMap = {};
     try {
-      if (isOnline() && agentId) {
+      if (!isOfflineMode() && isOnline() && agentId) {
         const { data } = await supabaseClient
           .from('transactions')
           .select('bank_account_id,created_at')
@@ -1740,6 +1740,12 @@ const DataEntryComponent = {
         catch { showToast('انسخ النص يدوياً', 'info'); }
       }
     });
+  },
+
+  // يُستدعى عند العودة للتبويب — يُحدّث قوائم البنوك والشركات إن تغيّرت
+  async onResume() {
+    // إعادة تحميل بيانات النموذج من AppStore (قد تكون تُحدّثت في تبويبات أخرى)
+    if (this._container) await this.render(this._container);
   },
 };
 

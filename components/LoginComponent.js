@@ -2026,7 +2026,7 @@ const LoginComponent = {
 
     if (!session?.hasPin) {
       // أول مرة: إنشاء PIN
-      if (!isOnline()) {
+      if (isOfflineMode() || !isOnline()) {
         errEl.innerHTML = '<span>⚠️</span><span>تفعيل الدخول بدون إنترنت يتطلب اتصالاً للمرة الأولى</span>';
         return;
       }

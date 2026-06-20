@@ -310,7 +310,7 @@ const OfflineAuthService = {
     if (!window.PublicKeyCredential) {
       return err('المتصفح لا يدعم البصمة أو Face ID');
     }
-    if (!isOnline() || !window.AuthState?.authUser) {
+    if (isOfflineMode() || !isOnline() || !window.AuthState?.authUser) {
       return err('تفعيل البصمة أو Face ID يتطلب اتصالاً بالإنترنت وجلسة نشطة');
     }
 
@@ -412,7 +412,7 @@ const OfflineAuthService = {
     if (!window.PublicKeyCredential) {
       return err('المتصفح لا يدعم البصمة أو Face ID');
     }
-    if (!isOnline() || !window.AuthState?.authUser) {
+    if (isOfflineMode() || !isOnline() || !window.AuthState?.authUser) {
       return err('تفعيل البصمة أو Face ID يتطلب اتصالاً بالإنترنت وجلسة نشطة');
     }
 

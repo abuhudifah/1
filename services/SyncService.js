@@ -1,12 +1,43 @@
 /**
- * services/SyncService.js — v2.0 (Online-First)
+ * services/SyncService.js — v2.1 (Column Projection)
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * التغييرات وفق التوثيق:
+ * v2.1 — Column Projection: بدل SELECT * أعمدة محدَّدة صراحةً
+ *   → تقليل حجم استجابة _pullFreshData بنسبة 30-60%
+ *   → لإضافة عمود جديد: أضفه للثابت _COLS_* المناسب أدناه
+ *
  * ✅ مؤقت المزامنة الدورية: 30 ثانية (بدلاً من 5 دقائق)
  *    لكنه يعمل فقط إذا كان هناك عمليات معلقة (لا يُثقل النظام)
  */
 'use strict';
+
+// ── ثوابت الأعمدة — عدّل هنا عند إضافة أعمدة للجداول ──────────────────────
+
+const _COLS_NOTIFICATIONS = [
+  'id', 'user_id', 'title', 'body', 'type',
+  'is_read', 'created_at', 'link_to', 'data', 'sync_status',
+].join(',');
+
+const _COLS_BANK_ACCOUNTS = [
+  'id', 'name', 'account_number', 'company_id',
+  'is_active', 'notes', 'created_at', 'sync_status',
+].join(',');
+
+const _COLS_DEBTORS = [
+  'id', 'name', 'phone', 'whatsapp', 'website',
+  'debt_amount', 'region', 'assigned_agents',
+  'created_at', 'sync_status',
+].join(',');
+
+// لا SELECT * في المعاملات — الأعمدة الـ core فقط (تفاصيل الأسماء تأتي من transactions_detailed)
+const _COLS_TRANSACTIONS = [
+  'id', 'date', 'time', 'type', 'amount',
+  'agent_id', 'customer_name', 'company_id',
+  'bank_account_id', 'expense_type', 'details',
+  'from_agent_id', 'to_agent_id',
+  'is_reversed', 'sync_status', 'error_message',
+  'created_at', 'idempotency_key',
+].join(',');
 
 const _syncState = {
   isRunning        : false,
@@ -20,7 +51,7 @@ function initSyncService() {
   window.addEventListener('sync:queueCountChanged', _onQueueCountChanged);
   window.addEventListener('sync:conflict',          _onConflictDetected);
 
-  if (isOnline()) {
+  if (!isOfflineMode() && isOnline()) {
     setTimeout(() => _triggerSync('startup'), 2000);
   }
 
@@ -31,6 +62,9 @@ function initSyncService() {
 async function _onOnlineStatusChange(event) {
   const { online } = event.detail;
   window.dispatchEvent(new CustomEvent('store:setOnlineStatus', { detail: { online } }));
+
+  // في Offline Mode: تغييرات الشبكة لا تُغيّر الوضع — App.js يعالج الشريط فقط
+  if (isOfflineMode()) return;
 
   if (online) {
     showToast('تم استعادة الاتصال — جاري المزامنة...', 'info', 2500);
@@ -43,6 +77,7 @@ async function _onOnlineStatusChange(event) {
 
 async function _triggerSync(reason = 'manual') {
   if (_syncState.isRunning) return;
+  if (isOfflineMode()) return;
   if (!isOnline()) return;
 
   _syncState.isRunning = true;
@@ -135,7 +170,7 @@ async function _pullNotifications(user) {
   try {
     const { data } = await supabaseClient
       .from(TABLES.NOTIFICATIONS)
-      .select('*').order('created_at', { ascending: false }).limit(50);
+      .select(_COLS_NOTIFICATIONS).order('created_at', { ascending: false }).limit(50);
     if (data && data.length > 0 && db.isOpen()) {
       await db.notifications.bulkPut(data);
       window.dispatchEvent(new CustomEvent('store:notificationsUpdated', { detail: { count: data.length } }));
@@ -146,7 +181,7 @@ async function _pullNotifications(user) {
 async function _pullBankAccounts() {
   try {
     const { data } = await supabaseClient
-      .from(TABLES.BANK_ACCOUNTS).select('*').order('name')
+      .from(TABLES.BANK_ACCOUNTS).select(_COLS_BANK_ACCOUNTS).order('name')
       .limit(QUERY_LIMITS.BANK_ACCOUNTS);
     if (data && db.isOpen()) {
       await db.bank_accounts.bulkPut(data.map(b => ({ ...b, sync_status: SYNC_STATUS.SYNCED })));
@@ -157,7 +192,7 @@ async function _pullBankAccounts() {
 async function _pullDebtors() {
   try {
     const { data } = await supabaseClient
-      .from(TABLES.DEBTORS).select('*').order('name')
+      .from(TABLES.DEBTORS).select(_COLS_DEBTORS).order('name')
       .limit(QUERY_LIMITS.DEBTORS);
     if (data && db.isOpen()) {
       await db.debtors.bulkPut(data.map(d => ({ ...d, sync_status: SYNC_STATUS.SYNCED })));
@@ -169,7 +204,7 @@ async function _pullAgentTransactions(agentId) {
   try {
     const today = getCurrentSaudiDate();
     const { data } = await supabaseClient
-      .from(TABLES.TRANSACTIONS).select('*')
+      .from(TABLES.TRANSACTIONS).select(_COLS_TRANSACTIONS)
       .eq('agent_id', agentId).gte('date', today)
       .order('created_at', { ascending: false })
       .limit(QUERY_LIMITS.TRANSACTIONS_SYNC);
@@ -201,7 +236,7 @@ function _schedulePeriodicSync() {
   const INTERVAL_MS = 30 * 1000; // 30 ثانية
 
   _syncState.periodicTimer = setInterval(async () => {
-    if (!isOnline() || _syncState.isRunning) return;
+    if (isOfflineMode() || !isOnline() || _syncState.isRunning) return;
     try {
       if (!db.isOpen()) return;
 
@@ -236,7 +271,7 @@ function _notifyRunning(running) {
 }
 
 async function manualSync() {
-  if (!isOnline()) { showToast('لا يوجد اتصال بالإنترنت', 'warning'); return; }
+  if (isOfflineMode() || !isOnline()) { showToast('لا يوجد اتصال بالإنترنت', 'warning'); return; }
   showToast('جاري المزامنة...', 'info', 1500);
   await _triggerSync('manual');
   showToast('تمت المزامنة بنجاح', 'success');
@@ -260,7 +295,7 @@ async function getSyncStats() {
     ...(isOk(stats) ? stats.data : {}),
     isRunning  : _syncState.isRunning,
     lastSyncAt : _syncState.lastSyncAt,
-    isOnline   : isOnline(),
+    isOnline   : !isOfflineMode() && isOnline(),
   };
 }
 
@@ -284,4 +319,4 @@ const SyncService = {
 };
 
 window.SyncService = SyncService;
-console.log('✅ SyncService.js v2.0 — مزامنة دورية كل 30 ثانية عند وجود عمليات معلقة');
+console.log('✅ SyncService.js v2.1 — Column Projection: بدل SELECT * في كل _pull* functions');

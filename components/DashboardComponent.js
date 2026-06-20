@@ -20,12 +20,11 @@ const DashboardComponent = {
   _chart1      : null,
   _chart2      : null,
   _container   : null,
-  _realtimeSub : null,
-  _dashData    : null,
-  _selectedDate: null,
-  _viewMode    : 'day',
-  // FIX-5b: تتبع هل الـ subscription نشطة لمنع التكرار
-  _isSubscribed: false,
+  _unsubscribeRealtime: null, // دالة إلغاء الاشتراك من RealtimeChannelManager
+  _isSubscribed       : false,
+  _dashData           : null,
+  _selectedDate       : null,
+  _viewMode           : 'day',
 
   async render(container) {
     this._container    = container;
@@ -208,7 +207,7 @@ const DashboardComponent = {
     try {
       const { from, to } = this._getDateRange();
 
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // FIX-3: استخدام supabaseClient المُوحَّد
         const { data, error } = await supabaseClient.rpc(RPC.GET_ADMIN_DASHBOARD, {
           p_date: this._selectedDate, p_from: from, p_to: to,
@@ -280,7 +279,7 @@ const DashboardComponent = {
   async _loadKPI(from, to) {
     let txs = [];
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data } = await supabaseClient
           .from(TABLES.TRANSACTIONS).select('type,amount,is_reversed')
           .gte('date', from).lte('date', to).eq('is_reversed', false);
@@ -297,7 +296,7 @@ const DashboardComponent = {
     // حساب الصافي من account_balances (أدق من مجموع transactions)
     let ledgerNet = null;
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data: balData } = await supabaseClient
           .from(TABLES.ACCOUNT_BALANCES).select('balance')
           .like('account_id', 'AGT_%');
@@ -373,7 +372,7 @@ const DashboardComponent = {
     // مدين = دخل إجمالي للمناديب | دائن = خروج إجمالي من المناديب
     let debitData = [], creditData = [];
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         const { data } = await supabaseClient
           .from(TABLES.ACCOUNT_LEDGER)
           .select('date,debit,credit')
@@ -445,7 +444,7 @@ const DashboardComponent = {
       let banks = AppStore.getState('bankAccounts') || [];
       let totals = {};
 
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
           .from(TABLES.TRANSACTIONS).select('bank_account_id,amount')
@@ -527,7 +526,7 @@ const DashboardComponent = {
     let txs = [], balances = {};
     const agentAccountIds = agents.map(a => `AGT_${a.id}`);
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // الرصيد دائماً من account_balances (المصدر الأمين) + التجميعات من transactions للعرض
         const [txRes, balRes] = await Promise.all([
           supabaseClient.from(TABLES.TRANSACTIONS).select('agent_id,type,amount')
@@ -604,7 +603,7 @@ const DashboardComponent = {
     if (!el) return;
     let txs = [];
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // FIX-3: استخدام supabaseClient
         const { data } = await supabaseClient
           .from(TABLES.TRANSACTIONS)
@@ -639,76 +638,81 @@ const DashboardComponent = {
   // ============================================================
 
   _subscribeRealtime() {
-    // FIX-5b: إلغاء أي subscription قديمة قبل إنشاء جديدة
-    if (this._realtimeSub) {
-      try {
-        supabaseClient.removeChannel(this._realtimeSub);
-      } catch (e) {
-        console.warn('⚠️ DashboardComponent: خطأ في إلغاء subscription القديمة:', e.message);
-      }
-      this._realtimeSub = null;
-      this._isSubscribed = false;
-    }
-
-    if (this._isSubscribed) return; // حماية إضافية
+    if (this._isSubscribed) return;
 
     let _debounceTimer = null;
 
-    // FIX-3: استخدام supabaseClient المُوحَّد
-    this._realtimeSub = supabaseClient
-      .channel('dash-realtime-v4-1') // رقم إصدار جديد لتجنب تعارض channel القديم
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+    // تسجيل عبر ChannelManager — يمنع التكرار تلقائياً
+    this._unsubscribeRealtime = RealtimeChannelManager.subscribe(
+      'dash-transactions',
+      'transactions',
+      { event: '*' },
+      () => {
         clearTimeout(_debounceTimer);
         _debounceTimer = setTimeout(() => {
-          // التحقق أن المكوّن لا يزال مُثبَّتاً
           if (!document.getElementById('dash-root')) return;
           const { from, to } = this._getDateRange();
           this._loadKPI(from, to);
           this._loadAgentsBoxes(from, to);
           this._loadRecentTx(from, to);
         }, 1500);
-      })
-      .subscribe();
+      }
+    );
 
     this._isSubscribed = true;
-    console.log('📡 DashboardComponent: Realtime subscription نشطة');
   },
 
-  // ============================================================
-  // FIX-5b: destroy() — تُلغي الـ subscription وتُدمر الـ charts
-  //         App.js يستدعيها تلقائياً عند كل تغيير تبويب
-  // ============================================================
   destroy() {
     console.log('🧹 DashboardComponent.destroy(): تنظيف الموارد');
 
-    // إلغاء Realtime subscription
-    if (this._realtimeSub) {
-      try {
-        // FIX-3: استخدام supabaseClient المُوحَّد
-        supabaseClient.removeChannel(this._realtimeSub);
-        console.log('✅ DashboardComponent: Realtime subscription أُلغيت');
-      } catch (e) {
-        console.warn('⚠️ DashboardComponent: خطأ في إلغاء subscription:', e.message);
-      }
-      this._realtimeSub = null;
-      this._isSubscribed = false;
+    if (typeof this._unsubscribeRealtime === 'function') {
+      this._unsubscribeRealtime();
+      this._unsubscribeRealtime = null;
     }
+    this._isSubscribed = false;
 
-    // تدمير Chart.js لتحرير ذاكرة Canvas
     if (this._chart1) {
-      try { this._chart1.destroy(); } catch { /* non-critical canvas cleanup */ }
+      try { this._chart1.destroy(); } catch { }
       this._chart1 = null;
     }
     if (this._chart2) {
-      try { this._chart2.destroy(); } catch { /* non-critical canvas cleanup */ }
+      try { this._chart2.destroy(); } catch { }
       this._chart2 = null;
     }
 
-    // مسح البيانات المخزنة
     this._dashData  = null;
     this._container = null;
+  },
+
+  onSleep() {
+    if (typeof this._unsubscribeRealtime === 'function') {
+      this._unsubscribeRealtime();
+      this._unsubscribeRealtime = null;
+    }
+    this._isSubscribed = false;
+  },
+
+  // ============================================================
+  // onResume — يُستدعى من Tab Panel Manager عند إظهار التبويب
+  // يُعيد تفعيل Realtime ويُحدّث البيانات إن تغيّر التاريخ
+  // ============================================================
+  async onResume() {
+    const todayDate = getCurrentSaudiDate();
+    const staleDate = this._selectedDate !== todayDate;
+
+    // إذا تغيّر اليوم (جلسة ليلية طويلة) → تحديث تلقائي
+    if (staleDate) {
+      this._selectedDate = todayDate;
+      const datePicker = document.getElementById('dash-date-picker');
+      if (datePicker) datePicker.value = todayDate;
+      await this._loadAll();
+    }
+
+    // إعادة تفعيل Realtime دائماً عند العودة
+    this._subscribeRealtime();
+    console.log('▶️ DashboardComponent.onResume()');
   },
 };
 
 window.DashboardComponent = DashboardComponent;
-console.log('✅ DashboardComponent v4.2 — صافي KPI من account_balances | رصيد المناديب دائماً من account_balances');
+console.log('✅ DashboardComponent v4.3 — Tab Panel Manager: onSleep/onResume | TTL-aware');

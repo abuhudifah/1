@@ -132,7 +132,7 @@ const AuditLogComponent = {
     let total = 0;
 
     try {
-      if (isOnline()) {
+      if (!isOfflineMode() && isOnline()) {
         // استخدام RPC get_audit_logs الجديدة
         const { data, error } = await supabaseClient.rpc('get_audit_logs', {
           p_from_date   : from || (()=>{ const d=new Date(); d.setDate(d.getDate()-7); return d.toLocaleDateString('en-CA',{timeZone:APP_CONFIG.TIMEZONE}); })(),

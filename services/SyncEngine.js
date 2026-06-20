@@ -36,6 +36,7 @@ const SyncEngine = {
    * @returns {Promise<{ok: boolean, data?: {synced, failed, total}, error?: string}>}
    */
   async syncAll() {
+    if (isOfflineMode()) return err('وضع Offline نشط — المزامنة متوقفة');
     if (!isOnline()) return err('لا يوجد اتصال بالإنترنت');
     if (typeof db === 'undefined' || !db.isOpen()) {
       return err('قاعدة البيانات المحلية غير متاحة');
@@ -201,6 +202,7 @@ const SyncEngine = {
    * @returns {Promise<{ok: boolean, data?: *, error?: string}>}
    */
   async startAutoSync() {
+    if (isOfflineMode()) return err('وضع Offline نشط — المزامنة متوقفة');
     if (!isOnline()) return err('لا يوجد اتصال بالإنترنت');
 
     if (typeof OutboxService === 'undefined') {
@@ -279,8 +281,7 @@ function _sleep(ms) {
 // ============================================================
 
 window.addEventListener('app:onlineStatusChange', async (e) => {
-  // وضع Offline اليدوي: تُعالجه App.js عبر _autoSyncAndLogout — لا تدخّل هنا
-  if (window.AuthState?.isOffline) return;
+  if (isOfflineMode()) return; // Offline Mode: لا مزامنة تلقائية عند عودة الشبكة
 
   if (e.detail?.online && window.AuthState?.isInitialized) {
     const pending = typeof LocalOperationsService !== 'undefined'

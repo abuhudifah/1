@@ -83,7 +83,7 @@ const DebtorsComponent = {
 
       let debtors = [];
 
-      if (isAgent && isOnline()) {
+      if (isAgent && !isOfflineMode() && isOnline()) {
         // FIX: للمندوب online — استعلام مباشر بفلتر JSONB @> لتجنب تحميل كل المدينين
         // وتجاوز حد pageSize:500 الذي قد يُفوِّت مدينين في صفحات لاحقة
         const { data, error: qErr } = await supabaseClient
@@ -696,6 +696,10 @@ const DebtorsComponent = {
         hidden_by : '[]',
       });
     } catch (e) { console.warn('⚠️ DebtorsComponent: فشل إرسال الإشعار:', e.message); }
+  },
+
+  async onResume() {
+    if (typeof this._load === 'function') await this._load();
   },
 };
 

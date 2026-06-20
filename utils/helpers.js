@@ -933,7 +933,7 @@ async function withDexie(fn) {
 
 // TASK-5.3: نمط Online-First الموحّد
 async function fetchOnlineFirst(supabaseFn, dexieFn) {
-  if (typeof isOnline === 'function' && isOnline()) {
+  if (typeof isOnline === 'function' && !isOfflineMode() && isOnline()) {
     try { return await supabaseFn(); } catch (e) {
       console.warn('⚠️ fetchOnlineFirst: تعذر الوصول للخادم، التراجع لـ Dexie:', e.message);
     }
