@@ -44,12 +44,15 @@ const SettingsComponent = {
     // ═══════════════════════════════════════════════════════
 
     // ─── 1. الملف الشخصي ───
+    // يجب إضافة wrap و profileSection للـ DOM أولاً حتى يعمل document.getElementById
+    // داخل ProfileSettingsComponent._bindEvents (وإلا تُعيد null وتفشل الأحداث صامتةً)
+    container.appendChild(wrap);
     const profileSection = document.createElement('div');
     profileSection.style.cssText = 'margin-bottom:28px;';
+    wrap.appendChild(profileSection);
     if (window.ProfileSettingsComponent) {
       await ProfileSettingsComponent.render(profileSection);
     }
-    wrap.appendChild(profileSection);
 
     // ─── فاصل ───
     const divider = document.createElement('div');
@@ -213,7 +216,6 @@ const SettingsComponent = {
     adminWrap.appendChild(conflictsCard);
 
     wrap.appendChild(adminWrap);
-    container.appendChild(wrap);
 
     this._bindAdminEvents();
     if (window.lucide) lucide.createIcons();
