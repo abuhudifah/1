@@ -1,22 +1,22 @@
 /**
- * components/AllOperationsComponent.js — v3.0
+ * components/AllOperationsComponent.js — v3.1
  *
- * v3.0 — استعلام موحّد (Single-Query Architecture):
+ * v3.0 — استعلام موحّد (Single-Query Architecture)
+ * v3.1 — Keyset Pagination (بدل OFFSET):
  * ─────────────────────────────────────────────────────────
- * بدلاً من استعلامين متتاليين (transactions + transactions_detailed)
- * أصبح استعلاماً واحداً مباشراً على transactions_detailed:
+ * OFFSET يتدهور عند 50k+ سجل (full table scan).
+ * Keyset: WHERE (date, created_at) < (cursor) → O(log n) دائماً.
  *
- * Online  → supabase.from('transactions_detailed') — JOIN server-side
- * Offline → Dexie transactions + AppStore للأسماء (مسار احتياطي)
- *
- * الأعمدة محدَّدة صراحةً (لا SELECT *) → -40% حجم الاستجابة
- * Graceful degradation: إذا فشل الـ view → fallback للمسار القديم
+ * _cursors[]: stack من المؤشرات — يتيح السابق/التالي بدون إعادة حساب.
+ * العدد الكلي يُحسب مرة واحدة (الصفحة الأولى) ويُحفظ في _count.
+ * Fallback (Offline): يبقى OFFSET عبر repo.query (بيانات محلية محدودة).
  */
 'use strict';
 
 // الأعمدة المطلوبة من transactions_detailed — تُحدَّد هنا مرة واحدة
+// created_at مطلوب لـ Keyset Pagination كمفتاح ثانوي للترتيب
 const _DETAIL_COLS = [
-  'id','date','time','type','amount','details',
+  'id','date','time','created_at','type','amount','details',
   'agent_id','agent_name',
   'executed_by_name',
   'customer_name',
@@ -29,9 +29,11 @@ const _DETAIL_COLS = [
 ].join(',');
 
 const AllOperationsComponent = {
-  _page       : 1,
   _pageSize   : 20,
-  _count      : 0,
+  _count      : 0,       // العدد الكلي — يُحسب مرة واحدة (الصفحة الأولى)
+  _cursors    : [null],  // stack: null = الصفحة الأولى، cursor = { date, created_at }
+  _cursorIdx  : 0,       // موضعنا الحالي في الـ stack
+  _hasNext    : false,
   _ops        : [],
   _detailedMap: {},
 
@@ -122,7 +124,7 @@ const AllOperationsComponent = {
 
     // ربط الأحداث
     filterCard.querySelector('#ao-date-mode').addEventListener('change',e=>this._switchDateMode(e.target.value));
-    filterCard.querySelector('#ao-apply-btn').addEventListener('click',()=>{ this._page=1; this._load(); });
+    filterCard.querySelector('#ao-apply-btn').addEventListener('click',()=>{ this._resetPagination(); this._load(); });
     filterCard.querySelector('#ao-export-btn').addEventListener('click',()=>this._exportOperationsExcel());
     filterCard.querySelector('#ao-reset-btn').addEventListener('click',()=>{
       filterCard.querySelector('#ao-type').value     = '';
@@ -130,7 +132,7 @@ const AllOperationsComponent = {
       filterCard.querySelector('#ao-date-mode').value= 'day';
       filterCard.querySelector('#ao-day').value      = getCurrentSaudiDate();
       this._switchDateMode('day');
-      this._page=1; this._load();
+      this._resetPagination(); this._load();
     });
 
     if (window.lucide) lucide.createIcons();
@@ -175,19 +177,31 @@ const AllOperationsComponent = {
   },
 
   // ==========================================================
-  // _queryDetailedView — استعلام موحّد على transactions_detailed
-  // Online فقط. يعيد { data, count } أو يرمي استثناءً عند الفشل.
+  // _queryDetailedView — Keyset Pagination على transactions_detailed
+  //
+  // cursor = null        → الصفحة الأولى + count:exact
+  // cursor = {date, created_at} → الصفحات التالية بدون count (أسرع)
+  //
+  // يجلب pageSize+1 سجلاً لاكتشاف وجود صفحة تالية (_hasNext).
   // ==========================================================
-  async _queryDetailedView(filters, page, pageSize) {
-    const offset = (page - 1) * pageSize;
+  async _queryDetailedView(filters, pageSize, cursor = null) {
+    const needCount = cursor === null;
     let q = supabaseClient
       .from('transactions_detailed')
-      .select(_DETAIL_COLS, { count: 'exact' })
+      .select(_DETAIL_COLS, { count: needCount ? 'exact' : 'none' })
       .order('date',       { ascending: false })
       .order('created_at', { ascending: false })
-      .range(offset, offset + pageSize - 1);
+      .limit(pageSize + 1); // +1 لاكتشاف hasNext
 
-    // تطبيق الفلاتر
+    // ── Keyset filter (الصفحات 2+) ──
+    // WHERE date < cursor.date OR (date = cursor.date AND created_at < cursor.created_at)
+    if (cursor) {
+      q = q.or(
+        `date.lt.${cursor.date},and(date.eq.${cursor.date},created_at.lt.${cursor.created_at})`
+      );
+    }
+
+    // ── فلاتر المستخدم ──
     if (filters.type)     q = q.eq('type',     filters.type);
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id);
 
@@ -211,11 +225,24 @@ const AllOperationsComponent = {
 
     const { data, error, count } = await q;
     if (error) throw new Error(error.message);
-    return { data: data || [], count: count || 0 };
+
+    const rows    = data || [];
+    const hasNext = rows.length > pageSize;
+    if (hasNext) rows.pop(); // أزل السجل الاستكشافي الزائد
+
+    return { data: rows, count: count ?? null, hasNext };
+  },
+
+  // إعادة تعيين حالة الصفحات عند تغيير الفلاتر
+  _resetPagination() {
+    this._cursors   = [null];
+    this._cursorIdx = 0;
+    this._hasNext   = false;
+    this._count     = 0;
   },
 
   // ==========================================================
-  // _load — الاستعلام الموحّد (v3.0)
+  // _load — Keyset Pagination (v3.1)
   // ==========================================================
   async _load() {
     const listEl  = document.getElementById('ao-list');
@@ -226,17 +253,19 @@ const AllOperationsComponent = {
     listEl.innerHTML = `<div class="skeleton" style="height:52px;border-radius:8px;margin-bottom:6px;"></div>`.repeat(5);
 
     const filters  = this._buildFilters();
+    const cursor   = this._cursors[this._cursorIdx]; // null = صفحة 1
     let   data     = [];
     let   useLocal = false;
 
     if (!isOfflineMode() && isOnline()) {
-      // ── المسار الأمثل: استعلام واحد على transactions_detailed ──
+      // ── المسار الأمثل: Keyset على transactions_detailed ──
       try {
-        const res = await this._queryDetailedView(filters, this._page, this._pageSize);
-        data        = res.data;
-        this._count = res.count;
-        this._ops   = data;
-        // كل سجل هو نفسه "detailed" — لا حاجة لخريطة منفصلة
+        const res = await this._queryDetailedView(filters, this._pageSize, cursor);
+        data           = res.data;
+        this._hasNext  = res.hasNext;
+        // العدد الكلي: احفظه من الصفحة الأولى فقط (لا تُصفّره في الصفحات التالية)
+        if (res.count !== null) this._count = res.count;
+        this._ops      = data;
         this._detailedMap = Object.fromEntries(data.map(r => [r.id, r]));
       } catch (e) {
         console.warn('⚠️ AllOperations: transactions_detailed غير متاحة، fallback:', e.message);
@@ -246,17 +275,18 @@ const AllOperationsComponent = {
       useLocal = true;
     }
 
-    // ── مسار الـ Fallback (Offline أو فشل الـ view) ──
+    // ── مسار الـ Fallback (Offline أو فشل الـ view) — OFFSET مقبول لبيانات محلية ──
     if (useLocal) {
       const result = await repo.query(TABLES.TRANSACTIONS, filters, {
         orderBy  : 'date',
         ascending: false,
-        page     : this._page,
+        page     : this._cursorIdx + 1,
         pageSize : this._pageSize,
       });
-      data        = isOk(result) ? (result.data.data  || []) : [];
-      this._count = isOk(result) ? (result.data.count || 0)  : 0;
-      this._ops   = data;
+      data          = isOk(result) ? (result.data.data  || []) : [];
+      this._count   = isOk(result) ? (result.data.count || 0)  : 0;
+      this._hasNext = data.length === this._pageSize;
+      this._ops     = data;
       this._detailedMap = {};
     }
 
@@ -396,39 +426,49 @@ const AllOperationsComponent = {
       else if (action === 'delete') this._handleDelete(tx);
     });
 
-    // ترقيم الصفحات
+    // ── ترقيم الصفحات (Keyset: السابق / التالي) ──
     if (pagerEl) {
-      pagerEl.innerHTML='';
-      const pages = Math.ceil(this._count/this._pageSize);
-      if (pages>1) {
-        // زر السابق
-        if (this._page>1) {
+      pagerEl.innerHTML = '';
+      const hasPrev = this._cursorIdx > 0;
+
+      if (hasPrev || this._hasNext) {
+        if (hasPrev) {
           const prev = document.createElement('button');
-          prev.className='btn btn-secondary btn-sm';
-          prev.textContent='← السابق';
-          prev.addEventListener('click',()=>{ this._page--; this._load(); });
+          prev.className = 'btn btn-secondary btn-sm';
+          prev.textContent = '← السابق';
+          prev.addEventListener('click', () => {
+            this._cursorIdx--;
+            this._load();
+          });
           pagerEl.appendChild(prev);
         }
-        for (let p=Math.max(1,this._page-2);p<=Math.min(pages,this._page+2);p++) {
-          const pbtn=document.createElement('button');
-          pbtn.className=p===this._page?'btn btn-primary btn-sm':'btn btn-secondary btn-sm';
-          pbtn.textContent=p;
-          pbtn.style.minWidth='36px';
-          pbtn.addEventListener('click',()=>{ this._page=p; this._load(); });
-          pagerEl.appendChild(pbtn);
-        }
-        // زر التالي
-        if (this._page<pages) {
-          const next=document.createElement('button');
-          next.className='btn btn-secondary btn-sm';
-          next.textContent='التالي →';
-          next.addEventListener('click',()=>{ this._page++; this._load(); });
+
+        const info = document.createElement('span');
+        info.style.cssText = 'align-self:center;font-size:0.78rem;color:var(--text-muted);';
+        const pageNum = this._cursorIdx + 1;
+        const totalPages = this._count ? Math.ceil(this._count / this._pageSize) : '?';
+        info.textContent = `صفحة ${pageNum}${this._count ? ` من ${totalPages}` : ''} (${this._count} عملية)`;
+        pagerEl.appendChild(info);
+
+        if (this._hasNext) {
+          const next = document.createElement('button');
+          next.className = 'btn btn-secondary btn-sm';
+          next.textContent = 'التالي →';
+          next.addEventListener('click', () => {
+            // احفظ cursor من آخر سجل في الصفحة الحالية
+            const lastRow = this._ops[this._ops.length - 1];
+            if (lastRow) {
+              const newCursor = { date: lastRow.date, created_at: lastRow.created_at };
+              // إذا كنا نتقدم لصفحة لم نزرها بعد، أضف cursor جديد
+              if (this._cursorIdx + 1 >= this._cursors.length) {
+                this._cursors.push(newCursor);
+              }
+            }
+            this._cursorIdx++;
+            this._load();
+          });
           pagerEl.appendChild(next);
         }
-        const info=document.createElement('span');
-        info.style.cssText='align-self:center;font-size:0.78rem;color:var(--text-muted);';
-        info.textContent=`صفحة ${this._page} من ${pages}`;
-        pagerEl.appendChild(info);
       }
     }
 
@@ -444,7 +484,7 @@ const AllOperationsComponent = {
 
       if (!isOfflineMode() && isOnline()) {
         try {
-          const res = await this._queryDetailedView(filters, 1, 5000);
+          const res = await this._queryDetailedView(filters, 5000, null);
           data = res.data;
         } catch (e) {
           console.warn('⚠️ Export fallback:', e.message);
@@ -660,9 +700,10 @@ const AllOperationsComponent = {
   },
 
   async onResume() {
+    this._resetPagination();
     await this._load();
   },
 };
 
 window.AllOperationsComponent = AllOperationsComponent;
-console.log('✅ AllOperationsComponent v2.2 — BND-3.8: cleanupLocalTransaction يُحدِّث account_balances عند حذف المعلق');
+console.log('✅ AllOperationsComponent v3.1 — Keyset Pagination: O(log n) بدل OFFSET');
