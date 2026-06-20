@@ -293,7 +293,9 @@ const OutboxService = {
           }
 
           // خطأ دائم لا يُجدي إعادة المحاولة — يُوقف الطابور فوراً
-          const _FATAL = new Set(['23502','23514','42703','42501','P0001','22P02','23503','22003']);
+          // 42883 = operator does not exist (type mismatch في الـ DB)
+          // 42804 = cannot cast / implicit coercion failed
+          const _FATAL = new Set(['23502','23514','42703','42501','P0001','22P02','23503','22003','42883','42804']);
           if (_FATAL.has(errCode) || errMsg.includes('does not exist')) {
             console.error(`❌ OutboxService._executeBatch: خطأ دائم (${errCode}): ${errMsg}`);
             return err(`خطأ دائم: ${errMsg}`);
