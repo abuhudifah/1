@@ -541,6 +541,19 @@ const SyncQueue = {
         reason,
       });
 
+      // تحديث sync_status في Dexie ليعكس الفشل الدائم
+      // بدونه يبقى 'pending' إلى الأبد وعداد المزامنة لا يصفر
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        const dexieTableName = item.table_name === 'batch'
+          ? TABLES.TRANSACTIONS
+          : item.table_name;
+        if (dexieTableName && item.record_id && db[dexieTableName]) {
+          await db[dexieTableName]
+            .update(item.record_id, { sync_status: 'failed' })
+            .catch(() => {});
+        }
+      }
+
       // إرسال إشعار للمدير
       window.dispatchEvent(new CustomEvent('sync:conflict', {
         detail: { item, reason, serverData },
