@@ -134,6 +134,7 @@ async function _bootApp(profile) {
   // بناء الهيكل
   _buildAppShell();
   _buildOfflineBanner();
+  _bindStoreEvents(); // قبل refreshData لضمان استقبال جميع الأحداث
 
   // ── تحديث last_login في الخلفية ──
   if (!isOfflineMode() && isOnline()) {
@@ -146,7 +147,6 @@ async function _bootApp(profile) {
   }
 
   await AppStore.refreshData();
-  _bindStoreEvents();
   _startCommandsWatcher(); // مراقبة أوامر النظام (RESET_ALL_DATA وغيرها)
   _updateSyncWidget(); // العرض الأولي لـ widget العمليات المعلقة
   _startNotificationsRealtime(profile); // اشتراك Realtime للإشعارات

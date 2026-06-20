@@ -134,6 +134,22 @@ const OutboxService = {
         .modify({ sync_status: 'pending' });
     } catch { /* تجاهل */ }
 
+    // مزامنة sync_conflicts → Dexie: أي عملية وصلت للتعارضات يجب أن يكون sync_status='failed'
+    // يُعالج العمليات العالقة التي وُضعت في sync_conflicts قبل تطبيق هذا الإصلاح
+    try {
+      const conflicts = await db.sync_conflicts.toArray();
+      for (const conflict of conflicts) {
+        const tName = conflict.table_name === 'batch'
+          ? TABLES.TRANSACTIONS
+          : conflict.table_name;
+        if (tName && conflict.record_id && db[tName]) {
+          await db[tName]
+            .update(conflict.record_id, { sync_status: 'failed' })
+            .catch(() => {});
+        }
+      }
+    } catch { /* تجاهل */ }
+
     const pending = await db.sync_queue
       .where('sync_status').equals('pending')
       .toArray();
