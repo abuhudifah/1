@@ -991,11 +991,11 @@ function _showFatalError(msg) {
 // يلتقط RESET_ALL_DATA على الأجهزة غير المتصلة عند عودتها.
 // ============================================================
 
-let _cmdWatcherTimer = null;
+let _cmdChannel = null;
 
 async function _checkSystemCommands() {
   if (!window.supabaseClient) return;
-  if (!AppStore.getState('currentUser')) return; // لم يُسجَّل الدخول بعد
+  if (!AppStore.getState('currentUser')) return;
 
   try {
     const { data: commands, error } = await supabaseClient
@@ -1011,68 +1011,94 @@ async function _checkSystemCommands() {
     if (!commands?.length) return;
 
     for (const cmd of commands) {
-      if (cmd.command === 'RESET_ALL_DATA') {
-        console.log('📢 App.js: استُلم أمر RESET_ALL_DATA — جاري تنظيف هذا الجهاز...');
-
-        // إيقاف خدمات المزامنة أولاً
-        try {
-          if (typeof SyncQueue   !== 'undefined') SyncQueue.clearRetryTimers();
-          if (typeof SyncService !== 'undefined') SyncService.stop();
-        } catch (_e) { /* non-critical */ }
-
-        // مسح Dexie المحلي
-        if (window.db) {
-          try {
-            await db.delete();
-            await db.open();
-            console.log('✅ App.js: Dexie أُعيدت تهيئتها');
-          } catch (dErr) {
-            console.warn('⚠️ App.js: Dexie delete/reopen:', dErr.message);
-          }
-        }
-
-        // مسح كاش localStorage التشغيلي
-        try {
-          localStorage.removeItem('ahu_stmt_filter_pref');
-          localStorage.removeItem('ahu_quick_banner_dismissed');
-          const toRemove = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && k.startsWith('favBanks_')) toRemove.push(k);
-          }
-          toRemove.forEach(k => localStorage.removeItem(k));
-        } catch (_e) { /* non-critical */ }
-
-        // تحديث executed_at لمنع إعادة التنفيذ من هذا الجهاز (atomic)
-        await supabaseClient
-          .from('system_commands')
-          .update({ executed_at: new Date().toISOString() })
-          .eq('id', cmd.id)
-          .is('executed_at', null);
-
-        showToast('📢 تمت إعادة ضبط البيانات من المدير — سيُعاد تحميل النظام...', 'info', 3000);
-
-        // إعادة تحميل الصفحة للحالة النظيفة
-        setTimeout(() => window.location.reload(), 2500);
-      }
+      await _executeSystemCommand(cmd);
     }
   } catch (err) {
     console.warn('⚠️ _checkSystemCommands (unexpected):', err.message);
   }
 }
 
+async function _executeSystemCommand(cmd) {
+  if (cmd.command === 'RESET_ALL_DATA') {
+    console.log('📢 App.js: استُلم أمر RESET_ALL_DATA — جاري تنظيف هذا الجهاز...');
+
+    // إيقاف خدمات المزامنة أولاً
+    try {
+      if (typeof SyncQueue   !== 'undefined') SyncQueue.clearRetryTimers();
+      if (typeof SyncService !== 'undefined') SyncService.stop();
+    } catch (_e) { /* non-critical */ }
+
+    // مسح Dexie المحلي
+    if (window.db) {
+      try {
+        await db.delete();
+        await db.open();
+        console.log('✅ App.js: Dexie أُعيدت تهيئتها');
+      } catch (dErr) {
+        console.warn('⚠️ App.js: Dexie delete/reopen:', dErr.message);
+      }
+    }
+
+    // مسح كاش localStorage التشغيلي
+    try {
+      localStorage.removeItem('ahu_stmt_filter_pref');
+      localStorage.removeItem('ahu_quick_banner_dismissed');
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('favBanks_')) toRemove.push(k);
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+    } catch (_e) { /* non-critical */ }
+
+    // تحديث executed_at لمنع إعادة التنفيذ من هذا الجهاز (atomic)
+    await supabaseClient
+      .from('system_commands')
+      .update({ executed_at: new Date().toISOString() })
+      .eq('id', cmd.id)
+      .is('executed_at', null);
+
+    showToast('📢 تمت إعادة ضبط البيانات من المدير — سيُعاد تحميل النظام...', 'info', 3000);
+
+    setTimeout(() => window.location.reload(), 2500);
+  }
+}
+
 function _startCommandsWatcher() {
-  if (_cmdWatcherTimer) return; // تجنب التكرار
-  // فحص فوري عند أول اتصال/تشغيل
+  if (_cmdChannel) return; // تجنب التكرار
+
+  // 1. فحص فوري عند البدء — يلتقط الأوامر الفائتة (Offline → Online)
   _checkSystemCommands();
-  // فحص دوري كل 30 ثانية
-  _cmdWatcherTimer = setInterval(_checkSystemCommands, 30_000);
-  // فحص فوري عند عودة الاتصال
+
+  // 2. Realtime: يُطلق _executeSystemCommand فور إدراج أمر جديد
+  _cmdChannel = supabaseClient
+    .channel('system-commands-realtime')
+    .on('postgres_changes', {
+      event  : 'INSERT',
+      schema : 'public',
+      table  : 'system_commands',
+    }, (payload) => {
+      const cmd = payload.new;
+      // نتجاهل الأوامر المُنفَّذة بالفعل (executed_at مُعيَّن)
+      if (cmd?.executed_at) return;
+      console.log('📢 App.js Realtime: أمر جديد وصل فوراً:', cmd?.command);
+      _executeSystemCommand(cmd);
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Realtime: مشترك في system_commands');
+      }
+    });
+
+  // 3. فحص فوري عند عودة الاتصال — يلتقط أوامر فاتت أثناء انقطاع Realtime
   window.addEventListener('online', _checkSystemCommands, { passive: true });
 }
 
 function _stopCommandsWatcher() {
-  if (_cmdWatcherTimer) { clearInterval(_cmdWatcherTimer); _cmdWatcherTimer = null; }
+  if (_cmdChannel) {
+    try { supabaseClient.removeChannel(_cmdChannel); } catch { /* non-critical */ }
+    _cmdChannel = null;
+  }
   window.removeEventListener('online', _checkSystemCommands);
 }
 
