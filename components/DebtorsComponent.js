@@ -14,6 +14,7 @@ const DebtorsComponent = {
   _balanceModal : null,
   _editingId    : null,
   _regionFilter : '',
+  _searchTerm   : '',
 
   async render(container) {
     container.innerHTML = '';
@@ -27,13 +28,33 @@ const DebtorsComponent = {
     topBar.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;';
     topBar.innerHTML = `<h2 style="font-size:1.2rem;font-weight:700;color:var(--text-primary);flex:1;">العملاء المديونون</h2>`;
 
-    {
+    if (isAdmin) {
       const addBtn = document.createElement('button');
       addBtn.className = 'btn btn-primary btn-sm';
       addBtn.innerHTML = '<i data-lucide="plus" style="width:14px;height:14px"></i> إضافة عميل';
       addBtn.addEventListener('click', () => this._openForm());
       topBar.appendChild(addBtn);
     }
+
+    /* ── مربع البحث بالاسم ── */
+    const searchWrap = document.createElement('div');
+    searchWrap.style.cssText = 'position:relative;display:flex;align-items:center;';
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'بحث بالاسم…';
+    searchInput.value = this._searchTerm;
+    searchInput.style.cssText = 'padding:6px 32px 6px 12px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-primary);font-size:0.85rem;outline:none;width:180px;direction:rtl;';
+    const searchIcon = document.createElement('i');
+    searchIcon.setAttribute('data-lucide', 'search');
+    searchIcon.style.cssText = 'position:absolute;left:9px;width:14px;height:14px;color:var(--text-muted);pointer-events:none;';
+    searchWrap.appendChild(searchInput);
+    searchWrap.appendChild(searchIcon);
+    searchInput.addEventListener('input', () => {
+      this._searchTerm = searchInput.value.trim();
+      this._applySearch();
+    });
+    topBar.appendChild(searchWrap);
+
     wrap.appendChild(topBar);
 
     /* ── منطقة الإحصائيات (للإدارة فقط) ── */
@@ -117,12 +138,14 @@ const DebtorsComponent = {
         return;
       }
 
+      this._debtorsCache = debtors;
+
       if (isAdmin) {
         this._renderStats(debtors, this._regionFilter);
         this._renderRegionFilter(debtors);
-        this._renderAdminTable(listEl, debtors);
+        this._renderAdminTable(listEl, this._applySearchFilter(debtors));
       } else {
-        this._renderAgentCards(listEl, debtors);
+        this._renderAgentCards(listEl, this._applySearchFilter(debtors));
       }
 
       if (window.lucide) lucide.createIcons();
@@ -191,6 +214,27 @@ const DebtorsComponent = {
       btn.addEventListener('click', () => { this._regionFilter = r; this._loadDebtors(); });
       filterEl.appendChild(btn);
     });
+  },
+
+  /* ── فلتر البحث بالاسم ── */
+  _applySearchFilter(debtors) {
+    if (!this._searchTerm) return debtors;
+    const term = this._searchTerm.toLowerCase();
+    return debtors.filter(d => (d.name || '').toLowerCase().includes(term));
+  },
+
+  /* ── إعادة عرض فوري عند الكتابة في البحث (بدون fetch) ── */
+  _applySearch() {
+    const listEl = document.getElementById('debtors-list');
+    if (!listEl || !this._debtorsCache) return;
+    const isAdmin = AuthService.isAdmin() || AuthService.isAdminAssistant();
+    const filtered = this._applySearchFilter(this._debtorsCache);
+    if (isAdmin) {
+      this._renderAdminTable(listEl, filtered);
+    } else {
+      this._renderAgentCards(listEl, filtered);
+    }
+    if (window.lucide) lucide.createIcons();
   },
 
   /* ── جدول الإدارة ── */
@@ -284,8 +328,6 @@ const DebtorsComponent = {
       else if (action === 'delete'  && d) this._deleteDebtor(id, d.name);
     });
 
-    /* تخزين بيانات العملاء للاستخدام في _openFormById */
-    this._debtorsCache = allDebtors;
   },
 
   /* ── بطاقات المندوب ── */
