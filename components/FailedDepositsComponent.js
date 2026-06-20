@@ -841,23 +841,33 @@ const FailedDepositsComponent = {
   // نسخ التفاصيل
   // ══════════════════════════════════════════════════════════
   _copyDetails(fd, bank) {
+    const SEP      = '──────────────────';
     const refunded  = parseFloat(fd.refund_amount) || 0;
     const remaining = (parseFloat(fd.amount) || 0) - refunded;
+    const users     = AppStore.getState('users') || [];
+    const agent     = users.find(u => u.id === fd.agent_id);
     const lines = [
       `إيداع فاشل`,
-      `التاريخ: ${formatDateArabic(fd.date)}${fd.time ? ' — ' + fd.time.slice(0, 5) : ''}`,
-      `البنك: ${bank?.name || '—'}`,
-      fd.account_number ? `رقم الحساب: ${fd.account_number}` : null,
+      SEP,
+      `المندوب: ${agent?.display_name || '—'}`,
+      `التاريخ: ${formatDateArabic(fd.date)}`,
+      fd.time ? `الوقت: ${fd.time.slice(0, 5)}` : null,
+      `اسم الحساب البنكي: ${bank?.name || '—'}`,
+      (fd.account_number || bank?.account_number) ? `رقم الحساب: ${fd.account_number || bank?.account_number}` : null,
+      bank?.card_number   ? `رقم البطاقة: ${bank.card_number}` : null,
+      (bank?.card_holder || bank?.card_holder_name) ? `صاحب البطاقة: ${bank.card_holder || bank.card_holder_name}` : null,
+      bank?.pin           ? `كلمة السر: ${bank.pin}` : null,
       `المبلغ: ${formatCurrency(fd.amount)}`,
       refunded > 0 ? `المسترد: ${formatCurrency(refunded)}` : null,
-      remaining > 0 && refunded > 0 ? `المتبقي: ${formatCurrency(remaining)}` : null,
-      `الحالة: ${FAILED_DEPOSIT_STATUS_LABELS[fd.status] || fd.status}`,
+      refunded > 0 && remaining > 0 ? `المتبقي: ${formatCurrency(remaining)}` : null,
       fd.branch_name   ? `الفرع: ${fd.branch_name}` : null,
       fd.branch_number ? `رقم الفرع: ${fd.branch_number}` : null,
       fd.region        ? `المنطقة: ${fd.region}` : null,
       fd.device_number ? `رقم الجهاز: ${fd.device_number}` : null,
-      fd.bank_response_text  ? `رد البنك: ${fd.bank_response_text}` : null,
-      fd.rejection_reason    ? `سبب الرفض: ${fd.rejection_reason}` : null,
+      SEP,
+      `الحالة: ${FAILED_DEPOSIT_STATUS_LABELS[fd.status] || fd.status}`,
+      fd.bank_response_text ? `رد البنك: ${fd.bank_response_text}` : null,
+      fd.rejection_reason   ? `سبب الرفض: ${fd.rejection_reason}` : null,
     ].filter(Boolean).join('\n');
 
     copyToClipboard(lines, 'تم نسخ تفاصيل الإيداع الفاشل');
