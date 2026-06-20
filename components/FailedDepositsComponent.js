@@ -611,8 +611,8 @@ const FailedDepositsComponent = {
       branch_number  : box.querySelector('#fd-branch-number').value.trim() || null,
       region         : box.querySelector('#fd-region').value.trim()        || null,
       device_number  : box.querySelector('#fd-device-number').value.trim() || null,
-      status         : FAILED_DEPOSIT_STATUS.PENDING,
     };
+    if (!this._editId) data.status = FAILED_DEPOSIT_STATUS.PENDING;
 
     const saveBtn = box.querySelector('#fd-save-btn');
     const restore = setButtonLoading(saveBtn);
