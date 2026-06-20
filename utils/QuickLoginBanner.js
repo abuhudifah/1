@@ -116,36 +116,28 @@ const QuickLoginBanner = {
         <button id="ql-banner-activate"
           style="padding:8px 16px;border-radius:8px;border:none;cursor:pointer;
             background:#fff;color:#4f46e5;font-weight:700;font-size:.84rem;
-            font-family:inherit;transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.15);"
-          onmouseenter="this.style.transform='scale(1.03)'"
-          onmouseleave="this.style.transform=''">
+            font-family:inherit;transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.15);">
           ⚡ إعداد المعادلة
         </button>
         ${supportsWebAuthn ? `
         <button id="ql-banner-webauthn"
           style="padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.5);
             cursor:pointer;background:rgba(255,255,255,.12);color:#fff;
-            font-weight:600;font-size:.84rem;font-family:inherit;transition:all .15s;"
-          onmouseenter="this.style.background='rgba(255,255,255,.22)'"
-          onmouseleave="this.style.background='rgba(255,255,255,.12)'">
+            font-weight:600;font-size:.84rem;font-family:inherit;transition:all .15s;">
           👆 إعداد البصمة
         </button>` : ''}
         <button id="ql-banner-snooze"
           style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.25);
             cursor:pointer;background:transparent;color:rgba(255,255,255,.75);
             font-size:.8rem;font-family:inherit;transition:all .15s;"
-          title="تذكير بعد ${this._SNOOZE_DAYS} أيام"
-          onmouseenter="this.style.background='rgba(255,255,255,.1)'"
-          onmouseleave="this.style.background='transparent'">
+          title="تذكير بعد ${this._SNOOZE_DAYS} أيام">
           تخطّ
         </button>
         <button id="ql-banner-dismiss"
           style="padding:8px;border-radius:8px;border:none;cursor:pointer;
             background:transparent;color:rgba(255,255,255,.6);font-size:.9rem;
             transition:color .15s;line-height:1;"
-          title="إغلاق نهائياً"
-          onmouseenter="this.style.color='#fff'"
-          onmouseleave="this.style.color='rgba(255,255,255,.6)'">✕</button>
+          title="إغلاق نهائياً">✕</button>
       </div>`;
 
     // أحداث
@@ -194,6 +186,31 @@ const QuickLoginBanner = {
       target.prepend(banner);
     } else {
       document.body.prepend(banner);
+    }
+
+    // إضافة تأثيرات hover بعد الإدراج في DOM (بدلاً من inline handlers)
+    const activateBtn = banner.querySelector('#ql-banner-activate');
+    if (activateBtn) {
+      activateBtn.addEventListener('mouseenter', () => { activateBtn.style.transform = 'scale(1.03)'; });
+      activateBtn.addEventListener('mouseleave', () => { activateBtn.style.transform = ''; });
+    }
+
+    const webAuthnBtn = banner.querySelector('#ql-banner-webauthn');
+    if (webAuthnBtn) {
+      webAuthnBtn.addEventListener('mouseenter', () => { webAuthnBtn.style.background = 'rgba(255,255,255,.22)'; });
+      webAuthnBtn.addEventListener('mouseleave', () => { webAuthnBtn.style.background = 'rgba(255,255,255,.12)'; });
+    }
+
+    const snoozeBtn = banner.querySelector('#ql-banner-snooze');
+    if (snoozeBtn) {
+      snoozeBtn.addEventListener('mouseenter', () => { snoozeBtn.style.background = 'rgba(255,255,255,.1)'; });
+      snoozeBtn.addEventListener('mouseleave', () => { snoozeBtn.style.background = 'transparent'; });
+    }
+
+    const dismissBtn = banner.querySelector('#ql-banner-dismiss');
+    if (dismissBtn) {
+      dismissBtn.addEventListener('mouseenter', () => { dismissBtn.style.color = '#fff'; });
+      dismissBtn.addEventListener('mouseleave', () => { dismissBtn.style.color = 'rgba(255,255,255,.6)'; });
     }
   },
 

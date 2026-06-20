@@ -320,7 +320,7 @@ const NotificationsComponent = {
       <div id="ns-users-section" style="display:none;margin-bottom:12px;">
         <label class="form-label">اختر المستخدمين</label>
         <div style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;
-          border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px;">
+          border:1px solid var(--border-color);border-radius:8px;padding:8px;margin-top:6px;">
           ${users.map(u => `
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
               <input type="checkbox" class="ns-user-cb" value="${escapeHtml(u.id)}">
@@ -357,11 +357,23 @@ const NotificationsComponent = {
       box.querySelector('#ns-target-type').value = 'all';
       box.querySelector('#ns-users-section').style.display = 'none';
     }
-    if (this._sendModal) this._sendModal.style.display = 'flex';
+    if (this._sendModal) {
+      this._sendModal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
   },
 
   _closeSendModal() {
-    if (this._sendModal) this._sendModal.style.display = 'none';
+    if (this._sendModal) {
+      this._sendModal.classList.add('is-closing');
+      setTimeout(() => {
+        if (this._sendModal) {
+          this._sendModal.style.display = 'none';
+          this._sendModal.classList.remove('is-closing');
+        }
+        document.body.style.overflow = '';
+      }, 220);
+    }
   },
 
   async _send() {

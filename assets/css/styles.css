@@ -3760,3 +3760,603 @@ body.dark-mode .header-user-center {
 @media (max-width: 480px) {
   .reconnection-modal-content { padding: 30px 20px; }
 }
+
+/* ================================================================
+   نظام أبو حذيفة — التحول الفني الشامل v4.0
+   الإصلاحات الكاملة + الجماليات الاحترافية
+   ================================================================ */
+
+/* ─────────────────────────────────────────────────────────────
+   القسم I: إصلاحات الأخطاء الحرجة
+   ───────────────────────────────────────────────────────────── */
+
+/* خطأ #1 — ارتفاع الهيدر الخاطئ على الجوال (كان 155px) */
+@media (max-width: 768px) {
+  :root { --header-height: 72px; }
+}
+
+/* خطأ #2 — زر إغلاق المودال صغير (كان 32px) */
+.modal-close {
+  width        : 44px !important;
+  height       : 44px !important;
+  border-radius: 50% !important;
+}
+
+/* خطأ #3 — z-index dropdown يتعارض مع الهيدر */
+.search-results-dropdown { z-index: 1010 !important; }
+
+/* خطأ #11 — z-index conflicts */
+.offline-banner { z-index: 998 !important; }
+#scroll-to-top  { z-index: 1001 !important; }
+
+/* خطأ #10 — سهم select في RTL */
+select.form-control {
+  background-position: right 14px center !important;
+  padding-right       : 36px !important;
+  padding-left        : 14px !important;
+}
+
+/* خطأ #13 — grid النموذج على الجوال الضيق */
+@media (max-width: 480px) {
+  .modal-box .modal-grid-2 {
+    display        : flex !important;
+    flex-direction : column !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم II: متغيرات CSS الفنية الجديدة
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --glow-blue  : 0 0 30px rgba(37,  99, 235, 0.40);
+  --glow-green : 0 0 30px rgba(5,  150, 105, 0.40);
+  --glow-red   : 0 0 30px rgba(220,  38,  38, 0.40);
+  --glow-gold  : 0 0 30px rgba(245, 158,  11, 0.40);
+
+  --ease-spring  : cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-soft    : cubic-bezier(0.25, 1.40, 0.50, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.20, 0.64, 1);
+}
+
+body.dark-mode {
+  --glow-blue : 0 0 36px rgba(59, 130, 246, 0.35);
+  --glow-green: 0 0 36px rgba(16, 185, 129, 0.35);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم III: خلفية Aurora المتحركة
+   ───────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: no-preference) {
+  body::before {
+    animation: auroraFlow 26s ease-in-out infinite alternate !important;
+  }
+
+  body.dark-mode::before {
+    animation: auroraDarkFlow 32s ease-in-out infinite alternate !important;
+  }
+}
+
+@keyframes auroraFlow {
+  0% {
+    background:
+      radial-gradient(ellipse 80% 60% at 10% 10%, rgba(37,99,235,0.08)  0%, transparent 65%),
+      radial-gradient(ellipse 60% 55% at 90% 80%, rgba(5,150,105,0.07)  0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 50% 50%, rgba(99,102,241,0.04) 0%, transparent 70%);
+  }
+  40% {
+    background:
+      radial-gradient(ellipse 70% 55% at 25% 20%, rgba(99,102,241,0.09) 0%, transparent 65%),
+      radial-gradient(ellipse 65% 50% at 75% 65%, rgba(245,158,11,0.06) 0%, transparent 65%),
+      radial-gradient(ellipse 55% 45% at 20% 80%, rgba(5,150,105,0.07)  0%, transparent 70%);
+  }
+  70% {
+    background:
+      radial-gradient(ellipse 75% 60% at 65% 15%, rgba(5,150,105,0.08)  0%, transparent 65%),
+      radial-gradient(ellipse 60% 55% at 15% 80%, rgba(37,99,235,0.09)  0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 85% 45%, rgba(99,102,241,0.06) 0%, transparent 70%);
+  }
+  100% {
+    background:
+      radial-gradient(ellipse 80% 60% at 80% 10%, rgba(99,102,241,0.09) 0%, transparent 65%),
+      radial-gradient(ellipse 60% 50% at 20% 75%, rgba(245,158,11,0.06) 0%, transparent 65%),
+      radial-gradient(ellipse 45% 40% at 50% 50%, rgba(37,99,235,0.04)  0%, transparent 70%);
+  }
+}
+
+@keyframes auroraDarkFlow {
+  0% {
+    background:
+      radial-gradient(ellipse 70% 55% at  8%  8%, rgba(37,99,235,0.10)  0%, transparent 60%),
+      radial-gradient(ellipse 55% 45% at 92% 82%, rgba(5,150,105,0.07)  0%, transparent 60%);
+  }
+  50% {
+    background:
+      radial-gradient(ellipse 75% 60% at 28% 22%, rgba(99,102,241,0.09) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 72% 60%, rgba(37,99,235,0.08)  0%, transparent 60%);
+  }
+  100% {
+    background:
+      radial-gradient(ellipse 65% 55% at 78% 12%, rgba(5,150,105,0.08)  0%, transparent 60%),
+      radial-gradient(ellipse 70% 50% at 12% 88%, rgba(37,99,235,0.09)  0%, transparent 60%);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم IV: المودال — أنيميشن دخول وخروج احترافي
+   ───────────────────────────────────────────────────────────── */
+
+/* دخول الـ overlay */
+.modal-overlay {
+  animation: overlayReveal 0.25s ease forwards !important;
+}
+
+@keyframes overlayReveal {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* خروج الـ overlay */
+.modal-overlay.is-closing {
+  animation       : overlayDismiss 0.22s ease forwards !important;
+  pointer-events  : none !important;
+}
+
+@keyframes overlayDismiss {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* دخول صندوق المودال — spring overshoot */
+.modal-box {
+  animation: modalRise 0.38s var(--ease-spring) forwards !important;
+}
+
+@keyframes modalRise {
+  0%   { opacity: 0; transform: translateY(36px) scale(0.88); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* خروج صندوق المودال */
+.modal-overlay.is-closing .modal-box {
+  animation: modalSink 0.20s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
+@keyframes modalSink {
+  from { opacity: 1; transform: translateY(0)    scale(1);    }
+  to   { opacity: 0; transform: translateY(20px) scale(0.95); }
+}
+
+/* خط زخرفي تحت رأس المودال */
+.modal-header {
+  position: relative;
+  padding-bottom: calc(var(--spacing-lg) - 1px);
+}
+.modal-header::after {
+  content   : '';
+  position  : absolute;
+  bottom    : 0;
+  right     : 0;
+  left      : 0;
+  height    : 1.5px;
+  background: linear-gradient(
+    90deg,
+    transparent   0%,
+    var(--accent)       25%,
+    var(--accent-light) 75%,
+    transparent  100%
+  );
+  opacity: 0.55;
+}
+
+/* زر الإغلاق — أنيميشن دوران */
+.modal-close {
+  background: rgba(220,38,38,0.06) !important;
+  border    : 1px solid rgba(220,38,38,0.12) !important;
+  transition: all 0.22s var(--ease-spring) !important;
+}
+.modal-close:hover {
+  background  : rgba(220,38,38,0.15) !important;
+  border-color: rgba(220,38,38,0.35) !important;
+  color       : #ef4444 !important;
+  transform   : scale(1.15) rotate(90deg) !important;
+  box-shadow  : var(--glow-red) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم V: الأزرار — Micro-Interactions
+   ───────────────────────────────────────────────────────────── */
+
+.btn {
+  transition:
+    background-color 0.18s ease,
+    border-color     0.18s ease,
+    color            0.18s ease,
+    transform        0.22s var(--ease-spring),
+    box-shadow       0.22s ease !important;
+}
+
+.btn-primary:hover  { box-shadow: 0 8px 24px rgba(37,99,235,0.40),  var(--glow-blue)  !important; }
+.btn-success:hover  { box-shadow: 0 8px 24px rgba(5,150,105,0.40),  var(--glow-green) !important; }
+.btn-danger:hover   { box-shadow: 0 8px 24px rgba(220,38,38,0.40),  var(--glow-red)   !important; }
+.btn-warning:hover  { box-shadow: 0 8px 24px rgba(245,158,11,0.40), var(--glow-gold)  !important; }
+
+.btn:active:not(:disabled) {
+  transform         : scale(0.95) translateY(1px) !important;
+  transition-duration: 80ms !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم VI: بطاقات KPI — Glow on Hover
+   ───────────────────────────────────────────────────────────── */
+
+.kpi-card {
+  transition:
+    transform    0.30s var(--ease-spring),
+    box-shadow   0.30s ease,
+    border-color 0.30s ease !important;
+}
+
+.kpi-card:hover { transform: translateY(-8px) scale(1.025) !important; }
+
+.kpi-card.kpi-accent:hover  { border-color: var(--accent)  !important; box-shadow: var(--shadow-lg), var(--glow-blue)  !important; }
+.kpi-card.kpi-success:hover { border-color: var(--success) !important; box-shadow: var(--shadow-lg), var(--glow-green) !important; }
+.kpi-card.kpi-danger:hover  { border-color: var(--danger)  !important; box-shadow: var(--shadow-lg), var(--glow-red)   !important; }
+.kpi-card.kpi-warning:hover { border-color: var(--warning) !important; box-shadow: var(--shadow-lg), var(--glow-gold)  !important; }
+
+/* ─────────────────────────────────────────────────────────────
+   القسم VII: صفوف الجدول — Choreography
+   ───────────────────────────────────────────────────────────── */
+
+@keyframes rowSlideIn {
+  from { opacity: 0; transform: translateX(14px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .data-table tbody tr { animation: rowSlideIn 0.28s ease both !important; }
+
+  .data-table tbody tr:nth-child(1)  { animation-delay: 0.02s !important; }
+  .data-table tbody tr:nth-child(2)  { animation-delay: 0.05s !important; }
+  .data-table tbody tr:nth-child(3)  { animation-delay: 0.08s !important; }
+  .data-table tbody tr:nth-child(4)  { animation-delay: 0.11s !important; }
+  .data-table tbody tr:nth-child(5)  { animation-delay: 0.14s !important; }
+  .data-table tbody tr:nth-child(6)  { animation-delay: 0.17s !important; }
+  .data-table tbody tr:nth-child(7)  { animation-delay: 0.20s !important; }
+  .data-table tbody tr:nth-child(8)  { animation-delay: 0.23s !important; }
+  .data-table tbody tr:nth-child(9)  { animation-delay: 0.26s !important; }
+  .data-table tbody tr:nth-child(10) { animation-delay: 0.29s !important; }
+}
+
+/* Hover accent bar جانبية */
+.data-table tbody tr {
+  border-right     : 3px solid transparent !important;
+  transition       :
+    background-color     var(--transition-fast),
+    border-right-color   0.18s ease !important;
+}
+.data-table tbody tr:hover { border-right-color: var(--accent) !important; }
+
+/* ─────────────────────────────────────────────────────────────
+   القسم VIII: بطاقات الإشعارات — أنيميشن الدخول
+   ───────────────────────────────────────────────────────────── */
+
+@keyframes notifSlideIn {
+  from { opacity: 0; transform: translateX(22px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0)    scale(1);    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #notif-list > div > .glass-card {
+    animation: notifSlideIn 0.32s var(--ease-soft) both;
+  }
+  #notif-list > div > .glass-card:nth-child(1)  { animation-delay: 0.04s; }
+  #notif-list > div > .glass-card:nth-child(2)  { animation-delay: 0.09s; }
+  #notif-list > div > .glass-card:nth-child(3)  { animation-delay: 0.14s; }
+  #notif-list > div > .glass-card:nth-child(4)  { animation-delay: 0.19s; }
+  #notif-list > div > .glass-card:nth-child(5)  { animation-delay: 0.24s; }
+  #notif-list > div > .glass-card:nth-child(n+6){ animation-delay: 0.29s; }
+}
+
+#notif-list > div > .glass-card {
+  transition:
+    transform  0.25s var(--ease-spring),
+    box-shadow 0.25s ease !important;
+}
+#notif-list > div > .glass-card:hover {
+  transform : translateX(-5px) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم IX: البطاقات الزجاجية — Shimmer on Hover
+   ───────────────────────────────────────────────────────────── */
+
+.glass-card {
+  position: relative;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .glass-card::after {
+    content   : '';
+    position  : absolute;
+    top       : 0;
+    right     : -120%;
+    width     : 55%;
+    height    : 100%;
+    background: linear-gradient(
+      108deg,
+      transparent              0%,
+      rgba(255,255,255,0.07)  50%,
+      transparent             100%
+    );
+    transition    : right 0.65s ease;
+    pointer-events: none;
+    z-index       : 0;
+  }
+  .glass-card:hover::after { right: 140%; }
+}
+
+.glass-card > * { position: relative; z-index: 1; }
+
+/* ─────────────────────────────────────────────────────────────
+   القسم X: الهيدر — Liquid Gradient
+   ───────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-header {
+    background: linear-gradient(
+      135deg,
+      #0c1628 0%,
+      #1a3a6e 35%,
+      #0f2d55 65%,
+      #0c1628 100%
+    ) !important;
+    background-size: 250% 250% !important;
+    animation: headerLiquid 18s ease-in-out infinite !important;
+  }
+
+  @keyframes headerLiquid {
+    0%   { background-position:   0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position:   0% 50%; }
+  }
+
+  /* Avatar pulse */
+  .header-avatar {
+    animation: avatarGlow 5s ease-in-out infinite !important;
+  }
+
+  @keyframes avatarGlow {
+    0%,100% { box-shadow: 0 0 0 2px rgba(59,130,246,0.35); }
+    50%      { box-shadow: 0 0 0 4px rgba(59,130,246,0.18), 0 0 22px rgba(59,130,246,0.18); }
+  }
+
+  /* Online dot */
+  .header-online-dot {
+    animation: onlinePulseV4 2s ease-in-out infinite !important;
+  }
+
+  @keyframes onlinePulseV4 {
+    0%,100% { box-shadow: 0 0 0 1px rgba(16,185,129,0.4); }
+    50%      { box-shadow: 0 0 0 4px rgba(16,185,129,0.12), 0 0 12px rgba(16,185,129,0.3); }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XI: PinDialog — لوحة مفاتيح متحركة
+   ───────────────────────────────────────────────────────────── */
+
+.pin-key {
+  backdrop-filter: blur(8px) !important;
+  transition     : all 0.14s var(--ease-spring) !important;
+}
+.pin-key:active {
+  transform : scale(0.88) !important;
+  box-shadow: 0 0 24px rgba(59,130,246,0.55) !important;
+  background: rgba(59,130,246,0.45) !important;
+}
+
+.pin-dot {
+  transition: all 0.18s var(--ease-spring) !important;
+}
+.pin-dot.filled {
+  transform : scale(1.2) !important;
+  box-shadow: 0 0 14px rgba(59,130,246,0.55) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XII: حقول الإدخال — Focus Flow
+   ───────────────────────────────────────────────────────────── */
+
+.form-control {
+  transition:
+    border-color 0.18s ease,
+    box-shadow   0.22s ease,
+    background   0.18s ease !important;
+}
+.form-control:focus {
+  box-shadow:
+    0 0 0 3px rgba(37,99,235,0.16),
+    0 4px 14px rgba(37,99,235,0.10) !important;
+}
+.form-group:focus-within .form-label {
+  color: var(--accent);
+  transition: color 0.2s ease;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XIII: Skeleton — Crystal Wave
+   ───────────────────────────────────────────────────────────── */
+
+.skeleton {
+  background: linear-gradient(
+    108deg,
+    var(--border-color)       0%,
+    var(--border-color)      25%,
+    rgba(148,163,184,0.18)   50%,
+    var(--border-color)      75%,
+    var(--border-color)     100%
+  ) !important;
+  background-size: 250% 100% !important;
+  animation      : crystalWave 1.7s ease-in-out infinite !important;
+  border-radius  : 10px !important;
+}
+
+@keyframes crystalWave {
+  0%   { background-position: 120% center; }
+  100% { background-position: -20% center; }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XIV: Dropdown البحث الذكي — Glass Entrance
+   ───────────────────────────────────────────────────────────── */
+
+.search-results-dropdown {
+  border    : 1px solid rgba(37,99,235,0.15) !important;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.16),
+    0 0 0 1px rgba(37,99,235,0.08) !important;
+  backdrop-filter: blur(24px) !important;
+}
+
+@keyframes dropdownReveal {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+.search-result-item {
+  transition:
+    background    0.15s ease,
+    padding-right 0.20s ease,
+    border-right  0.15s ease !important;
+}
+.search-result-item:hover {
+  padding-right: 20px !important;
+  border-right : 3px solid var(--accent) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XV: Toast — شريط تقدم
+   ───────────────────────────────────────────────────────────── */
+
+@keyframes toastEnterV4 {
+  from { opacity: 0; transform: translateY(24px) scale(0.88); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+.toast-item {
+  animation      : toastEnterV4 0.30s var(--ease-spring) forwards !important;
+  border-radius  : 14px !important;
+  backdrop-filter: blur(24px) !important;
+  overflow       : hidden !important;
+  position       : relative !important;
+}
+
+.toast-item::after {
+  content   : '';
+  position  : absolute;
+  bottom    : 0;
+  right     : 0;
+  width     : 100%;
+  height    : 3px;
+  background: rgba(255,255,255,0.40);
+  animation : toastProgressV4 3s linear forwards;
+}
+
+@keyframes toastProgressV4 {
+  from { width: 100%; }
+  to   { width:   0%; }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XVI: الشارات — Glow Pulse
+   ───────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: no-preference) {
+  .badge-success { animation: badgeGlowGreen  4.0s ease-in-out infinite; }
+  .badge-danger  { animation: badgeGlowRed    3.5s ease-in-out infinite; }
+  .badge-warning { animation: badgeGlowAmber  4.5s ease-in-out infinite; }
+}
+
+@keyframes badgeGlowGreen { 0%,100%{ box-shadow:none; } 50%{ box-shadow:0 0 10px rgba(5,150,105,0.32); } }
+@keyframes badgeGlowRed   { 0%,100%{ box-shadow:none; } 50%{ box-shadow:0 0 10px rgba(220,38,38,0.32); } }
+@keyframes badgeGlowAmber { 0%,100%{ box-shadow:none; } 50%{ box-shadow:0 0 10px rgba(217,119,6,0.32); } }
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XVII: شريط التنقل — Active Pill محسّن
+   ───────────────────────────────────────────────────────────── */
+
+.nav-tab {
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+.nav-tab.active {
+  background: linear-gradient(
+    135deg,
+    rgba(37,99,235,0.18) 0%,
+    rgba(59,130,246,0.12) 100%
+  ) !important;
+  box-shadow:
+    inset 0 -2px 0 0 #3b82f6,
+    0 0 14px rgba(37,99,235,0.15) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XVIII: الوضع المظلم — Neon Enhancement
+   ───────────────────────────────────────────────────────────── */
+
+body.dark-mode .kpi-card:hover     { border-color: rgba(59,130,246,0.35) !important; }
+body.dark-mode .nav-tab.active     { box-shadow: inset 0 -2px 0 0 #60a5fa, 0 0 22px rgba(96,165,250,0.22) !important; }
+body.dark-mode .btn-primary:hover  { box-shadow: 0 8px 24px rgba(37,99,235,0.45), 0 0 38px rgba(59,130,246,0.25) !important; }
+body.dark-mode .modal-box          { box-shadow: 0 24px 64px rgba(0,0,0,0.62), 0 0 0 1px rgba(59,130,246,0.12) !important; }
+body.dark-mode .glass-card:hover   { border-color: rgba(59,130,246,0.20) !important; box-shadow: var(--shadow-md), 0 0 26px rgba(37,99,235,0.08) !important; }
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XIX: الجوال — تعطيل التأثيرات الثقيلة
+   ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .btn, .nav-tab, .pin-key {
+    -webkit-tap-highlight-color: rgba(37,99,235,0.12);
+  }
+  .glass-card::after { display: none !important; }
+  .modal-box         { animation-duration: 0.28s !important; }
+}
+
+@media (max-width: 480px) {
+  body::before    { animation: none !important; }
+  .app-header     { animation: none !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XX: Accessibility — Focus Ring محسّن
+   ───────────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline       : 2.5px solid var(--accent) !important;
+  outline-offset: 3px !important;
+  box-shadow    : 0 0 0 5px rgba(37,99,235,0.14) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   القسم XXI: إصلاح الشبكات المتجاوبة (Grid Mobile Fix)
+   ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  /* تحويل شبكات العمودين إلى عمود واحد على الجوال الصغير */
+  #fd-modal-box > div[style*="grid-template-columns:1fr 1fr"],
+  #fd-modal-box > div[style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+  #fd-modal-box > div[style*="grid-template-columns"] .form-group[style*="grid-column:1/-1"],
+  #fd-modal-box > div[style*="grid-template-columns"] .form-group[style*="grid-column: 1 / -1"] {
+    grid-column: 1 !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   نهاية التحول الفني v4.0
+   ══════════════════════════════════════════════════════════════ */

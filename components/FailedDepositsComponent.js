@@ -235,10 +235,20 @@ const FailedDepositsComponent = {
     box.querySelector('#fd-error').textContent  = '';
 
     this._modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
   },
 
   _closeForm() {
-    if (this._modal) this._modal.style.display = 'none';
+    if (this._modal) {
+      this._modal.classList.add('is-closing');
+      setTimeout(() => {
+        if (this._modal) {
+          this._modal.style.display = 'none';
+          this._modal.classList.remove('is-closing');
+        }
+        document.body.style.overflow = '';
+      }, 220);
+    }
     this._editId = null;
   },
 
@@ -287,7 +297,7 @@ const FailedDepositsComponent = {
     const choice = await new Promise(resolve => {
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
-      overlay.style.cssText = 'display:flex;z-index:1100;';
+      overlay.style.display = 'flex';
 
       const box = document.createElement('div');
       box.className = 'modal-box';
@@ -302,12 +312,21 @@ const FailedDepositsComponent = {
 
       overlay.appendChild(box);
       document.body.appendChild(overlay);
+      document.body.style.overflow = 'hidden';
+
+      const closeStatusModal = () => {
+        overlay.classList.add('is-closing');
+        setTimeout(() => {
+          overlay.remove();
+          document.body.style.overflow = '';
+        }, 220);
+      };
 
       box.querySelectorAll('[data-val]').forEach(btn => {
-        btn.addEventListener('click', () => { document.body.removeChild(overlay); resolve(btn.dataset.val); });
+        btn.addEventListener('click', () => { closeStatusModal(); resolve(btn.dataset.val); });
       });
       box.querySelector('#fd-status-cancel').addEventListener('click', () => {
-        document.body.removeChild(overlay); resolve(null);
+        closeStatusModal(); resolve(null);
       });
     });
 

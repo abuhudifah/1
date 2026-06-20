@@ -36,6 +36,25 @@ const _PIN_CSS = `
     to   { opacity: 1; }
   }
 
+  @keyframes pinOverlayOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+  }
+
+  @keyframes pinDialogOut {
+    from { transform: scale(1)    translateY(0);    opacity: 1; }
+    to   { transform: scale(0.92) translateY(12px); opacity: 0; }
+  }
+
+  .pin-overlay.is-closing {
+    animation: pinOverlayOut 0.18s ease forwards;
+    pointer-events: none;
+  }
+
+  .pin-overlay.is-closing .pin-dialog {
+    animation: pinDialogOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+
   .pin-dialog {
     background: linear-gradient(160deg, #0d1f3c 0%, #0a1628 100%);
     border: 1px solid rgba(59, 130, 246, 0.25);
@@ -300,6 +319,7 @@ function _pinRender() {
   `;
 
   document.body.appendChild(overlay);
+  document.body.style.overflow = 'hidden';
 
   // ربط لوحة الأرقام بـ addEventListener (يعمل حتى مع CSP الصارم)
   _buildKeypad(overlay.querySelector('#pin-keypad'));
@@ -585,9 +605,10 @@ const PinDialog = {
   close() {
     const overlay = document.getElementById('pin-overlay');
     if (overlay) {
-      overlay.style.animation = 'pinOverlayIn 0.15s ease reverse';
-      setTimeout(() => overlay.remove(), 150);
+      overlay.classList.add('is-closing');
+      setTimeout(() => overlay.remove(), 200);
     }
+    document.body.style.overflow = '';
     _pinResolve = null;
     _pinValue   = '';
     _pinFirst   = null;
