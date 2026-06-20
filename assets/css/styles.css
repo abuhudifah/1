@@ -4348,12 +4348,26 @@ body.dark-mode .glass-card:hover   { border-color: rgba(59,130,246,0.20) !import
 @media (max-width: 480px) {
   /* تحويل شبكات العمودين إلى عمود واحد على الجوال الصغير */
   #fd-modal-box > div[style*="grid-template-columns:1fr 1fr"],
-  #fd-modal-box > div[style*="grid-template-columns: 1fr 1fr"] {
+  #fd-modal-box > div[style*="grid-template-columns: 1fr 1fr"],
+  #bank-modal-box > div[style*="grid-template-columns:1fr 1fr"],
+  #bank-modal-box > div[style*="grid-template-columns: 1fr 1fr"],
+  #journal-box div[style*="grid-template-columns:1fr 1fr"],
+  #journal-box div[style*="grid-template-columns: 1fr 1fr"],
+  #acct-add-box div[style*="grid-template-columns:1fr 1fr"],
+  #acct-add-box div[style*="grid-template-columns: 1fr 1fr"] {
     grid-template-columns: 1fr !important;
   }
-  #fd-modal-box > div[style*="grid-template-columns"] .form-group[style*="grid-column:1/-1"],
-  #fd-modal-box > div[style*="grid-template-columns"] .form-group[style*="grid-column: 1 / -1"] {
+
+  .form-group[style*="grid-column:1/-1"],
+  .form-group[style*="grid-column: 1 / -1"],
+  .form-group[style*="grid-column: 1/-1"] {
     grid-column: 1 !important;
+  }
+
+  /* شبكات 4 أعمدة → عمودان على الجوال */
+  #journal-box div[style*="grid-template-columns:repeat(4"],
+  #journal-box div[style*="grid-template-columns: repeat(4"] {
+    grid-template-columns: 1fr 1fr !important;
   }
 }
 

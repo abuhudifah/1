@@ -471,10 +471,20 @@ const DebtorsComponent = {
     }
     document.getElementById('deb-error').textContent = '';
     this._formModal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
   },
 
   _closeForm() {
-    if (this._formModal) this._formModal.style.display = 'none';
+    if (this._formModal) {
+      this._formModal.classList.add('is-closing');
+      setTimeout(() => {
+        if (this._formModal) {
+          this._formModal.style.display = 'none';
+          this._formModal.classList.remove('is-closing');
+        }
+        document.body.style.overflow = '';
+      }, 220);
+    }
     this._editingId = null;
   },
 
@@ -628,11 +638,21 @@ const DebtorsComponent = {
     document.getElementById('bal-error').textContent = '';
     document.getElementById('bal-diff-info').style.display = 'none';
     this._balanceModal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
     setTimeout(() => document.getElementById('bal-new-amount')?.focus(), 100);
   },
 
   _closeBalanceModal() {
-    if (this._balanceModal) this._balanceModal.style.display = 'none';
+    if (this._balanceModal) {
+      this._balanceModal.classList.add('is-closing');
+      setTimeout(() => {
+        if (this._balanceModal) {
+          this._balanceModal.style.display = 'none';
+          this._balanceModal.classList.remove('is-closing');
+        }
+        document.body.style.overflow = '';
+      }, 220);
+    }
   },
 
   async _saveBalanceUpdate() {

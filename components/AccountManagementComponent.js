@@ -474,7 +474,7 @@ const AccountManagementComponent = {
       <div class="modal-box" style="max-width:700px;">
         <div class="modal-header">
           <h3 class="modal-title">📊 كشف حساب الشركة: ${escapeHtml(companyName)}</h3>
-          <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="modal-close" id="company-modal-close">✕</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
           <div style="padding:12px;background:rgba(5,150,105,0.08);border-radius:12px;">
@@ -513,10 +513,16 @@ const AccountManagementComponent = {
         </div>
       </div>`;
     document.body.appendChild(modal);
-    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    document.body.style.overflow = 'hidden';
+    const closeCompanyModal = () => {
+      modal.classList.add('is-closing');
+      setTimeout(() => { modal.remove(); document.body.style.overflow = ''; }, 220);
+    };
+    modal.querySelector('#company-modal-close').addEventListener('click', closeCompanyModal);
+    modal.addEventListener('click', e => { if (e.target === modal) closeCompanyModal(); });
     if (window.lucide) lucide.createIcons();
   },
-  
+
   // عرض عهدة المناديب تجاه شركة معينة
   _showAgentCustodyModal(companyName, agentBalances) {
     const entries = Object.entries(agentBalances || {});
@@ -531,7 +537,7 @@ const AccountManagementComponent = {
       <div class="modal-box" style="max-width:500px;">
         <div class="modal-header">
           <h3 class="modal-title">👥 عهدة المناديب لشركة ${escapeHtml(companyName)}</h3>
-          <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="modal-close" id="custody-modal-close">✕</button>
         </div>
         <div class="table-wrapper">
           <table class="data-table">
@@ -550,8 +556,14 @@ const AccountManagementComponent = {
         </div>
       </div>`;
     document.body.appendChild(modal);
-    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  }, 
+    document.body.style.overflow = 'hidden';
+    const closeCustodyModal = () => {
+      modal.classList.add('is-closing');
+      setTimeout(() => { modal.remove(); document.body.style.overflow = ''; }, 220);
+    };
+    modal.querySelector('#custody-modal-close').addEventListener('click', closeCustodyModal);
+    modal.addEventListener('click', e => { if (e.target === modal) closeCustodyModal(); });
+  },
 
   // ─────────────────────────────────────────────────────────
   // لوحة الموافقات المعلقة
@@ -1849,6 +1861,7 @@ const AccountManagementComponent = {
   _openJournalModal(preAccount = null, preAccountName = null) {
     if (!this._journalModal) return;
     this._journalModal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
 
     const accOptions = (this._allAccounts || []).map(a =>
       `<option value="${escapeHtml(a.account_id)}">${escapeHtml(a.name || a.account_id)}</option>`
@@ -1881,7 +1894,16 @@ const AccountManagementComponent = {
   },
 
   _closeJournalModal() {
-    if (this._journalModal) this._journalModal.style.display = 'none';
+    if (this._journalModal) {
+      this._journalModal.classList.add('is-closing');
+      setTimeout(() => {
+        if (this._journalModal) {
+          this._journalModal.style.display = 'none';
+          this._journalModal.classList.remove('is-closing');
+        }
+        document.body.style.overflow = '';
+      }, 220);
+    }
   },
 
   _setJournalType(type) {
@@ -2182,7 +2204,10 @@ const AccountManagementComponent = {
   },
 
   _openAddModal() {
-    if (this._addModal) this._addModal.style.display = 'flex';
+    if (this._addModal) {
+      this._addModal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
     const box = document.getElementById('acct-add-box');
     if (!box) return;
 
@@ -2196,7 +2221,18 @@ const AccountManagementComponent = {
     if (window.lucide) lucide.createIcons();
   },
 
-  _closeAddModal() { if (this._addModal) this._addModal.style.display = 'none'; },
+  _closeAddModal() {
+    if (this._addModal) {
+      this._addModal.classList.add('is-closing');
+      setTimeout(() => {
+        if (this._addModal) {
+          this._addModal.style.display = 'none';
+          this._addModal.classList.remove('is-closing');
+        }
+        document.body.style.overflow = '';
+      }, 220);
+    }
+  },
 
   // ✅ إصلاح جوهري: إضافة حساب جديد (بدون RPC create_account)
   async _saveNewAccount() {
@@ -2320,7 +2356,7 @@ const AccountManagementComponent = {
     overlay.className = 'modal-overlay';
     overlay.id = 'acct-share-modal';
     overlay.style.display = 'none';
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+    overlay.addEventListener('click', e => { if (e.target === overlay) this._closeShareModal(); });
 
     overlay.innerHTML = `
       <div class="modal-box" style="max-width:420px;">
@@ -2347,11 +2383,24 @@ const AccountManagementComponent = {
         </div>
       </div>`;
 
-    overlay.querySelector('#acct-share-close').addEventListener('click', () => { overlay.style.display = 'none'; });
-    overlay.querySelector('#acct-share-cancel').addEventListener('click', () => { overlay.style.display = 'none'; });
+    overlay.querySelector('#acct-share-close').addEventListener('click', () => this._closeShareModal());
+    overlay.querySelector('#acct-share-cancel').addEventListener('click', () => this._closeShareModal());
     overlay.querySelector('#acct-share-send').addEventListener('click', () => this._sendAccountShare());
 
     return overlay;
+  },
+
+  _closeShareModal() {
+    if (this._shareModal) {
+      this._shareModal.classList.add('is-closing');
+      setTimeout(() => {
+        if (this._shareModal) {
+          this._shareModal.style.display = 'none';
+          this._shareModal.classList.remove('is-closing');
+        }
+        document.body.style.overflow = '';
+      }, 220);
+    }
   },
 
   _openShareModal(accountId, accountName, accountNumber) {
@@ -2388,6 +2437,7 @@ const AccountManagementComponent = {
       });
 
     this._shareModal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
     if (window.lucide) lucide.createIcons();
     select.focus();
   },
@@ -2429,7 +2479,7 @@ const AccountManagementComponent = {
       });
       if (!isOk(result)) throw new Error(result.error || 'فشل الإرسال');
 
-      this._shareModal.style.display = 'none';
+      this._closeShareModal();
       showToast(`✅ تم إرسال رقم الحساب إلى ${escapeHtml(target.display_name || target.username)}`, 'success');
     } catch (e) {
       errEl.textContent = formatErrorMessage(e);
