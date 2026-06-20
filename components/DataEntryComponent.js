@@ -819,8 +819,64 @@ const DataEntryComponent = {
     input.addEventListener('focus', () => render(input.value));
     document.addEventListener('click', e => { if (!wrap.contains(e.target)) dd.style.display = 'none'; });
 
+    /* ── زر إضافة عميل جديد (دائم تحت مربع البحث) ── */
+    const addClientBtn = document.createElement('button');
+    addClientBtn.type = 'button';
+    addClientBtn.style.cssText = 'margin-top:8px;font-size:0.82rem;color:var(--accent);background:rgba(37,99,235,0.07);border:1px dashed rgba(37,99,235,0.35);border-radius:8px;cursor:pointer;padding:7px 12px;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 150ms;';
+    addClientBtn.innerHTML = '<span>➕</span><span>إضافة عميل جديد</span>';
+    addClientBtn.addEventListener('mouseenter', () => { addClientBtn.style.background = 'rgba(37,99,235,0.14)'; });
+    addClientBtn.addEventListener('mouseleave', () => { addClientBtn.style.background = 'rgba(37,99,235,0.07)'; });
+
+    addClientBtn.addEventListener('click', async () => {
+      const name = input.value.trim();
+      if (!name) {
+        showToast('اكتب اسم العميل في مربع البحث أولاً', 'warning');
+        input.focus();
+        return;
+      }
+      const nameParts = name.split(/\s+/).filter(Boolean);
+      if (nameParts.length < 3) {
+        showToast('يجب إدخال الاسم الثلاثي (ثلاث كلمات على الأقل)', 'error');
+        input.focus();
+        return;
+      }
+      /* تحقق من عدم وجوده مسبقاً */
+      const exists = _getDebtors().find(d => d.name?.toLowerCase() === name.toLowerCase());
+      if (exists) {
+        input.value  = exists.name;
+        custId.value = exists.id;
+        debtInfo.style.display = '';
+        debtInfo.style.background = 'rgba(220,38,38,0.08)';
+        debtInfo.innerHTML = `💳 المديونية: <strong style="color:var(--danger);">${formatCurrency(exists.debt_amount || 0)}</strong>`;
+        dd.style.display = 'none';
+        showToast('العميل موجود مسبقاً وتم تحديده', 'info');
+        return;
+      }
+
+      addClientBtn.disabled = true;
+      addClientBtn.innerHTML = '<span>⏳</span><span>جارٍ الإضافة...</span>';
+      const newDebtor = { name, debt_amount: 0, assigned_agents: isAgent ? [uid] : [] };
+      try {
+        const r = await repo.create(TABLES.DEBTORS, newDebtor);
+        if (isOk(r)) {
+          const created = r.data?.[0] || r.data;
+          custId.value = created?.id || '';
+          debtInfo.style.display = '';
+          debtInfo.style.background = 'rgba(5,150,105,0.08)';
+          debtInfo.innerHTML = `✅ تم إنشاء عميل جديد: <strong>${escapeHtml(name)}</strong>`;
+          const _cur = AppStore.getState('debtors') || [];
+          AppStore.setState({ debtors: [..._cur, { ...newDebtor, id: created?.id }] }, 'store:debtorsLoaded');
+          dd.style.display = 'none';
+        } else {
+          showToast(`فشل إضافة العميل: ${r.error}`, 'error');
+        }
+      } catch(e) { showToast(`خطأ: ${e.message}`, 'error'); }
+      addClientBtn.disabled = false;
+      addClientBtn.innerHTML = '<span>➕</span><span>إضافة عميل جديد</span>';
+    });
+
     wrap.appendChild(input); wrap.appendChild(dd); wrap.appendChild(custId);
-    field.appendChild(wrap); field.appendChild(debtInfo);
+    field.appendChild(wrap); field.appendChild(addClientBtn); field.appendChild(debtInfo);
     return field;
   },
 
