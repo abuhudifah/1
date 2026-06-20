@@ -730,10 +730,10 @@ const DataEntryComponent = {
     const dd = document.createElement('div');
     dd.id = 'col-customer-dropdown';
     dd.style.cssText = `
-      position:absolute;top:100%;right:0;left:0;z-index:500;
+      position:absolute;top:100%;right:0;left:0;z-index:9999;
       background:var(--glass-bg-heavy);border:1px solid var(--border-color);
       border-radius:12px;box-shadow:var(--shadow-lg);
-      max-height:240px;overflow-y:auto;display:none;
+      overflow:hidden;display:none;
       backdrop-filter:blur(16px);margin-top:4px;`;
 
     const custId = document.createElement('input');
@@ -767,9 +767,9 @@ const DataEntryComponent = {
       const trimQ    = q.trim().toLowerCase();
       const allDebtors = _getDebtors();
       dd.innerHTML = '';
-      const matches = trimQ
+      const matches = (trimQ
         ? allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ))
-        : allDebtors.slice(0, 12);
+        : allDebtors).slice(0, 3);
 
       if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ)) {
         const newItem = document.createElement('div');
