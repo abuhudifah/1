@@ -10,6 +10,25 @@ const NotificationsComponent = {
 
   async render(container) {
     container.innerHTML = '';
+
+    /* ─── الإشعارات موقوفة مؤقتاً ─── */
+    if (typeof NOTIFICATIONS_PAUSED !== 'undefined' && NOTIFICATIONS_PAUSED) {
+      container.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                    padding:60px 20px;text-align:center;gap:16px;">
+          <div style="font-size:2.5rem;">🔕</div>
+          <h3 style="font-size:1.1rem;font-weight:700;color:var(--text-primary);margin:0;">
+            الإشعارات موقوفة مؤقتاً
+          </h3>
+          <p style="font-size:0.88rem;color:var(--text-secondary);margin:0;max-width:340px;line-height:1.6;">
+            تم تجميد هذا التبويب مؤقتاً لتوفير مساحة قاعدة البيانات.
+            سيتم إعادة تفعيله لاحقاً.
+          </p>
+        </div>`;
+      return;
+    }
+    /* ─────────────────────────────────────── */
+
     const wrap = document.createElement('div');
 
     const bar = document.createElement('div');

@@ -175,6 +175,7 @@ async function _pullFreshData() {
 }
 
 async function _pullNotifications(user) {
+  if (typeof NOTIFICATIONS_PAUSED !== 'undefined' && NOTIFICATIONS_PAUSED) return;
   try {
     const { data } = await supabaseClient
       .from(TABLES.NOTIFICATIONS)

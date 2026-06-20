@@ -179,6 +179,7 @@ const repo = {
   // CREATE
   // ==========================================================
   async create(tableName, data, options = {}) {
+    if (tableName === TABLES.NOTIFICATIONS && typeof NOTIFICATIONS_PAUSED !== 'undefined' && NOTIFICATIONS_PAUSED) return ok({});
     const pkColumn = _getPKColumn(tableName);
     const pkValue  = data[pkColumn] || (pkColumn === 'id' ? generateUUID() : data[pkColumn]);
 
