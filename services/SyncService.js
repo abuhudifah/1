@@ -13,30 +13,38 @@
 
 // ── ثوابت الأعمدة — عدّل هنا عند إضافة أعمدة للجداول ──────────────────────
 
+// notifications: target/read_by/hidden_by هي JSONB — لا user_id/is_read/link_to/data/sync_status في DB
 const _COLS_NOTIFICATIONS = [
-  'id', 'user_id', 'title', 'body', 'type',
-  'is_read', 'created_at', 'link_to', 'data', 'sync_status',
+  'id', 'title', 'body', 'type',
+  'target', 'sender_id', 'read_by', 'hidden_by',
+  'created_at', 'updated_at', 'metadata',
 ].join(',');
 
+// bank_accounts: لا is_active/notes/sync_status في DB
 const _COLS_BANK_ACCOUNTS = [
-  'id', 'name', 'account_number', 'company_id',
-  'is_active', 'notes', 'created_at', 'sync_status',
+  'id', 'name', 'account_number', 'card_number',
+  'company_id', 'financial_ceiling', 'reset_time',
+  'created_at', 'updated_at', 'version',
+  'internal_account_number', 'opening_balance',
 ].join(',');
 
+// debtors: لا sync_status في DB
 const _COLS_DEBTORS = [
   'id', 'name', 'phone', 'whatsapp', 'website',
   'debt_amount', 'region', 'assigned_agents',
-  'created_at', 'sync_status',
+  'created_at', 'updated_at', 'version',
 ].join(',');
 
 // لا SELECT * في المعاملات — الأعمدة الـ core فقط (تفاصيل الأسماء تأتي من transactions_detailed)
+// error_message لا يوجد في DB — sync_status موجود
 const _COLS_TRANSACTIONS = [
   'id', 'date', 'time', 'type', 'amount',
   'agent_id', 'customer_name', 'company_id',
   'bank_account_id', 'expense_type', 'details',
   'from_agent_id', 'to_agent_id',
-  'is_reversed', 'sync_status', 'error_message',
+  'is_reversed', 'sync_status',
   'created_at', 'idempotency_key',
+  'executed_by', 'expense_account_id',
 ].join(',');
 
 const _syncState = {
