@@ -1741,6 +1741,12 @@ const DataEntryComponent = {
       }
     });
   },
+
+  // يُستدعى عند العودة للتبويب — يُحدّث قوائم البنوك والشركات إن تغيّرت
+  async onResume() {
+    // إعادة تحميل بيانات النموذج من AppStore (قد تكون تُحدّثت في تبويبات أخرى)
+    if (this._container) await this.render(this._container);
+  },
 };
 
 window.DataEntryComponent = DataEntryComponent;

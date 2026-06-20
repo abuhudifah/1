@@ -18,7 +18,8 @@ const DailySummaryComponent = {
   _editModal  : null,
 
   async render(container) {
-    this._container = container;
+    this._container  = container;
+    this._currentDate = getCurrentSaudiDate();
     this._page = 1;
     this._typeFilter = '';
     container.innerHTML = '';
@@ -745,6 +746,14 @@ const DailySummaryComponent = {
   },
 
   _closeEditModal() { if(this._editModal)this._editModal.style.display='none'; },
+
+  async onResume() {
+    // إذا تغيّر اليوم أثناء الغياب → إعادة تحميل تلقائية
+    const today = getCurrentSaudiDate();
+    if (this._currentDate && this._currentDate !== today) {
+      await this.render(this._container);
+    }
+  },
 };
 
 window.DailySummaryComponent = DailySummaryComponent;

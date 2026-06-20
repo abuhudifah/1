@@ -574,6 +574,10 @@ const AllOperationsComponent = {
       }
     }
   },
+
+  async onResume() {
+    await this._load();
+  },
 };
 
 window.AllOperationsComponent = AllOperationsComponent;

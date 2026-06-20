@@ -852,6 +852,8 @@ const BankAccountsComponent = {
       showToast(`فشل الحذف: ${result.error}`, 'error');
     }
   },
+
+  async onResume() { await this._load(); },
 };
 
 window.BankAccountsComponent = BankAccountsComponent;

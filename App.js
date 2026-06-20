@@ -1,13 +1,19 @@
 /**
- * App.js — v3.0
+ * App.js — v4.0
  * نظام أبو حذيفة المتكامل للصرافة والتحويلات
  *
- * التغييرات في v3.0:
+ * التغييرات في v4.0:
  * ✅ هيدر عصري محسَّن: شعار حقيقي من الإعدادات، ارتفاع أكبر، تصميم احترافي
  * ✅ إضافة QuickLoginBanner بعد _buildAppShell() مباشرة
  * ✅ تحديث last_login عند كل دخول
  * ✅ دعم تحديث الشعار في الهيدر فوراً عند حفظه من الإعدادات
  * ✅ تحسين مؤشر المزامنة وأزرار الهيدر
+ * ✅ v4.0: Tab Panel Manager — إخفاء/إظهار بدلاً من تدمير/إعادة بناء
+ *    - التنقل فوري بعد أول تحميل (0ms بدلاً من 300-2000ms)
+ *    - TTL 15 دقيقة: تبويبات غير مُستخدمة تُتلف لتحرير الذاكرة
+ *    - onResume() لتحديث البيانات الحيّة عند العودة للتبويب
+ *    - onSleep() لإيقاف Realtime channels أثناء الإخفاء
+ *    - verifyIsActive مُخزَّن مؤقتاً (5 دقائق) لتقليل طلبات الشبكة
  */
 'use strict';
 
@@ -19,7 +25,25 @@ let _dexieOk   = false;
 
 let _activeComponentId  = null;
 let _storeEventsBound   = false;
-const _loadedComponents = new Map();
+
+// ============================================================
+// Tab Panel Manager — v4.0
+// ============================================================
+
+// مدة صلاحية التبويب المخزَّن: 15 دقيقة
+const _TAB_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * _tabPanels: Map<tabId, { el: HTMLElement, mountedAt: number }>
+ * يحتفظ بـ DOM كل تبويب تم تحميله مع وقت آخر تحميل.
+ */
+const _tabPanels = new Map();
+
+/**
+ * _verifyCache: { result, at } — نتيجة verifyIsActive مُخزَّنة 5 دقائق
+ */
+let _verifyCache = null;
+const _VERIFY_TTL_MS = 5 * 60 * 1000;
 
 // ============================================================
 // نقطة الدخول
@@ -95,6 +119,10 @@ function _scheduleDexieReopen() {
 async function _bootApp(profile) {
   _hideLoadingScreen();
   AppStore.setCurrentUser(profile);
+
+  // v4.0: تنظيف tab panels من جلسة سابقة (إن وُجدت)
+  _destroyAllTabs();
+  _invalidateVerifyCache();
 
   if (window.IdleTimer) {
     const idleMs = profile.role === ROLES.AGENT
@@ -516,12 +544,59 @@ function _buildNav() {
 }
 
 // ============================================================
-// التنقل بين التبويبات
+// التنقل بين التبويبات — v4.0 (Tab Panel Manager)
 // ============================================================
+
+// أسماء المكوّنات (للاستدعاء عبر window[name])
+const _COMPONENT_NAMES = {
+  [TABS.DASHBOARD]           : 'DashboardComponent',
+  [TABS.DATA_ENTRY]          : 'DataEntryComponent',
+  [TABS.DAILY_SUMMARY]       : 'DailySummaryComponent',
+  [TABS.BANK_ACCOUNTS]       : 'BankAccountsComponent',
+  [TABS.DEBTORS]             : 'DebtorsComponent',
+  [TABS.FAILED_DEPOSITS]     : 'FailedDepositsComponent',
+  [TABS.NOTIFICATIONS]       : 'NotificationsComponent',
+  [TABS.ALL_OPERATIONS]      : 'AllOperationsComponent',
+  [TABS.AUDIT_LOG]           : 'AuditLogComponent',
+  [TABS.USERS]               : 'UsersComponent',
+  [TABS.ACCOUNT_MANAGEMENT]  : 'AccountManagementComponent',
+  [TABS.SETTINGS]            : 'SettingsComponent',
+};
+
+/**
+ * تبويبات تتطلب تحديثاً دائماً عند العودة (بيانات حيّة لا تتحمل القِدَم).
+ * كل التبويبات الأخرى: تُعاد من cache مع استدعاء onResume() فقط.
+ */
+const _ALWAYS_REFRESH_TABS = new Set([
+  TABS.NOTIFICATIONS,   // إشعارات جديدة قد وصلت
+  TABS.AUDIT_LOG,       // سجل تدقيق: دائماً حيّ
+]);
+
+/**
+ * التحقق من صلاحية الحساب مع تخزين مؤقت 5 دقائق
+ * لتفادي طلب Supabase عند كل ضغطة تبويب.
+ */
+async function _cachedVerifyIsActive() {
+  const now = Date.now();
+  if (_verifyCache && (now - _verifyCache.at) < _VERIFY_TTL_MS) {
+    return _verifyCache.result;
+  }
+  const result = await AuthService.verifyIsActive();
+  _verifyCache = { result, at: now };
+  return result;
+}
+
+/** إبطال cache التحقق (عند أي حدث auth) */
+function _invalidateVerifyCache() {
+  _verifyCache = null;
+}
+
 async function _navigateTo(tabId) {
-  const activeResult = await AuthService.verifyIsActive();
+  // التحقق من صلاحية الحساب (مُخزَّن مؤقتاً — لا طلب شبكي في كل تنقل)
+  const activeResult = await _cachedVerifyIsActive();
   if (!isOk(activeResult)) {
     showToast('تم تعطيل حسابك. يرجى التواصل مع المدير.', 'error');
+    _invalidateVerifyCache();
     await AuthService.logout();
     _showLoginScreen();
     return;
@@ -536,44 +611,197 @@ async function _navigateTo(tabId) {
     return;
   }
 
+  // لا تكرار إذا ضغط المستخدم على التبويب النشط ذاته
+  if (tabId === _activeComponentId) return;
+
   AppStore.setCurrentTab(tabId);
   _updateNavHighlight(tabId);
-  _destroyActiveComponent();
+
+  // ── إخفاء (Sleep) التبويب الحالي ──
+  if (_activeComponentId) {
+    _sleepTab(_activeComponentId);
+  }
+
+  // ── تنظيف تبويبات منتهية TTL قبل إظهار الجديد ──
+  _evictStaleTabs(tabId);
+
+  // ── إظهار أو بناء التبويب الهدف ──
+  const existing = _tabPanels.get(tabId);
+  const needsRefresh = _ALWAYS_REFRESH_TABS.has(tabId);
+
+  if (existing && !needsRefresh) {
+    // ✅ مسار الإخفاء/الإظهار: فوري بدون استعلامات
+    _activeComponentId = tabId;
+    existing.el.style.display = '';
+    _applyTabTransition(existing.el);
+    // إعلام المكوّن بالعودة (تحديث delta إن احتاج)
+    _resumeTab(tabId);
+  } else {
+    // 🔄 مسار البناء الأول (أو إعادة بناء تبويبات "دائمة التحديث")
+    if (existing) {
+      // تلف القديم قبل إعادة البناء
+      _destroyTabPanel(tabId);
+    }
+    await _mountTab(tabId);
+  }
+}
+
+// ============================================================
+// Tab Panel Manager — دوال داخلية
+// ============================================================
+
+/**
+ * بناء تبويب للمرة الأولى وتركيبه في _contentEl.
+ */
+async function _mountTab(tabId) {
   _activeComponentId = tabId;
-  _showContentLoader();
 
-  const componentMap = {
-    [TABS.DASHBOARD]           : () => DashboardComponent?.render(_contentEl),
-    [TABS.DATA_ENTRY]          : () => DataEntryComponent?.render(_contentEl),
-    [TABS.DAILY_SUMMARY]       : () => DailySummaryComponent?.render(_contentEl),
-    [TABS.BANK_ACCOUNTS]       : () => BankAccountsComponent?.render(_contentEl),
-    [TABS.DEBTORS]             : () => DebtorsComponent?.render(_contentEl),
-    [TABS.FAILED_DEPOSITS]     : () => FailedDepositsComponent?.render(_contentEl),
-    [TABS.NOTIFICATIONS]       : () => NotificationsComponent?.render(_contentEl),
-    [TABS.ALL_OPERATIONS]      : () => AllOperationsComponent?.render(_contentEl),
-    [TABS.AUDIT_LOG]           : () => AuditLogComponent?.render(_contentEl),
-    [TABS.USERS]               : () => UsersComponent?.render(_contentEl),
-    [TABS.ACCOUNT_MANAGEMENT]  : () => AccountManagementComponent?.render(_contentEl),
-    [TABS.SETTINGS]            : () => SettingsComponent?.render(_contentEl),
-  };
+  // إنشاء حاوية مخصصة لهذا التبويب (لا نكتب على _contentEl مباشرة)
+  const panel = document.createElement('div');
+  panel.className    = 'tab-panel';
+  panel.dataset.tab  = tabId;
+  panel.style.cssText = 'min-height:100%;';
 
-  const renderer = componentMap[tabId];
-  if (renderer) await renderer();
+  // إظهار loader داخل الحاوية الجديدة
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;
+      min-height:200px;flex-direction:column;gap:12px;">
+      <div class="spinner spinner-dark"></div>
+      <p style="color:var(--text-muted);font-size:0.82rem;">جاري التحميل...</p>
+    </div>`;
+
+  // إضافة للـ DOM فوراً (يظهر loader)
+  _contentEl.appendChild(panel);
+
+  // تخزين في الخريطة
+  _tabPanels.set(tabId, { el: panel, mountedAt: Date.now() });
+
+  // رسم المكوّن
+  const name      = _COMPONENT_NAMES[tabId];
+  const component = name ? window[name] : null;
+  if (component?.render) {
+    try {
+      await component.render(panel);
+    } catch (e) {
+      console.error(`❌ _mountTab(${tabId}):`, e);
+      panel.innerHTML = `<div class="empty-state">
+        <div class="empty-state-icon">⚠️</div>
+        <div class="empty-state-text">خطأ في تحميل التبويب: ${escapeHtml(e.message)}</div></div>`;
+    }
+  }
+
   if (window.lucide) lucide.createIcons();
+  _applyTabTransition(panel);
+}
 
-  // ── انتقال التبويب: fade-in ──
-  _contentEl.classList.remove('tab-enter');
-  void _contentEl.offsetWidth; // إعادة التدفق لإعادة تشغيل الأنيميشن
-  _contentEl.classList.add('tab-enter');
+/**
+ * إخفاء تبويب وإعلام مكوّنه بالنوم (إيقاف Realtime/timers).
+ */
+function _sleepTab(tabId) {
+  const panel = _tabPanels.get(tabId);
+  if (!panel) return;
+  panel.el.style.display = 'none';
 
-  // ── stagger لأول 8 بطاقات ──
-  _contentEl.querySelectorAll('.glass-card').forEach((card, i) => {
+  const name      = _COMPONENT_NAMES[tabId];
+  const component = name ? window[name] : null;
+  if (component?.onSleep) {
+    try { component.onSleep(); } catch (e) {
+      console.warn(`⚠️ onSleep(${tabId}):`, e.message);
+    }
+  }
+}
+
+/**
+ * إعلام مكوّن تبويب ظهر من جديد بتحديث بياناته (delta فقط).
+ */
+function _resumeTab(tabId) {
+  const name      = _COMPONENT_NAMES[tabId];
+  const component = name ? window[name] : null;
+  if (component?.onResume) {
+    try { component.onResume(); } catch (e) {
+      console.warn(`⚠️ onResume(${tabId}):`, e.message);
+    }
+  }
+  if (window.lucide) lucide.createIcons();
+  const panel = _tabPanels.get(tabId);
+  if (panel) _applyTabTransition(panel.el);
+}
+
+/**
+ * تلف تبويب وحذف DOM الخاص به (عند انتهاء TTL أو logout).
+ */
+function _destroyTabPanel(tabId) {
+  const panel = _tabPanels.get(tabId);
+  if (!panel) return;
+
+  const name      = _COMPONENT_NAMES[tabId];
+  const component = name ? window[name] : null;
+  if (component?.destroy) {
+    try { component.destroy(); } catch (e) {
+      console.warn(`⚠️ destroy(${tabId}):`, e.message);
+    }
+  }
+
+  try { panel.el.remove(); } catch { /* تجاهل */ }
+  _tabPanels.delete(tabId);
+}
+
+/**
+ * تلف جميع تبويبات منتهية الـ TTL (عدا التبويب النشط).
+ * يُستدعى قبل كل تنقل لتحرير الذاكرة تدريجياً.
+ */
+function _evictStaleTabs(exceptTabId) {
+  const now = Date.now();
+  for (const [id, panel] of _tabPanels) {
+    if (id === exceptTabId) continue;
+    if (id === _activeComponentId) continue;
+    if ((now - panel.mountedAt) > _TAB_TTL_MS) {
+      console.log(`🗑️ Tab TTL evict: ${id}`);
+      _destroyTabPanel(id);
+    }
+  }
+}
+
+/**
+ * تلف جميع التبويبات (عند logout أو RESET).
+ */
+function _destroyAllTabs() {
+  for (const tabId of [..._tabPanels.keys()]) {
+    _destroyTabPanel(tabId);
+  }
+  _activeComponentId = null;
+}
+
+/**
+ * تأثير fade-in على حاوية التبويب.
+ */
+function _applyTabTransition(el) {
+  el.classList.remove('tab-enter');
+  void el.offsetWidth;
+  el.classList.add('tab-enter');
+
+  el.querySelectorAll('.glass-card').forEach((card, i) => {
     card.style.setProperty('--card-index', Math.min(i, 7));
   });
-
-  // T2 — تأثير الدخول المتتابع (Safe Enhancement)
   requestAnimationFrame(_applyStaggerAnimation);
 }
+
+// ============================================================
+// دوال التوافق (تحلّ محل الدوال القديمة المستدعاة من خارج)
+// ============================================================
+
+function _showContentLoader() {
+  // في v4.0: كل تبويب له loader داخله — هذه الدالة أصبحت no-op
+  // (تُبقى للتوافق مع أي استدعاء خارجي)
+}
+
+function _destroyActiveComponent() {
+  // في v4.0: يُستخدم _destroyAllTabs() عند logout/reset
+  // هذه الدالة تُبقى للتوافق مع _handleLogout و _showLoginScreen
+  _destroyAllTabs();
+}
+
+// ============================================================
 
 function _updateNavHighlight(activeTabId) {
   document.querySelectorAll('.nav-tab').forEach(btn => {
@@ -884,7 +1112,8 @@ function _showLoginScreen() {
   _stopNotificationsRealtime(); // إيقاف Realtime الإشعارات
   _hideLoadingScreen();
   _stopDateClock();
-  _destroyActiveComponent();
+  _invalidateVerifyCache();
+  _destroyAllTabs();            // v4.0: تلف جميع tab panels
 
   // تنظيف LoginComponent السابق إذا وُجد
   try { window.LoginComponent?.destroy?.(); } catch { /* non-critical cleanup */ }
@@ -919,7 +1148,8 @@ async function _handleLogout() {
     return;
   }
 
-  _destroyActiveComponent();
+  _invalidateVerifyCache();
+  _destroyAllTabs();
   SyncService?.stop?.();
 
   const result = await AuthService.logout();

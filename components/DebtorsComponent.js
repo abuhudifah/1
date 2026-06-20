@@ -697,6 +697,10 @@ const DebtorsComponent = {
       });
     } catch (e) { console.warn('⚠️ DebtorsComponent: فشل إرسال الإشعار:', e.message); }
   },
+
+  async onResume() {
+    if (typeof this._load === 'function') await this._load();
+  },
 };
 
 window.DebtorsComponent = DebtorsComponent;

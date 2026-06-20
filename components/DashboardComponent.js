@@ -708,7 +708,40 @@ const DashboardComponent = {
     this._dashData  = null;
     this._container = null;
   },
+
+  // ============================================================
+  // onSleep — يُستدعى من Tab Panel Manager عند إخفاء التبويب
+  // يُوقف Realtime لتوفير الاتصالات أثناء الغياب
+  // ============================================================
+  onSleep() {
+    if (this._realtimeSub) {
+      try { supabaseClient.removeChannel(this._realtimeSub); } catch { /* تجاهل */ }
+      this._realtimeSub = null;
+      this._isSubscribed = false;
+    }
+  },
+
+  // ============================================================
+  // onResume — يُستدعى من Tab Panel Manager عند إظهار التبويب
+  // يُعيد تفعيل Realtime ويُحدّث البيانات إن تغيّر التاريخ
+  // ============================================================
+  async onResume() {
+    const todayDate = getCurrentSaudiDate();
+    const staleDate = this._selectedDate !== todayDate;
+
+    // إذا تغيّر اليوم (جلسة ليلية طويلة) → تحديث تلقائي
+    if (staleDate) {
+      this._selectedDate = todayDate;
+      const datePicker = document.getElementById('dash-date-picker');
+      if (datePicker) datePicker.value = todayDate;
+      await this._loadAll();
+    }
+
+    // إعادة تفعيل Realtime دائماً عند العودة
+    this._subscribeRealtime();
+    console.log('▶️ DashboardComponent.onResume()');
+  },
 };
 
 window.DashboardComponent = DashboardComponent;
-console.log('✅ DashboardComponent v4.2 — صافي KPI من account_balances | رصيد المناديب دائماً من account_balances');
+console.log('✅ DashboardComponent v4.3 — Tab Panel Manager: onSleep/onResume | TTL-aware');
