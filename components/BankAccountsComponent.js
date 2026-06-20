@@ -110,7 +110,7 @@ const BankAccountsComponent = {
         </div>`; return;
       }
 
-      // جلب معرّفات البنوك النشطة اليوم (للترتيب وعرض بيانات النشاط فقط، لا للفلترة)
+      // جلب البنوك التي أودع فيها المندوب في التاريخ المحدد
       this._agentActiveIds = new Set();
       try {
         if (!isOfflineMode() && isOnline()) {
@@ -128,12 +128,15 @@ const BankAccountsComponent = {
         }
       } catch (e) { console.warn('⚠️ BankAccounts: فشل تحميل الحسابات النشطة:', e.message); }
 
-      // البنوك النشطة تُعرض أولاً
-      bankAccounts.sort((a, b) => {
-        const aActive = this._agentActiveIds.has(a.id) ? 0 : 1;
-        const bActive = this._agentActiveIds.has(b.id) ? 0 : 1;
-        return aActive - bActive;
-      });
+      // يعرض فقط البنوك التي أودع فيها المندوب في هذا التاريخ
+      bankAccounts = bankAccounts.filter(b => this._agentActiveIds.has(b.id));
+
+      if (!bankAccounts.length) {
+        el.innerHTML=`<div class="empty-state" style="grid-column:1/-1;">
+          <div class="empty-state-icon">📭</div>
+          <div class="empty-state-text">لا توجد إيداعات في هذا التاريخ</div>
+        </div>`; return;
+      }
     } else {
       bankAccounts = AppStore.getState('bankAccounts')||[];
       // تطبيق فلتر الشركة إن وُجد
@@ -673,6 +676,9 @@ const BankAccountsComponent = {
     const text = [
       `🏦 كشف حساب بنكي — ${bank.name}`,
       `📅 ${date}`,
+      bank.account_number ? `🔢 رقم الحساب: ${bank.account_number}` : '',
+      bank.card_number    ? `💳 رقم البطاقة: ${bank.card_number}`   : '',
+      bank.card_holder    ? `👤 صاحب الحساب: ${bank.card_holder}`   : '',
       `─────────────────`,
       ...rows,
       `─────────────────`,
@@ -684,7 +690,7 @@ const BankAccountsComponent = {
       `✅ المتبقي: ${Math.round(remain).toLocaleString('en-US')} ر.س`,
       `─────────────────`,
       `نظام أبو حذيفة 🔐`,
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     copyToClipboard(text, 'تم نسخ كشف الحساب البنكي');
   },
@@ -696,6 +702,9 @@ const BankAccountsComponent = {
     const text   = [
       `🏦 ${bank.name}`,
       `📅 ${formatDateArabic(this._selectedDate)}`,
+      bank.account_number ? `🔢 رقم الحساب: ${bank.account_number}` : '',
+      bank.card_number    ? `💳 رقم البطاقة: ${bank.card_number}`   : '',
+      bank.card_holder    ? `👤 صاحب الحساب: ${bank.card_holder}`   : '',
       `─────────────────`,
       `💰 إجمالي الإيداعات: ${Math.round(total).toLocaleString('en-US')} ر.س`,
       `🎯 السقف اليومي: ${Math.round(ceiling).toLocaleString('en-US')} ر.س`,
@@ -703,7 +712,7 @@ const BankAccountsComponent = {
       `✅ المتبقي: ${Math.round(remain).toLocaleString('en-US')} ر.س`,
       `─────────────────`,
       `نظام أبو حذيفة 🔐`,
-    ].join('\n');
+    ].filter(Boolean).join('\n');
     copyToClipboard(text, 'تم نسخ ملخص الحساب البنكي');
   },
 
