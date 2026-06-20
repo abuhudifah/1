@@ -20,12 +20,11 @@ const DashboardComponent = {
   _chart1      : null,
   _chart2      : null,
   _container   : null,
-  _realtimeSub : null,
-  _dashData    : null,
-  _selectedDate: null,
-  _viewMode    : 'day',
-  // FIX-5b: تتبع هل الـ subscription نشطة لمنع التكرار
-  _isSubscribed: false,
+  _unsubscribeRealtime: null, // دالة إلغاء الاشتراك من RealtimeChannelManager
+  _isSubscribed       : false,
+  _dashData           : null,
+  _selectedDate       : null,
+  _viewMode           : 'day',
 
   async render(container) {
     this._container    = container;
@@ -639,86 +638,58 @@ const DashboardComponent = {
   // ============================================================
 
   _subscribeRealtime() {
-    // FIX-5b: إلغاء أي subscription قديمة قبل إنشاء جديدة
-    if (this._realtimeSub) {
-      try {
-        supabaseClient.removeChannel(this._realtimeSub);
-      } catch (e) {
-        console.warn('⚠️ DashboardComponent: خطأ في إلغاء subscription القديمة:', e.message);
-      }
-      this._realtimeSub = null;
-      this._isSubscribed = false;
-    }
-
-    if (this._isSubscribed) return; // حماية إضافية
+    if (this._isSubscribed) return;
 
     let _debounceTimer = null;
 
-    // FIX-3: استخدام supabaseClient المُوحَّد
-    this._realtimeSub = supabaseClient
-      .channel('dash-realtime-v4-1') // رقم إصدار جديد لتجنب تعارض channel القديم
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+    // تسجيل عبر ChannelManager — يمنع التكرار تلقائياً
+    this._unsubscribeRealtime = RealtimeChannelManager.subscribe(
+      'dash-transactions',
+      'transactions',
+      { event: '*' },
+      () => {
         clearTimeout(_debounceTimer);
         _debounceTimer = setTimeout(() => {
-          // التحقق أن المكوّن لا يزال مُثبَّتاً
           if (!document.getElementById('dash-root')) return;
           const { from, to } = this._getDateRange();
           this._loadKPI(from, to);
           this._loadAgentsBoxes(from, to);
           this._loadRecentTx(from, to);
         }, 1500);
-      })
-      .subscribe();
+      }
+    );
 
     this._isSubscribed = true;
-    console.log('📡 DashboardComponent: Realtime subscription نشطة');
   },
 
-  // ============================================================
-  // FIX-5b: destroy() — تُلغي الـ subscription وتُدمر الـ charts
-  //         App.js يستدعيها تلقائياً عند كل تغيير تبويب
-  // ============================================================
   destroy() {
     console.log('🧹 DashboardComponent.destroy(): تنظيف الموارد');
 
-    // إلغاء Realtime subscription
-    if (this._realtimeSub) {
-      try {
-        // FIX-3: استخدام supabaseClient المُوحَّد
-        supabaseClient.removeChannel(this._realtimeSub);
-        console.log('✅ DashboardComponent: Realtime subscription أُلغيت');
-      } catch (e) {
-        console.warn('⚠️ DashboardComponent: خطأ في إلغاء subscription:', e.message);
-      }
-      this._realtimeSub = null;
-      this._isSubscribed = false;
+    if (typeof this._unsubscribeRealtime === 'function') {
+      this._unsubscribeRealtime();
+      this._unsubscribeRealtime = null;
     }
+    this._isSubscribed = false;
 
-    // تدمير Chart.js لتحرير ذاكرة Canvas
     if (this._chart1) {
-      try { this._chart1.destroy(); } catch { /* non-critical canvas cleanup */ }
+      try { this._chart1.destroy(); } catch { }
       this._chart1 = null;
     }
     if (this._chart2) {
-      try { this._chart2.destroy(); } catch { /* non-critical canvas cleanup */ }
+      try { this._chart2.destroy(); } catch { }
       this._chart2 = null;
     }
 
-    // مسح البيانات المخزنة
     this._dashData  = null;
     this._container = null;
   },
 
-  // ============================================================
-  // onSleep — يُستدعى من Tab Panel Manager عند إخفاء التبويب
-  // يُوقف Realtime لتوفير الاتصالات أثناء الغياب
-  // ============================================================
   onSleep() {
-    if (this._realtimeSub) {
-      try { supabaseClient.removeChannel(this._realtimeSub); } catch { /* تجاهل */ }
-      this._realtimeSub = null;
-      this._isSubscribed = false;
+    if (typeof this._unsubscribeRealtime === 'function') {
+      this._unsubscribeRealtime();
+      this._unsubscribeRealtime = null;
     }
+    this._isSubscribed = false;
   },
 
   // ============================================================

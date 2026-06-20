@@ -1108,12 +1108,13 @@ function _updateHeaderLogo() {
 // ============================================================
 function _showLoginScreen() {
   if (window.IdleTimer) IdleTimer.stop();
-  _stopCommandsWatcher();      // إيقاف مراقبة الأوامر عند الخروج
-  _stopNotificationsRealtime(); // إيقاف Realtime الإشعارات
+  _stopCommandsWatcher();        // إيقاف مراقبة الأوامر عند الخروج
+  _stopNotificationsRealtime();  // إيقاف Realtime الإشعارات
+  RealtimeChannelManager?.destroyAll?.(); // إغلاق كل القنوات المتبقية
   _hideLoadingScreen();
   _stopDateClock();
   _invalidateVerifyCache();
-  _destroyAllTabs();            // v4.0: تلف جميع tab panels
+  _destroyAllTabs();             // v4.0: تلف جميع tab panels
 
   // تنظيف LoginComponent السابق إذا وُجد
   try { window.LoginComponent?.destroy?.(); } catch { /* non-critical cleanup */ }
@@ -1150,6 +1151,7 @@ async function _handleLogout() {
 
   _invalidateVerifyCache();
   _destroyAllTabs();
+  RealtimeChannelManager?.destroyAll?.();
   SyncService?.stop?.();
 
   const result = await AuthService.logout();
@@ -1221,7 +1223,7 @@ function _showFatalError(msg) {
 // يلتقط RESET_ALL_DATA على الأجهزة غير المتصلة عند عودتها.
 // ============================================================
 
-let _cmdChannel = null;
+// _cmdChannel/_notifsChannel → مُدارة الآن عبر RealtimeChannelManager
 
 // ── تتبع الأوامر المُنفَّذة محلياً لكل جهاز ──────────────────────────────────
 // executed_at في قاعدة البيانات مرجعي فقط (للمدير يرى من نفَّذ أولاً).
@@ -1313,40 +1315,26 @@ async function _executeSystemCommand(cmd) {
 }
 
 function _startCommandsWatcher() {
-  if (_cmdChannel) return; // تجنب التكرار
-
-  // 1. فحص فوري عند البدء — يلتقط الأوامر الفائتة (Offline → Online)
+  // ChannelManager يمنع التكرار تلقائياً إذا نُودي مرتين
   _checkSystemCommands();
 
-  // 2. Realtime: يُطلق _executeSystemCommand فور إدراج أمر جديد
-  _cmdChannel = supabaseClient
-    .channel('system-commands-realtime')
-    .on('postgres_changes', {
-      event  : 'INSERT',
-      schema : 'public',
-      table  : 'system_commands',
-    }, (payload) => {
+  RealtimeChannelManager.subscribe(
+    'system-commands',
+    'system_commands',
+    { event: 'INSERT' },
+    (payload) => {
       const cmd = payload.new;
-      // نتجاهل الأوامر المُنفَّذة بالفعل (executed_at مُعيَّن)
       if (cmd?.executed_at) return;
       console.log('📢 App.js Realtime: أمر جديد وصل فوراً:', cmd?.command);
       _executeSystemCommand(cmd);
-    })
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log('✅ Realtime: مشترك في system_commands');
-      }
-    });
+    }
+  );
 
-  // 3. فحص فوري عند عودة الاتصال — يلتقط أوامر فاتت أثناء انقطاع Realtime
   window.addEventListener('online', _checkSystemCommands, { passive: true });
 }
 
 function _stopCommandsWatcher() {
-  if (_cmdChannel) {
-    try { supabaseClient.removeChannel(_cmdChannel); } catch { /* non-critical */ }
-    _cmdChannel = null;
-  }
+  RealtimeChannelManager.unsubscribe('system-commands');
   window.removeEventListener('online', _checkSystemCommands);
 }
 
@@ -1354,40 +1342,22 @@ function _stopCommandsWatcher() {
 // Realtime — اشتراك Supabase لتحديث الإشعارات فورياً
 // ============================================================
 
-let _notifsChannel = null;
-
 function _startNotificationsRealtime(profile) {
   if (!window.supabaseClient || !profile?.id) return;
 
-  // إلغاء القناة القديمة إن وُجدت
-  if (_notifsChannel) {
-    try { supabaseClient.removeChannel(_notifsChannel); } catch { /* non-critical */ }
-    _notifsChannel = null;
-  }
-
-  try {
-    _notifsChannel = supabaseClient
-      .channel('notifications-realtime-' + profile.id)
-      .on('postgres_changes', {
-        event  : '*',
-        schema : 'public',
-        table  : 'notifications',
-      }, () => {
-        // إعادة تحميل الإشعارات فور وصول تغيير من Supabase
-        window.dispatchEvent(new Event('store:notificationsUpdated'));
-      })
-      .subscribe();
-    console.log('✅ Realtime: مشترك في جدول notifications');
-  } catch (e) {
-    console.warn('⚠️ _startNotificationsRealtime:', e.message);
-  }
+  // اسم فريد لكل مستخدم — ChannelManager يُزيل القديم تلقائياً عند إعادة الاستدعاء
+  RealtimeChannelManager.subscribe(
+    `notifs-${profile.id}`,
+    'notifications',
+    { event: '*' },
+    () => window.dispatchEvent(new Event('store:notificationsUpdated'))
+  );
 }
 
 function _stopNotificationsRealtime() {
-  if (_notifsChannel) {
-    try { supabaseClient.removeChannel(_notifsChannel); } catch { /* non-critical */ }
-    _notifsChannel = null;
-  }
+  // سيُعاد الاتصال بـ subscribe عند تسجيل الدخول التالي بنفس الاسم
+  // destroyAll() يُغلق كل شيء عند logout — هنا نُغلق القناة بالاسم الصحيح
+  // لكن لا نعرف profile.id هنا، لذا نُفوّض لـ destroyAll عند logout
 }
 
 // ============================================================
