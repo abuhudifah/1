@@ -606,6 +606,16 @@ const DataEntryComponent = {
       btnComp.style.color      = colMode === 'company'  ? '#fff' : 'var(--text-secondary)';
       customerSection.style.display = colMode === 'customer' ? '' : 'none';
       companySection.style.display  = colMode === 'company'  ? '' : 'none';
+      const notesLabel = notesField.querySelector('label');
+      if (colMode === 'company') {
+        if (notesLabel) notesLabel.innerHTML = 'اسم الطرف المسلَّم <span style="color:var(--danger);">*</span>';
+        notesInput.placeholder = 'اسم الشخص أو الجهة المسلَّم إليها';
+        notesInput.required = true;
+      } else {
+        if (notesLabel) notesLabel.innerHTML = 'ملاحظات (اختياري)';
+        notesInput.placeholder = 'أي تفاصيل إضافية';
+        notesInput.required = false;
+      }
     };
 
     btnCust.addEventListener('click', () => { colMode = 'customer'; refreshToggle(); });
@@ -678,6 +688,11 @@ const DataEntryComponent = {
     refreshToggle();
 
     frag.appendChild(this._saveBtn('col-save-btn', '💾 حفظ التحصيل', async () => {
+      if (colMode === 'company' && !notesInput.value.trim()) {
+        notesInput.focus();
+        showToast('يرجى إدخال اسم الطرف المسلَّم', 'error');
+        return;
+      }
       const companyId = document.getElementById('col-company-id')?.value;
       const saveBeneficiary = document.getElementById('col-save-beneficiary')?.checked;
       let companyToSave = null;
