@@ -342,10 +342,10 @@ const DataEntryComponent = {
 
     const dropdown = document.createElement('div');
     dropdown.style.cssText = `
-      position:absolute;top:100%;right:0;left:0;z-index:500;
+      position:absolute;top:100%;right:0;left:0;z-index:9999;
       background:var(--glass-bg-heavy);border:1px solid var(--border-color);
       border-radius:12px;box-shadow:var(--shadow-lg);
-      max-height:240px;overflow-y:auto;display:none;
+      overflow:hidden;display:none;
       backdrop-filter:blur(16px);margin-top:4px;`;
 
     const hiddenId = document.createElement('input');
@@ -361,15 +361,11 @@ const DataEntryComponent = {
     const renderDropdown = (query) => {
       const q = query.trim().toLowerCase();
       dropdown.innerHTML = '';
-      
-      let matches = [];
-      if (q) {
-        matches = allBanks.filter(b => b.name?.toLowerCase().includes(q));
-      } else {
-        matches = allBanks.slice(0, 10);
-      }
+      if (q.length < 2) { dropdown.style.display = 'none'; return; }
 
-      if (matches.length === 0 && q) {
+      const matches = allBanks.filter(b => b.name?.toLowerCase().includes(q)).slice(0, 3);
+
+      if (!matches.length) {
         const noResult = document.createElement('div');
         noResult.style.cssText = 'padding:10px 14px;color:var(--text-muted);font-size:0.82rem;';
         noResult.textContent = 'لا توجد نتائج';
@@ -393,7 +389,7 @@ const DataEntryComponent = {
         });
         dropdown.appendChild(item);
       });
-      dropdown.style.display = matches.length ? '' : 'none';
+      dropdown.style.display = '';
     };
 
     input.addEventListener('input', () => {
@@ -401,7 +397,6 @@ const DataEntryComponent = {
       resultDisplay.style.display = 'none';
       renderDropdown(input.value);
     });
-    input.addEventListener('focus', () => renderDropdown(input.value));
     document.addEventListener('click', e => { if (!wrap.contains(e.target)) dropdown.style.display = 'none'; });
 
     wrap.appendChild(input);
@@ -425,10 +420,10 @@ const DataEntryComponent = {
 
     const dropdown = document.createElement('div');
     dropdown.style.cssText = `
-      position:absolute;top:100%;right:0;left:0;z-index:500;
+      position:absolute;top:100%;right:0;left:0;z-index:9999;
       background:var(--glass-bg-heavy);border:1px solid var(--border-color);
       border-radius:12px;box-shadow:var(--shadow-lg);
-      max-height:240px;overflow-y:auto;display:none;
+      overflow:hidden;display:none;
       backdrop-filter:blur(16px);margin-top:4px;`;
 
     const hiddenId = document.createElement('input');
@@ -440,22 +435,17 @@ const DataEntryComponent = {
     resultDisplay.style.cssText = 'display:none;margin-top:6px;padding:8px 12px;border-radius:8px;font-size:0.82rem;';
 
     let companies = AppStore.getState('companies') || [];
-    // تصفية حسب صلاحيات المندوب
     const allowedCompanies = (typeof AuthService !== 'undefined') ? AuthService.getAllowedCompanies() : null;
     if (allowedCompanies) companies = companies.filter(c => allowedCompanies.includes(c.id));
 
     const renderDropdown = (query) => {
       const q = query.trim().toLowerCase();
       dropdown.innerHTML = '';
+      if (q.length < 2) { dropdown.style.display = 'none'; return; }
 
-      let matches = [];
-      if (q) {
-        matches = companies.filter(c => c.name?.toLowerCase().includes(q));
-      } else {
-        matches = companies.slice(0, 10);
-      }
+      const matches = companies.filter(c => c.name?.toLowerCase().includes(q)).slice(0, 3);
 
-      if (matches.length === 0 && q) {
+      if (!matches.length) {
         const noResult = document.createElement('div');
         noResult.style.cssText = 'padding:10px 14px;color:var(--text-muted);font-size:0.82rem;';
         noResult.textContent = 'لا توجد شركات تطابق البحث';
@@ -479,7 +469,7 @@ const DataEntryComponent = {
         });
         dropdown.appendChild(item);
       });
-      dropdown.style.display = matches.length ? '' : 'none';
+      dropdown.style.display = '';
     };
 
     input.addEventListener('input', () => {
@@ -487,7 +477,6 @@ const DataEntryComponent = {
       resultDisplay.style.display = 'none';
       renderDropdown(input.value);
     });
-    input.addEventListener('focus', () => renderDropdown(input.value));
     document.addEventListener('click', e => { if (!wrap.contains(e.target)) dropdown.style.display = 'none'; });
 
     wrap.appendChild(input);
@@ -767,9 +756,8 @@ const DataEntryComponent = {
       const trimQ    = q.trim().toLowerCase();
       const allDebtors = _getDebtors();
       dd.innerHTML = '';
-      const matches = (trimQ
-        ? allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ))
-        : allDebtors).slice(0, 3);
+      if (trimQ.length < 2) { dd.style.display = 'none'; return; }
+      const matches = allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ)).slice(0, 3);
 
       if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ)) {
         const newItem = document.createElement('div');
@@ -827,11 +815,10 @@ const DataEntryComponent = {
         dd.appendChild(item);
       });
 
-      dd.style.display = (matches.length || trimQ) ? '' : 'none';
+      dd.style.display = '';
     };
 
     input.addEventListener('input', () => { custId.value = ''; debtInfo.style.display = 'none'; render(input.value); });
-    input.addEventListener('focus', () => render(input.value));
     document.addEventListener('click', e => { if (!wrap.contains(e.target)) dd.style.display = 'none'; });
 
     /* ── زر إضافة عميل جديد (دائم تحت مربع البحث) ── */
