@@ -94,23 +94,25 @@ const RPC = Object.freeze({
 // ============================================================
 
 const TRANSACTION_TYPES = Object.freeze({
-  COLLECTION        : 'collection',
-  DEPOSIT           : 'deposit',
-  BANK_WITHDRAWAL   : 'bank_withdrawal',
-  EXPENSE           : 'expense',
-  RECEIPT           : 'receipt',
-  DELIVERY          : 'delivery',
-  REFUND_SETTLEMENT : 'refund_settlement',
+  COLLECTION           : 'collection',
+  DEPOSIT              : 'deposit',
+  BANK_WITHDRAWAL      : 'bank_withdrawal',
+  EXPENSE              : 'expense',
+  RECEIPT              : 'receipt',
+  DELIVERY             : 'delivery',
+  REFUND_SETTLEMENT    : 'refund_settlement',
+  FAILED_DEPOSIT_REFUND: 'failed_deposit_refund',
 });
 
 const TRANSACTION_TYPE_LABELS = Object.freeze({
-  collection        : 'تحصيل',
-  deposit           : 'إيداع بنكي',
-  bank_withdrawal   : 'سحب بنكي',
-  expense           : 'مصروف',
-  receipt           : 'تحويل',
-  delivery          : 'تسليم مباشر',
-  refund_settlement : 'تسوية استرداد',
+  collection           : 'تحصيل',
+  deposit              : 'إيداع بنكي',
+  bank_withdrawal      : 'سحب بنكي',
+  expense              : 'مصروف',
+  receipt              : 'تحويل',
+  delivery             : 'تسليم مباشر',
+  refund_settlement    : 'تسوية استرداد',
+  failed_deposit_refund: 'استرداد إيداع فاشل',
 });
 
 // ============================================================
@@ -213,17 +215,21 @@ const SYNC_ACTIONS = Object.freeze({
 // ============================================================
 
 const FAILED_DEPOSIT_STATUS = Object.freeze({
-  PENDING  : 'pending',
-  CLAIMED  : 'claimed',
-  REFUNDED : 'refunded',
-  REJECTED : 'rejected',
+  PENDING         : 'pending',
+  CLAIMED         : 'claimed',
+  BANK_PROCESSING : 'bank_processing',
+  PARTIAL_REFUND  : 'partial_refund',
+  REFUNDED        : 'refunded',
+  REJECTED        : 'rejected',
 });
 
 const FAILED_DEPOSIT_STATUS_LABELS = Object.freeze({
-  pending  : 'معلق',
-  claimed  : 'مطالب به',
-  refunded : 'مسترد',
-  rejected : 'مرفوض',
+  pending         : 'معلّق',
+  claimed         : 'قيد المطالبة',
+  bank_processing : 'إجراءات البنك',
+  partial_refund  : 'استرداد جزئي',
+  refunded        : 'مُستردّ',
+  rejected        : 'مرفوض',
 });
 
 // ============================================================

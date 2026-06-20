@@ -1417,6 +1417,8 @@ const AccountManagementComponent = {
         return { label: 'إيداع نقدي', details: withUser(`عليكم إيداع نقدي إلى حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
       if (tx.type === 'bank_withdrawal')
         return { label: 'سحب بنكي', details: withUser(`لكم سحب نقدي من حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
+      if (tx.type === 'failed_deposit_refund')
+        return { label: 'استرداد إيداع فاشل', details: withUser(`عليكم استرداد إيداع فاشل من حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
       const dir = debit > 0 ? 'لكم' : 'عليكم';
       return { label: 'قيد بسيط', details: withUser(`${dir} قيد بسيط`) };
     }
@@ -1433,6 +1435,8 @@ const AccountManagementComponent = {
         return { label: 'إيداع نقدي', details: withUser(`لكم إيداع نقدي إلى حساب ${tx.bankName || '—'}`) };
       if (tx.type === 'bank_withdrawal')
         return { label: 'سحب بنكي', details: withUser(`عليكم سحب نقدي من حساب ${tx.bankName || '—'}`) };
+      if (tx.type === 'failed_deposit_refund')
+        return { label: 'استرداد إيداع فاشل', details: withUser(`لكم استرداد إيداع فاشل من حساب ${tx.bankName || '—'}`) };
       if (tx.type === 'expense')
         return { label: `مصروف ${tx.expense_type || 'عام'}`, details: withUser(`مصروف ${tx.expense_type || 'عام'}`) };
       if (tx.type === 'delivery' || tx.type === 'receipt') {
