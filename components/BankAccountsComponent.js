@@ -805,9 +805,22 @@ const BankAccountsComponent = {
     box.querySelector('#bk-reset').value       = bank?.reset_time||'00:00:00';
     box.querySelector('#bk-error').textContent = '';
     this._modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
   },
 
-  _closeModal() { if(this._modal) this._modal.style.display='none'; this._editId=null; },
+  _closeModal() {
+    if (this._modal) {
+      this._modal.classList.add('is-closing');
+      setTimeout(() => {
+        if (this._modal) {
+          this._modal.style.display = 'none';
+          this._modal.classList.remove('is-closing');
+        }
+        document.body.style.overflow = '';
+      }, 220);
+    }
+    this._editId = null;
+  },
 
   async _save() {
     const box    = document.getElementById('bank-modal-box');

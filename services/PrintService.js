@@ -185,6 +185,23 @@ const PrintService = (() => {
 /* ══ إخفاء شريط الأدوات عند الطباعة أو التقاط html2canvas ══ */
 #ps-overlay.ps-capturing .ps-toolbar{display:none !important;}
 
+/* ══ تأثير الخروج ══ */
+#ps-overlay.is-closing{
+  animation:psOverlayOut .22s ease forwards;
+  pointer-events:none;
+}
+@keyframes psOverlayOut{
+  from{opacity:1;}
+  to  {opacity:0;}
+}
+
+/* ══ شريط الأدوات على الجوال ══ */
+@media (max-width:600px){
+  .ps-toolbar button{padding:9px 12px;font-size:12px;}
+  .ps-tb-label{font-size:11px;}
+  .ps-tb-sep{display:none;}
+}
+
 /* ══ طباعة ══ */
 @media print{
   body.ps-printing > *:not(#ps-overlay){display:none !important;}
@@ -260,6 +277,7 @@ const PrintService = (() => {
       </div>`;
 
     document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
 
     /* أدخل محتوى التقرير */
     document.getElementById('ps-report-content').appendChild(reportEl);
@@ -323,8 +341,10 @@ const PrintService = (() => {
 
     /* زر الإغلاق */
     const _close = () => {
-      overlay.remove();
+      overlay.classList.add('is-closing');
+      document.body.style.overflow = '';
       document.body.classList.remove('ps-printing');
+      setTimeout(() => overlay.remove(), 230);
     };
     document.getElementById('ps-btn-close').addEventListener('click', _close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) _close(); });

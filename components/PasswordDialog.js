@@ -37,6 +37,25 @@ const _PW_CSS = `
     to   { opacity: 1; }
   }
 
+  @keyframes pwOverlayOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+  }
+
+  @keyframes pwDialogOut {
+    from { transform: scale(1)    translateY(0);    opacity: 1; }
+    to   { transform: scale(0.92) translateY(12px); opacity: 0; }
+  }
+
+  .pw-overlay.is-closing {
+    animation: pwOverlayOut 0.18s ease forwards;
+    pointer-events: none;
+  }
+
+  .pw-overlay.is-closing .pw-dialog {
+    animation: pwDialogOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+
   .pw-dialog {
     background: linear-gradient(160deg, #0d1f3c 0%, #0a1628 100%);
     border: 1px solid rgba(59,130,246,0.25);
@@ -282,6 +301,7 @@ const PasswordDialog = {
     `;
 
     document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
 
     // ─── ربط الأحداث ──────────────────────────────────────
     const input      = document.getElementById('pw-input-field');
@@ -348,9 +368,10 @@ const PasswordDialog = {
   close() {
     const overlay = document.getElementById('pw-overlay');
     if (overlay) {
-      overlay.style.animation = 'pwOverlayIn 0.15s ease reverse';
-      setTimeout(() => overlay.remove(), 150);
+      overlay.classList.add('is-closing');
+      setTimeout(() => overlay.remove(), 200);
     }
+    document.body.style.overflow = '';
     _pwResolve = null;
     _pwVisible = false;
   },

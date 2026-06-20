@@ -181,6 +181,25 @@ function _buildDeliveryEntries(tx, voucher) {
   ];
 }
 
+// استرداد الإيداع الفاشل — نفس اتجاه الإيداع البنكي تماماً (COMP مدين ← AGT دائن).
+// في كشف الشركة: عليكم | في كشف المندوب: لكم
+// companyId مُشتَقّ من bank_accounts.company_id (نفس آلية الإيداع).
+function _buildFailedDepositRefundEntries(tx, companyId, voucher) {
+  const date     = tx.date || getCurrentSaudiDate();
+  const agentAcc = AccountId.agent(tx.agent_id);
+  const compAcc  = AccountId.company(companyId);
+  const partial  = tx._partial ? 'جزئي' : 'كلي';
+  const fdRef    = tx._fd_id ? ` — مرجع: ${tx._fd_id.slice(0, 8)}` : '';
+  const remain   = (tx._remaining > 0) ? ` — المتبقي: ${tx._remaining.toLocaleString('en-US')} ر.س` : '';
+
+  return [
+    { voucher_number: voucher, date, account_id: compAcc,  debit: tx.amount, credit: 0,
+      description: `استرداد إيداع فاشل ${partial}${fdRef}${remain}` },
+    { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
+      description: `استرداد إيداع فاشل ${partial} — إخلاء عهدة المندوب${fdRef}${remain}` },
+  ];
+}
+
 // السحب البنكي — قيد بين AGT (مدين) و COMP (دائن) فقط. BNK_ وسم لا يدخل القيد.
 // companyId مُشتَقّ مسبقاً في buildEntries من tx.company_id أو bank_accounts.company_id.
 function _buildBankWithdrawalEntries(tx, companyId, voucher) {
@@ -282,6 +301,13 @@ async function buildEntries(tx) {
       case TRANSACTION_TYPES.REFUND_SETTLEMENT:
         entries = _buildRefundSettlementEntries(tx, await _generateVoucherNumber());
         break;
+      case TRANSACTION_TYPES.FAILED_DEPOSIT_REFUND: {
+        if (!tx.bank_account_id) return err('الحساب البنكي مطلوب لاسترداد الإيداع الفاشل');
+        const fdCompanyId = await _resolveCompanyFromBank(tx);
+        if (!fdCompanyId) return err('الحساب البنكي غير مرتبط بشركة — لا يمكن ترحيل الاسترداد');
+        entries = _buildFailedDepositRefundEntries(tx, fdCompanyId, await _generateVoucherNumber());
+        break;
+      }
       default:
         return err(`نوع عملية غير معروف: ${tx.type}`);
     }
