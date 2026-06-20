@@ -52,9 +52,10 @@ const FailedDepositsComponent = {
     listEl.innerHTML = `<div class="skeleton" style="height:56px;border-radius:10px;margin-bottom:8px;"></div>`.repeat(4);
     wrap.appendChild(listEl);
 
-    /* ── المودال ── */
+    /* ── المودال — مُضاف لـ body لتجنب كسر position:fixed على الجوال ── */
+    if (this._modal) this._modal.remove();
     this._modal = this._buildModal(isAdmin);
-    wrap.appendChild(this._modal);
+    document.body.appendChild(this._modal);
 
     container.appendChild(wrap);
     await this._load();

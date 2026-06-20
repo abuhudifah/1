@@ -78,11 +78,13 @@ const DebtorsComponent = {
     listEl.innerHTML = `<div class="skeleton" style="height:${isAgent?'120':'60'}px;border-radius:12px;margin-bottom:10px;"></div>`.repeat(4);
     wrap.appendChild(listEl);
 
-    /* ── النوافذ المنبثقة ── */
+    /* ── النوافذ المنبثقة — مُضافة لـ body لتجنب كسر position:fixed على الجوال ── */
+    if (this._formModal)    this._formModal.remove();
+    if (this._balanceModal) this._balanceModal.remove();
     this._formModal    = this._buildFormModal();
     this._balanceModal = this._buildBalanceModal();
-    wrap.appendChild(this._formModal);
-    wrap.appendChild(this._balanceModal);
+    document.body.appendChild(this._formModal);
+    document.body.appendChild(this._balanceModal);
 
     container.appendChild(wrap);
     if (window.lucide) lucide.createIcons();
@@ -257,11 +259,11 @@ const DebtorsComponent = {
     tableWrap.innerHTML = `
       <table class="data-table" style="table-layout:fixed;width:100%;">
         <colgroup>
-          <col style="width:auto;min-width:140px;">
-          <col style="width:120px;">
-          <col style="width:90px;">
-          <col style="width:120px;">
+          <col style="width:auto;min-width:130px;">
           <col style="width:110px;">
+          <col style="width:80px;">
+          <col style="width:110px;">
+          <col style="width:46px;">
         </colgroup>
         <thead><tr>
           <th>اسم العميل</th>
@@ -293,17 +295,18 @@ const DebtorsComponent = {
               <td style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(agentNames)}">
                 ${escapeHtml(agentNames || '—')}
               </td>
-              <td>
-                <div style="display:flex;gap:3px;flex-wrap:wrap;">
+              <td style="padding:4px 6px;">
+                <div class="debtors-action-col">
                   <button class="btn btn-secondary btn-sm" title="تعديل"
-                    data-debtor-id="${escapeHtml(d.id)}" data-debtor-action="edit">
+                    data-debtor-id="${escapeHtml(d.id)}" data-debtor-action="edit"
+                    style="padding:4px;width:30px;height:30px;">
                     <i data-lucide="pencil" style="width:12px;height:12px"></i>
                   </button>
-                  <button class="btn btn-secondary btn-sm" title="تحديث الرصيد" style="color:var(--accent);"
+                  <button class="btn btn-secondary btn-sm" title="تحديث الرصيد" style="color:var(--accent);padding:4px;width:30px;height:30px;"
                     data-debtor-id="${escapeHtml(d.id)}" data-debtor-action="balance">
                     <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
                   </button>
-                  <button class="btn btn-secondary btn-sm" title="حذف" style="color:var(--danger);"
+                  <button class="btn btn-secondary btn-sm" title="حذف" style="color:var(--danger);padding:4px;width:30px;height:30px;"
                     data-debtor-id="${escapeHtml(d.id)}" data-debtor-action="delete">
                     <i data-lucide="trash-2" style="width:12px;height:12px"></i>
                   </button>

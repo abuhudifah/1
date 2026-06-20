@@ -72,9 +72,10 @@ const BankAccountsComponent = {
     cardsEl.innerHTML = [1,2,3].map(()=>`<div class="skeleton" style="height:220px;border-radius:20px;"></div>`).join('');
     wrap.appendChild(cardsEl);
 
-    /* مودال إضافة/تعديل */
+    /* مودال إضافة/تعديل — مُضاف لـ body لتجنب كسر position:fixed على الجوال */
+    if (this._modal) this._modal.remove();
     this._modal = this._buildModal();
-    wrap.appendChild(this._modal);
+    document.body.appendChild(this._modal);
 
     container.appendChild(wrap);
     await this._load();
