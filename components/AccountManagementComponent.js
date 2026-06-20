@@ -173,17 +173,19 @@ const AccountManagementComponent = {
       </div>`;
     wrap.appendChild(stmtSection);
 
-    /* ── مودال إضافة حساب ── */
+    /* ── نوافذ منبثقة — مُضافة لـ body لتجنب كسر position:fixed على الجوال ── */
+    if (this._addModal)     this._addModal.remove();
+    if (this._journalModal) this._journalModal.remove();
     this._addModal = this._buildAddModal();
-    wrap.appendChild(this._addModal);
+    document.body.appendChild(this._addModal);
 
-    /* ── مودال القيود المحاسبية ── */
     this._journalModal = this._buildJournalModal();
-    wrap.appendChild(this._journalModal);
+    document.body.appendChild(this._journalModal);
 
     /* ── مودال مشاركة رقم الحساب ── */
+    if (this._shareModal) this._shareModal.remove();
     this._shareModal = this._buildShareModal();
-    wrap.appendChild(this._shareModal);
+    document.body.appendChild(this._shareModal);
 
     container.appendChild(wrap);
 
