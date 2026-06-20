@@ -821,11 +821,11 @@ async function _handleManualSync() {
     }
     const result = await SyncEngine.startAutoSync();
     if (isOk(result)) {
-      const { synced, failed } = result.data;
+      const { processed = 0, failed = 0 } = result.data || {};
       if (failed === 0) {
-        showToast(`✅ تمت المزامنة: ${synced} عملية`, 'success');
+        showToast(`✅ تمت المزامنة: ${processed} عملية`, 'success');
       } else {
-        showToast(`⚠️ مزامنة جزئية: ${synced} نجحت، ${failed} فشلت`, 'warning');
+        showToast(`⚠️ مزامنة جزئية: ${processed} نجحت، ${failed} فشلت`, 'warning');
       }
     } else {
       showToast('فشلت المزامنة: ' + (result.error || ''), 'error');
@@ -993,16 +993,28 @@ function _showFatalError(msg) {
 
 let _cmdChannel = null;
 
+// ── تتبع الأوامر المُنفَّذة محلياً لكل جهاز ──────────────────────────────────
+// executed_at في قاعدة البيانات مرجعي فقط (للمدير يرى من نفَّذ أولاً).
+// كل جهاز يتتبع بنفسه عبر localStorage لضمان تنفيذ الأمر على جميع الأجهزة.
+const _CMD_DONE_KEY = 'ahu_cmd_done_';
+function _isCmdDoneLocally(cmdId) {
+  try { return !!localStorage.getItem(_CMD_DONE_KEY + cmdId); } catch { return false; }
+}
+function _markCmdDoneLocally(cmdId) {
+  try { localStorage.setItem(_CMD_DONE_KEY + cmdId, '1'); } catch { /* تجاهل */ }
+}
+
 async function _checkSystemCommands() {
   if (!window.supabaseClient) return;
   if (!AppStore.getState('currentUser')) return;
 
   try {
+    // نجلب كل الأوامر (بما فيها المُنفَّذة عالمياً) ونفلتر محلياً
     const { data: commands, error } = await supabaseClient
       .from('system_commands')
       .select('id, command, issued_at')
-      .is('executed_at', null)
-      .order('issued_at', { ascending: true });
+      .order('issued_at', { ascending: true })
+      .limit(50);
 
     if (error) {
       console.warn('⚠️ _checkSystemCommands:', error.message);
@@ -1011,6 +1023,7 @@ async function _checkSystemCommands() {
     if (!commands?.length) return;
 
     for (const cmd of commands) {
+      if (_isCmdDoneLocally(cmd.id)) continue; // هذا الجهاز نفَّذه بالفعل
       await _executeSystemCommand(cmd);
     }
   } catch (err) {
@@ -1021,6 +1034,9 @@ async function _checkSystemCommands() {
 async function _executeSystemCommand(cmd) {
   if (cmd.command === 'RESET_ALL_DATA') {
     console.log('📢 App.js: استُلم أمر RESET_ALL_DATA — جاري تنظيف هذا الجهاز...');
+
+    // تسجيل التنفيذ محلياً أولاً لمنع التكرار حتى لو تعطّل ما بعده
+    _markCmdDoneLocally(cmd.id);
 
     // إيقاف خدمات المزامنة أولاً
     try {
@@ -1039,7 +1055,7 @@ async function _executeSystemCommand(cmd) {
       }
     }
 
-    // مسح كاش localStorage التشغيلي
+    // مسح كاش localStorage التشغيلي (مع الإبقاء على بيانات الدخول السريع والـ cmd_done)
     try {
       localStorage.removeItem('ahu_stmt_filter_pref');
       localStorage.removeItem('ahu_quick_banner_dismissed');
@@ -1051,12 +1067,14 @@ async function _executeSystemCommand(cmd) {
       toRemove.forEach(k => localStorage.removeItem(k));
     } catch (_e) { /* non-critical */ }
 
-    // تحديث executed_at لمنع إعادة التنفيذ من هذا الجهاز (atomic)
-    await supabaseClient
-      .from('system_commands')
-      .update({ executed_at: new Date().toISOString() })
-      .eq('id', cmd.id)
-      .is('executed_at', null);
+    // تحديث executed_at في قاعدة البيانات كمرجع للمدير فقط (لا يمنع أجهزة أخرى)
+    try {
+      await supabaseClient
+        .from('system_commands')
+        .update({ executed_at: new Date().toISOString() })
+        .eq('id', cmd.id)
+        .is('executed_at', null); // يكتب فقط إذا لم يكتبه أحد بعد
+    } catch { /* non-critical */ }
 
     showToast('📢 تمت إعادة ضبط البيانات من المدير — سيُعاد تحميل النظام...', 'info', 3000);
 
