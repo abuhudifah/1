@@ -25,7 +25,7 @@ const _DETAIL_COLS = [
   'expense_type','expense_account_name',
   'debtor_name',
   'from_agent_id','to_agent_id',
-  'is_reversed','sync_status','error_message',
+  'is_reversed','sync_status',
 ].join(',');
 
 const AllOperationsComponent = {
