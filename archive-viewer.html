@@ -317,7 +317,7 @@
   </div>
 
   <!-- محتوى الأرشيف (مخفي حتى يُحمَّل ملف) -->
-  <div id="archive-content" style="display:none;flex:1;overflow:hidden;display:none;flex-direction:row;">
+  <div id="archive-content" style="display:none;flex:1;overflow:hidden;flex-direction:row;">
 
     <!-- القائمة الجانبية للحسابات -->
     <aside class="sidebar" id="sidebar">
@@ -488,18 +488,37 @@ function renderAccountList(query) {
 
 function resolveAccountName(id) {
   if (!_archive) return id;
-  // ابحث في الملخصات
+
+  // 1) الملخصات (إن احتوت اسماً)
   const summaries = _archive.monthly_summaries || [];
   const found = summaries.find(s => s.account_id === id);
   if (found?.account_name) return found.account_name;
-  // استنتاج من المعرّف
-  if (id === 'GENERAL_FUND') return 'الصندوق العام';
-  if (id === 'CASH_GENERAL') return 'الخزينة النقدية';
-  if (id === 'COMP_GENERAL') return 'حساب الشركات العام';
-  if (id === 'EXP_GENERAL')  return 'المصروفات العامة';
+
+  // 2) بيانات مرجعية حقيقية (نفس مصدر تبويب الحسابات المحاسبية)
+  const ref = _archive.reference || {};
+  if (id.startsWith('AGT_')) {
+    const u = (ref.users || []).find(x => `AGT_${x.id}` === id);
+    if (u) return u.display_name || u.username || id;
+  }
+  if (id.startsWith('COMP_') && id !== 'COMP_GENERAL') {
+    const c = (ref.companies || []).find(x => `COMP_${x.id}` === id);
+    if (c) return c.name || id;
+  }
+  if (id.startsWith('BNK_')) {
+    const b = (ref.bank_accounts || []).find(x => `BNK_${x.id}` === id);
+    if (b) return b.name || id;
+  }
+
+  // 3) استنتاج من المعرّف (احتياطي)
+  if (id === 'GENERAL_FUND')       return 'الصندوق العام';
+  if (id === 'CASH_GENERAL')       return 'الخزينة النقدية';
+  if (id === 'COMP_GENERAL')       return 'حساب الشركات العام';
+  if (id === 'EXP_GENERAL')        return 'المصروفات العامة';
+  if (id === 'DEBTOR_SETTLEMENT')  return 'تسويات العملاء المديونين';
   if (id.startsWith('AGT_'))  return 'مندوب ' + id.replace('AGT_','');
   if (id.startsWith('COMP_')) return 'شركة '  + id.replace('COMP_','');
   if (id.startsWith('BNK_'))  return 'بنك '   + id.replace('BNK_','');
+  if (id.startsWith('EXP_'))  return 'مصروف ' + id.replace('EXP_','');
   return id;
 }
 

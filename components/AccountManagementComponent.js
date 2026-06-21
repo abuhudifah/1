@@ -12,7 +12,9 @@
  * ✅ 4. إضافة زر نسخ رقم الحساب مع fallback آمن.
  * ✅ 5. إصلاح _loadStatement لتعمل Offline-First (Supabase ← Dexie).
  * ✅ 6. إصلاح _saveNewAccount لاستخدام generate_account_number والإدراج المباشر.
- * ✅ 7. تحسين _postEntries لاستخدام post_manual_journal_entries RPC مع fallback.
+ * ✅ 7. ترحيل القيود عبر AccountingService.createTransactionWithEntries (Clean Slate):
+ *      كل قيد ينشئ سجلاً في transactions + قيوداً في account_ledger دفعة واحدة،
+ *      فيظهر في الملخص اليومي وجميع العمليات والحسابات المحاسبية.
  * ✅ 8. إضافة فحوصات typeof للكائنات العامة (db, SyncQueue, AppStore, PrintService, copyToClipboard).
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
@@ -27,6 +29,7 @@ const AccountManagementComponent = {
   _allAccounts        : [], // قائمة كل الحسابات لاستخدامها في القيود
   _currentAddType     : null,
   _currentJournalType : 'simple',
+  _armedArchivePeriod : null, // الفترة التي صُدِّر أرشيفها وجاهزة للإقفال {start,end}
 
   // شجرة الحسابات الافتراضية
   DEFAULT_CHART : [
@@ -2109,23 +2112,6 @@ const AccountManagementComponent = {
     }
   },
 
-  // حفظ القيود محلياً (مع SyncQueue)
-  async _saveEntriesLocally(entries) {
-    if (typeof db === 'undefined' || !db.isOpen()) throw new Error('قاعدة البيانات المحلية غير متوفرة');
-    for (const e of entries) {
-      const id = generateUUID();
-      const record = { ...e, id, sync_status: SYNC_STATUS.PENDING, created_at: new Date().toISOString() };
-      await db.account_ledger.put(record);
-      if (typeof SyncQueue !== 'undefined') {
-        await SyncQueue.add(SYNC_ACTIONS.CREATE, 'account_ledger', id, record);
-      }
-
-      const current = await db.account_balances.get(e.account_id);
-      const bal     = parseFloat(current?.balance || 0) + e.debit - e.credit;
-      await db.account_balances.put({ account_id: e.account_id, balance: bal, last_updated: new Date().toISOString() });
-    }
-  },
-
   // ─────────────────────────────────────────────────────────
   // ✅ مودال إضافة حساب جديد (بدون bank ولا customer)
   // ─────────────────────────────────────────────────────────
@@ -2604,29 +2590,49 @@ const AccountManagementComponent = {
       btn.addEventListener('click', () => {
         document.getElementById('pc-start').value = btn.dataset.start;
         document.getElementById('pc-end').value   = btn.dataset.end;
+        this._disarmPeriodClose();
       });
     });
 
-    let archiveDownloaded = false;
+    // أي تغيير في الفترة يُلغي تسليح الإقفال — يجب إعادة تصدير الأرشيف للفترة الجديدة
+    document.getElementById('pc-start')?.addEventListener('change', () => this._disarmPeriodClose());
+    document.getElementById('pc-end')?.addEventListener('change',   () => this._disarmPeriodClose());
 
     document.getElementById('pc-export-btn').addEventListener('click', async () => {
+      const start = document.getElementById('pc-start')?.value;
+      const end   = document.getElementById('pc-end')?.value;
       await this._executePeriodExport(() => {
-        archiveDownloaded = true;
-        document.getElementById('pc-close-btn').disabled = false;
+        // تسليح الإقفال للفترة المُصدَّرة بالضبط فقط
+        this._armedArchivePeriod = { start, end };
+        const closeBtn = document.getElementById('pc-close-btn');
+        if (closeBtn) closeBtn.disabled = false;
         const note = document.getElementById('pc-export-note');
-        if (note) { note.style.display = 'block'; }
+        if (note) note.style.display = 'block';
       });
     });
 
     document.getElementById('pc-close-btn').addEventListener('click', async () => {
-      if (!archiveDownloaded) {
-        showToast('يجب تحميل الأرشيف أولاً قبل تنفيذ الإقفال', 'error');
+      const start = document.getElementById('pc-start')?.value;
+      const end   = document.getElementById('pc-end')?.value;
+      const armed = this._armedArchivePeriod;
+      if (!armed || armed.start !== start || armed.end !== end) {
+        showToast('يجب تحميل أرشيف الفترة المحددة أولاً قبل تنفيذ الإقفال', 'error');
+        this._disarmPeriodClose();
         return;
       }
       await this._executePeriodClose();
     });
 
     await this._loadPeriodClosings();
+  },
+
+  // إلغاء تسليح الإقفال — يُعطّل زر الإقفال حتى يُصدَّر أرشيف الفترة الحالية
+  _disarmPeriodClose() {
+    this._armedArchivePeriod = null;
+    const closeBtn = document.getElementById('pc-close-btn');
+    if (closeBtn) closeBtn.disabled = true;
+    const note = document.getElementById('pc-export-note');
+    if (note) note.style.display = 'none';
   },
 
   _closePeriodCloseModal() {
@@ -2699,6 +2705,7 @@ const AccountManagementComponent = {
         `✅ تم الإقفال — حُذفت ${stats?.transactions_deleted || 0} معاملة و${stats?.ledger_entries_deleted || 0} قيد`,
         'success'
       );
+      this._disarmPeriodClose();   // يتطلب إعادة تصدير قبل أي إقفال لاحق
       this._closePeriodCloseModal();
       await this._loadChart();
     } catch (e) {

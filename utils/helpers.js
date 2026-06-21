@@ -895,12 +895,15 @@ function getProgressClass(percent) {
  */
 function getTransactionColor(type) {
   const colors = {
-    collection        : 'var(--success)',
-    deposit           : 'var(--accent)',
-    expense           : 'var(--danger)',
-    receipt           : 'var(--info)',
-    delivery          : 'var(--warning)',
-    refund_settlement : 'var(--success)',
+    collection            : 'var(--success)',
+    deposit               : 'var(--accent)',
+    bank_withdrawal       : 'var(--info)',
+    expense               : 'var(--danger)',
+    receipt               : 'var(--info)',
+    delivery              : 'var(--warning)',
+    refund_settlement     : 'var(--success)',
+    failed_deposit_refund : 'var(--warning)',
+    journal_entry         : 'var(--accent)',
   };
   return colors[type] || 'var(--text-secondary)';
 }
@@ -912,12 +915,15 @@ function getTransactionColor(type) {
  */
 function getTransactionIcon(type) {
   const icons = {
-    collection        : 'arrow-down-circle',
-    deposit           : 'landmark',
-    expense           : 'minus-circle',
-    receipt           : 'arrow-right-circle',
-    delivery          : 'arrow-left-circle',
-    refund_settlement : 'refresh-ccw',
+    collection            : 'arrow-down-circle',
+    deposit               : 'landmark',
+    bank_withdrawal       : 'credit-card',
+    expense               : 'minus-circle',
+    receipt               : 'arrow-right-circle',
+    delivery              : 'arrow-left-circle',
+    refund_settlement     : 'refresh-ccw',
+    failed_deposit_refund : 'rotate-cw',
+    journal_entry         : 'book',
   };
   return icons[type] || 'circle';
 }
