@@ -2511,7 +2511,7 @@ const AccountManagementComponent = {
       <div class="modal-box" style="max-width:640px;width:95%;max-height:90vh;overflow-y:auto;">
         <div class="modal-header" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);padding:18px 22px;border-radius:12px 12px 0 0;">
           <h3 style="color:#fff;font-size:1.05rem;font-weight:700;margin:0;">🗂️ إقفال الفترة المحاسبية</h3>
-          <button class="modal-close" style="color:#e9d5ff;" onclick="AccountManagementComponent._closePeriodCloseModal()">✕</button>
+          <button id="pc-modal-close" class="modal-close" style="color:#e9d5ff;">✕</button>
         </div>
         <div style="padding:20px;">
 
@@ -2585,6 +2585,8 @@ const AccountManagementComponent = {
 
     document.body.appendChild(overlay);
     if (window.lucide) lucide.createIcons();
+
+    document.getElementById('pc-modal-close').addEventListener('click', () => this._closePeriodCloseModal());
 
     overlay.querySelectorAll('.period-preset').forEach(btn => {
       btn.addEventListener('click', () => {

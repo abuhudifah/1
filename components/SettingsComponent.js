@@ -73,8 +73,6 @@ const SettingsComponent = {
 
     const settings  = AppStore.getState('systemSettings');
     const logo      = settings.get('logo')             || {};
-    const closeConf = settings.get('daily_close_time') || {};
-
     /* ═══ 0. لوحة استخدام خطة Supabase المجانية ═══ */
     const usageCard = document.createElement('div');
     usageCard.className = 'glass-card';
@@ -116,33 +114,7 @@ const SettingsComponent = {
       <button id="set-logo-save" class="btn btn-primary btn-sm">حفظ الشعار</button>`;
     adminWrap.appendChild(logoCard);
 
-    /* ═══ 2. الإقفال التلقائي ═══ */
-    const lockCard = this._buildCard('⏰ الإقفال اليومي التلقائي');
-    lockCard.innerHTML += `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-        <label class="form-label" style="margin:0;flex:1;">تفعيل الإقفال التلقائي</label>
-        <input id="set-lock-enabled" type="checkbox" style="width:18px;height:18px;cursor:pointer;"
-          ${closeConf.enabled ? 'checked' : ''}>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">ساعة الإقفال</label>
-          <input id="set-lock-hour" type="number" class="form-control" min="0" max="23"
-            value="${closeConf.hour ?? 0}" placeholder="0-23">
-        </div>
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">الدقيقة</label>
-          <input id="set-lock-minute" type="number" class="form-control" min="0" max="59"
-            value="${closeConf.minute ?? 0}" placeholder="0-59">
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button id="set-lock-save"   class="btn btn-primary btn-sm">حفظ الإعدادات</button>
-        <button id="set-manual-close" class="btn btn-secondary btn-sm">إقفال يدوي الآن</button>
-      </div>`;
-    adminWrap.appendChild(lockCard);
-
-    /* ═══ 3. النسخ الاحتياطي ═══ */
+    /* ═══ 2. النسخ الاحتياطي ═══ */
     const backupCard = this._buildCard('💾 النسخ الاحتياطي والاستعادة');
     backupCard.innerHTML += `
       <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">
@@ -263,8 +235,6 @@ const SettingsComponent = {
   ══════════════════════════════════════════ */
   _bindAdminEvents() {
     document.getElementById('set-logo-save')?.addEventListener('click',       () => this._saveLogo());
-    document.getElementById('set-lock-save')?.addEventListener('click',       () => this._saveLockSettings());
-    document.getElementById('set-manual-close')?.addEventListener('click',    () => this._manualClose());
     document.getElementById('set-export-btn')?.addEventListener('click',      () => this._exportBackup());
     document.getElementById('set-import-trigger')?.addEventListener('click',  () => document.getElementById('set-import-file')?.click());
     document.getElementById('set-import-file')?.addEventListener('change',    (e) => this._importBackup(e));
@@ -337,55 +307,6 @@ const SettingsComponent = {
     } finally {
       restore();
     }
-  },
-
-  /* ══════════════════════════════════════════
-     حفظ إعدادات الإقفال
-  ══════════════════════════════════════════ */
-  async _saveLockSettings() {
-    const enabled = document.getElementById('set-lock-enabled')?.checked || false;
-    const hour    = parseInt(document.getElementById('set-lock-hour')?.value) || 0;
-    const minute  = parseInt(document.getElementById('set-lock-minute')?.value) || 0;
-
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      showToast('قيم الساعة أو الدقيقة خارج النطاق المسموح', 'error'); return;
-    }
-
-    const saveBtn = document.getElementById('set-lock-save');
-    const restore = setButtonLoading(saveBtn);
-
-    try {
-      const settings = AppStore.getState('systemSettings');
-      const current  = settings.get('daily_close_time') || {};
-      const updated  = { ...current, enabled, hour, minute };
-      await repo.upsert(TABLES.SYSTEM_SETTINGS, { key: 'daily_close_time', value: updated }, 'key');
-      showToast(enabled ? `تم تفعيل الإقفال التلقائي (${hour}:${String(minute).padStart(2,'0')})` : 'تم تعطيل الإقفال التلقائي', 'success');
-      await AppStore.refreshData();
-    } catch (e) {
-      showToast(`خطأ: ${e.message}`, 'error');
-    } finally {
-      restore();
-    }
-  },
-
-  /* ══════════════════════════════════════════
-     إقفال يدوي
-  ══════════════════════════════════════════ */
-  async _manualClose() {
-    const confirmed = await confirmDialog(
-      'تنفيذ الإقفال اليومي الآن؟ سيُحسب ملخص اليوم وتُقفل العمليات.',
-      'تنفيذ', 'إلغاء', 'warning'
-    );
-    if (!confirmed) return;
-
-    const btn     = document.getElementById('set-manual-close');
-    const restore = setButtonLoading(btn, 'جاري الإقفال...');
-    const result  = await callRPC('perform_daily_close', { p_date: new Date().toISOString().split('T')[0] });
-    restore();
-
-    isOk(result)
-      ? showToast('تم الإقفال اليومي بنجاح', 'success')
-      : showToast(`فشل الإقفال: ${result.error}`, 'error');
   },
 
   /* ══════════════════════════════════════════
