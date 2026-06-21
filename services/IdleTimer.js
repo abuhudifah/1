@@ -71,24 +71,24 @@ const IdleTimer = (function () {
    * يُخفي تنبيه التحذير إن كان معروضاً
    */
   function _hideWarning() {
-    if (_warningShown && _warningToastEl && _warningToastEl.parentNode) {
-      _warningToastEl.style.opacity   = '0';
-      _warningToastEl.style.transform = 'translateY(-8px) scale(0.95)';
-      setTimeout(() => {
-        if (_warningToastEl && _warningToastEl.parentNode) {
-          _warningToastEl.parentNode.removeChild(_warningToastEl);
-        }
-        _warningToastEl = null;
-      }, 280);
-    }
+    // التقاط مرجع محلي ثابت قبل تصفير المتغيّر العام — وإلا فإن الـ setTimeout
+    // المؤجَّل يقرأ null فلا يُنفَّذ removeChild ويبقى التنبيه عالقاً في DOM.
+    const el = _warningToastEl;
     _warningShown   = false;
     _warningToastEl = null;
+    if (el && el.parentNode) {
+      el.style.opacity   = '0';
+      el.style.transform = 'translateY(-8px) scale(0.95)';
+      setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 280);
+    }
   }
 
   /**
    * يُظهر تنبيه تحذيري لا يختفي تلقائياً (يبقى حتى يُخفى يدوياً)
    */
   function _showWarning() {
+    // إغلاق أي تنبيه سابق أولاً — يمنع تراكم تنبيهات يتيمة (idempotent)
+    _hideWarning();
     _warningShown = true;
 
     // البحث عن حاوية التنبيهات أو إنشاؤها
@@ -136,8 +136,8 @@ const IdleTimer = (function () {
     toast.appendChild(icon);
     toast.appendChild(text);
 
-    // النقر على التنبيه يُعيد تعيين المؤقت
-    toast.addEventListener('click', () => reset());
+    // النقر على التنبيه يُغلقه دائماً (غير مشروط بـ _running) ثم يُعيد تعيين المؤقت إن كان نشطاً
+    toast.addEventListener('click', () => { _hideWarning(); reset(); });
 
     container.appendChild(toast);
     _warningToastEl = toast;
