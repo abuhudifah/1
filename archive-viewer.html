@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>عارض الأرشيف المحاسبي</title>
+  <style>
+    :root {
+      --primary      : #0f172a;
+      --accent       : #2563eb;
+      --success      : #059669;
+      --danger       : #dc2626;
+      --warning      : #d97706;
+      --bg-page      : #f1f5f9;
+      --bg-card      : #ffffff;
+      --bg-input     : #f8fafc;
+      --glass-bg     : rgba(255,255,255,0.92);
+      --glass-border : rgba(15,23,42,0.09);
+      --glass-shadow : 0 4px 24px rgba(15,23,42,0.10);
+      --text-primary : #0f172a;
+      --text-secondary: #475569;
+      --text-muted   : #94a3b8;
+      --border       : rgba(15,23,42,0.10);
+      --border-radius: 14px;
+      --surface      : #f8fafc;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --primary      : #f8fafc;
+        --bg-page      : #0a0f1e;
+        --bg-card      : #0f1629;
+        --bg-input     : #1a2035;
+        --glass-bg     : rgba(15,22,40,0.92);
+        --glass-border : rgba(255,255,255,0.08);
+        --glass-shadow : 0 4px 24px rgba(0,0,0,0.3);
+        --text-primary : #f1f5f9;
+        --text-secondary: #94a3b8;
+        --text-muted   : #4b5563;
+        --border       : rgba(255,255,255,0.08);
+        --surface      : rgba(255,255,255,0.04);
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg-page);
+      color: var(--text-primary);
+      min-height: 100vh;
+      direction: rtl;
+    }
+
+    /* ── Header ── */
+    .app-header {
+      background: linear-gradient(135deg, #0f172a, #1e3a5f);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+    }
+    .app-header h1 { color: #fff; font-size: 1rem; font-weight: 700; }
+    .app-header .meta { color: rgba(255,255,255,0.55); font-size: 0.75rem; margin-top: 2px; }
+
+    /* ── Layout ── */
+    .app-body {
+      display: flex;
+      height: calc(100vh - 60px);
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 280px;
+      min-width: 220px;
+      max-width: 340px;
+      background: var(--glass-bg);
+      border-left: 1px solid var(--glass-border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      resize: horizontal;
+    }
+    .sidebar-header {
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-header h2 { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); }
+    .sidebar-header .period-badge {
+      font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;
+    }
+    .sidebar-search {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-search input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.82rem;
+      background: var(--bg-input);
+      color: var(--text-primary);
+      outline: none;
+      font-family: inherit;
+    }
+    .account-list {
+      overflow-y: auto;
+      flex: 1;
+    }
+    .acct-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .acct-item:hover { background: var(--bg-input); }
+    .acct-item.active { background: rgba(37,99,235,0.08); border-right: 3px solid var(--accent); }
+    .acct-item-info { flex: 1; min-width: 0; }
+    .acct-name {
+      font-size: 0.82rem; font-weight: 600; color: var(--text-primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .acct-id { font-size: 0.7rem; color: var(--text-muted); margin-top: 1px; }
+    .acct-balance {
+      font-size: 0.78rem; font-weight: 700; white-space: nowrap;
+      margin-top: 2px;
+    }
+    .acct-balance.pos { color: var(--success); }
+    .acct-balance.neg { color: var(--danger); }
+
+    /* ── Main Content ── */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Statement Header ── */
+    .stmt-header {
+      padding: 14px 18px;
+      background: var(--glass-bg);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .stmt-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); }
+    .stmt-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .stmt-filters input, .stmt-filters select {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 0.8rem;
+      background: var(--bg-input);
+      color: var(--text-primary);
+      font-family: inherit;
+      outline: none;
+    }
+    .btn-sm {
+      padding: 5px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      color: var(--text-primary);
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-sm:hover { background: var(--border); }
+    .btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-accent:hover { background: #1d4ed8; }
+
+    /* ── KPI Bar ── */
+    .kpi-bar {
+      display: flex;
+      gap: 10px;
+      padding: 10px 18px;
+      background: var(--glass-bg);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .kpi-item {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 8px 14px;
+      min-width: 130px;
+      flex: 1;
+      border: 1px solid var(--border);
+    }
+    .kpi-label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; }
+    .kpi-value { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); }
+    .kpi-value.green { color: var(--success); }
+    .kpi-value.red { color: var(--danger); }
+
+    /* ── Table ── */
+    .stmt-table-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    thead th {
+      background: var(--surface);
+      color: var(--text-secondary);
+      font-weight: 600;
+      padding: 8px 10px;
+      text-align: right;
+      border-bottom: 2px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+    tbody tr:hover { background: var(--surface); }
+    td { padding: 8px 10px; color: var(--text-primary); vertical-align: middle; }
+    .td-debit  { color: var(--danger);  font-weight: 600; }
+    .td-credit { color: var(--success); font-weight: 600; }
+    .td-balance-pos { color: var(--success); font-weight: 600; }
+    .td-balance-neg { color: var(--danger);  font-weight: 600; }
+    .td-muted { color: var(--text-muted); font-size: 0.75rem; }
+    .td-voucher { font-size: 0.72rem; color: var(--accent); font-family: monospace; }
+
+    /* ── Empty State ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-text { font-size: 0.9rem; }
+
+    /* ── File Load screen ── */
+    .load-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      text-align: center;
+    }
+    .load-icon { font-size: 4rem; margin-bottom: 16px; }
+    .load-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; color: var(--text-primary); }
+    .load-sub { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
+    .file-input-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .file-input-label:hover { background: #1d4ed8; }
+    #file-input { display: none; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 680px) {
+      .sidebar { width: 100%; max-width: 100%; resize: none; display: none; }
+      .sidebar.mobile-show { display: flex; position: fixed; top: 60px; right: 0; bottom: 0; z-index: 200; width: 85%; box-shadow: var(--glass-shadow); }
+      .app-body { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <div>
+    <h1>🗂️ عارض الأرشيف المحاسبي</h1>
+    <div class="meta" id="archive-meta">— لم يُحمَّل أرشيف بعد —</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <label class="file-input-label" style="padding:7px 14px;font-size:0.8rem;" for="file-input">
+      📂 فتح أرشيف
+    </label>
+    <input type="file" id="file-input" accept=".json">
+  </div>
+</header>
+
+<div class="app-body" id="app-body">
+
+  <!-- حالة الإلود الأولية -->
+  <div class="load-screen" id="load-screen">
+    <div class="load-icon">📦</div>
+    <div class="load-title">عارض الأرشيف المحاسبي</div>
+    <div class="load-sub">
+      افتح ملف أرشيف JSON الذي تم تحميله عند إقفال الفترة المحاسبية<br>
+      الواجهة تعمل بالكامل بدون إنترنت — لا تُرسَل بياناتك لأي خادم
+    </div>
+    <label class="file-input-label" for="file-input">
+      📂 اختر ملف الأرشيف (JSON)
+    </label>
+  </div>
+
+  <!-- محتوى الأرشيف (مخفي حتى يُحمَّل ملف) -->
+  <div id="archive-content" style="display:none;flex:1;overflow:hidden;flex-direction:row;">
+
+    <!-- القائمة الجانبية للحسابات -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h2>دليل الحسابات</h2>
+        <div class="period-badge" id="sidebar-period">—</div>
+      </div>
+      <div class="sidebar-search">
+        <input type="text" id="acct-search" placeholder="بحث في الحسابات...">
+      </div>
+      <div class="account-list" id="account-list"></div>
+    </aside>
+
+    <!-- المحتوى الرئيسي -->
+    <main class="main-content" id="main-content">
+      <div class="stmt-header">
+        <div class="stmt-title" id="stmt-title">📄 اختر حساباً من القائمة</div>
+        <div class="stmt-filters">
+          <input type="date" id="filter-start" title="من تاريخ">
+          <span style="color:var(--text-muted);font-size:0.8rem;">إلى</span>
+          <input type="date" id="filter-end" title="إلى تاريخ">
+          <button class="btn-sm" id="filter-apply-btn">تطبيق</button>
+          <button class="btn-sm" id="filter-reset-btn">إعادة ضبط</button>
+          <button class="btn-sm" id="export-csv-btn" title="تصدير CSV" style="display:none;">⬇ CSV</button>
+        </div>
+      </div>
+
+      <div class="kpi-bar" id="kpi-bar" style="display:none;"></div>
+
+      <div class="stmt-table-wrap" id="stmt-wrap">
+        <div class="empty-state">
+          <div class="empty-icon">👈</div>
+          <div class="empty-text">اختر حساباً من القائمة الجانبية</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+// ── الحالة ──────────────────────────────────────────────
+let _archive      = null; // البيانات الكاملة للأرشيف
+let _selectedAcct = null; // الحساب المختار حالياً
+let _filterStart  = null;
+let _filterEnd    = null;
+
+// ── الأدوات ─────────────────────────────────────────────
+function fmt(num) {
+  const n = parseFloat(num) || 0;
+  return n.toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtDate(str) {
+  if (!str) return '—';
+  try {
+    const d = new Date(str.slice(0,10));
+    return d.toLocaleDateString('ar-SA', { year:'numeric', month:'short', day:'numeric' });
+  } catch { return str.slice(0,10); }
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── تحميل الملف ──────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const data = JSON.parse(ev.target.result);
+      loadArchive(data, file.name);
+    } catch (err) {
+      alert('خطأ في قراءة الملف: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+function loadArchive(data, filename) {
+  _archive = data;
+
+  // عرض الواجهة الرئيسية
+  document.getElementById('load-screen').style.display    = 'none';
+  const content = document.getElementById('archive-content');
+  content.style.display = 'flex';
+
+  // بيانات الأرشيف
+  const start = data.period_start || '—';
+  const end   = data.period_end   || '—';
+  document.getElementById('archive-meta').textContent =
+    `الفترة: ${start} ← ${end} · ${data.transactions?.length || 0} معاملة · ${filename}`;
+  document.getElementById('sidebar-period').textContent =
+    `الفترة: ${fmtDate(start)} — ${fmtDate(end)}`;
+
+  // ضبط الفلاتر الافتراضية
+  if (start && start !== '—') document.getElementById('filter-start').value = start;
+  if (end   && end   !== '—') document.getElementById('filter-end').value   = end;
+
+  renderAccountList();
+  resetMainContent();
+}
+
+// ── بناء قائمة الحسابات ──────────────────────────────────
+function renderAccountList(query) {
+  if (!_archive) return;
+
+  const balances  = _archive.account_balances || {};
+  const ledger    = _archive.account_ledger   || [];
+
+  // استخرج كل معرفات الحسابات الفريدة
+  const acctSet = new Set();
+  ledger.forEach(e => { if (e.account_id) acctSet.add(e.account_id); });
+  Object.keys(balances).forEach(id => acctSet.add(id));
+
+  let accounts = Array.from(acctSet).map(id => ({
+    id,
+    name     : resolveAccountName(id),
+    balance  : parseFloat(balances[id] || 0),
+    entryCount: ledger.filter(e => e.account_id === id).length,
+  }));
+
+  // فرز: الشركات أولاً ثم المناديب ثم البنوك ثم غيرها
+  accounts.sort((a,b) => {
+    const rank = id => id.startsWith('COMP_')?0 : id.startsWith('AGT_')?1 : id.startsWith('BNK_')?2 : 3;
+    const r = rank(a.id) - rank(b.id);
+    return r !== 0 ? r : a.name.localeCompare(b.name, 'ar');
+  });
+
+  // تصفية بالبحث
+  if (query) {
+    const q = query.toLowerCase();
+    accounts = accounts.filter(a =>
+      a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)
+    );
+  }
+
+  const listEl = document.getElementById('account-list');
+  if (!accounts.length) {
+    listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:0.82rem;">لا توجد نتائج</div>';
+    return;
+  }
+
+  listEl.innerHTML = accounts.map(a => {
+    const isActive = _selectedAcct === a.id;
+    const balCls   = a.balance >= 0 ? 'pos' : 'neg';
+    return `
+      <div class="acct-item${isActive?' active':''}" data-id="${esc(a.id)}">
+        <div class="acct-item-info">
+          <div class="acct-name">${esc(a.name)}</div>
+          <div class="acct-id">${esc(a.id)} · ${a.entryCount} قيد</div>
+          <div class="acct-balance ${balCls}">${fmt(a.balance)}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('.acct-item').forEach(el => {
+    el.addEventListener('click', () => selectAccount(el.dataset.id));
+  });
+}
+
+function resolveAccountName(id) {
+  if (!_archive) return id;
+
+  // 1) الملخصات (إن احتوت اسماً)
+  const summaries = _archive.monthly_summaries || [];
+  const found = summaries.find(s => s.account_id === id);
+  if (found?.account_name) return found.account_name;
+
+  // 2) بيانات مرجعية حقيقية (نفس مصدر تبويب الحسابات المحاسبية)
+  const ref = _archive.reference || {};
+  if (id.startsWith('AGT_')) {
+    const u = (ref.users || []).find(x => `AGT_${x.id}` === id);
+    if (u) return u.display_name || u.username || id;
+  }
+  if (id.startsWith('COMP_') && id !== 'COMP_GENERAL') {
+    const c = (ref.companies || []).find(x => `COMP_${x.id}` === id);
+    if (c) return c.name || id;
+  }
+  if (id.startsWith('BNK_')) {
+    const b = (ref.bank_accounts || []).find(x => `BNK_${x.id}` === id);
+    if (b) return b.name || id;
+  }
+
+  // 3) استنتاج من المعرّف (احتياطي)
+  if (id === 'GENERAL_FUND')       return 'الصندوق العام';
+  if (id === 'CASH_GENERAL')       return 'الخزينة النقدية';
+  if (id === 'COMP_GENERAL')       return 'حساب الشركات العام';
+  if (id === 'EXP_GENERAL')        return 'المصروفات العامة';
+  if (id === 'DEBTOR_SETTLEMENT')  return 'تسويات العملاء المديونين';
+  if (id.startsWith('AGT_'))  return 'مندوب ' + id.replace('AGT_','');
+  if (id.startsWith('COMP_')) return 'شركة '  + id.replace('COMP_','');
+  if (id.startsWith('BNK_'))  return 'بنك '   + id.replace('BNK_','');
+  if (id.startsWith('EXP_'))  return 'مصروف ' + id.replace('EXP_','');
+  return id;
+}
+
+// ── اختيار حساب ──────────────────────────────────────────
+function selectAccount(id) {
+  _selectedAcct = id;
+  renderAccountList(document.getElementById('acct-search').value);
+  renderStatement();
+  document.getElementById('export-csv-btn').style.display = 'inline-block';
+}
+
+function resetMainContent() {
+  _selectedAcct = null;
+  document.getElementById('stmt-title').textContent = '📄 اختر حساباً من القائمة';
+  document.getElementById('kpi-bar').style.display = 'none';
+  document.getElementById('export-csv-btn').style.display = 'none';
+  document.getElementById('stmt-wrap').innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon">👈</div>
+      <div class="empty-text">اختر حساباً من القائمة الجانبية</div>
+    </div>`;
+}
+
+// ── بناء كشف الحساب ──────────────────────────────────────
+function renderStatement() {
+  if (!_archive || !_selectedAcct) return;
+
+  const acctName = resolveAccountName(_selectedAcct);
+  document.getElementById('stmt-title').textContent = `📄 كشف حساب: ${acctName}`;
+
+  let entries = (_archive.account_ledger || [])
+    .filter(e => e.account_id === _selectedAcct);
+
+  // تطبيق فلتر التاريخ
+  if (_filterStart) entries = entries.filter(e => e.date >= _filterStart);
+  if (_filterEnd)   entries = entries.filter(e => e.date <= _filterEnd);
+
+  // ترتيب بالتاريخ تصاعدياً
+  entries.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+
+  // حساب الرصيد الجاري
+  let balance = 0;
+  let totalDebit = 0, totalCredit = 0;
+  const rows = entries.map(e => {
+    const d = parseFloat(e.debit  || 0);
+    const c = parseFloat(e.credit || 0);
+    balance      += d - c;
+    totalDebit   += d;
+    totalCredit  += c;
+    const balCls = balance >= 0 ? 'td-balance-pos' : 'td-balance-neg';
+    return `
+      <tr>
+        <td class="td-muted">${esc(fmtDate(e.date))}</td>
+        <td class="td-voucher">${esc(e.voucher_number || '—')}</td>
+        <td style="max-width:220px;font-size:0.8rem;">${esc(e.description || '—')}</td>
+        <td class="${d>0?'td-debit':''}" style="text-align:left;direction:ltr;">${d>0?fmt(d):'—'}</td>
+        <td class="${c>0?'td-credit':''}" style="text-align:left;direction:ltr;">${c>0?fmt(c):'—'}</td>
+        <td class="${balCls}" style="text-align:left;direction:ltr;">${fmt(balance)}</td>
+      </tr>`;
+  });
+
+  // KPIs
+  const kpiBar = document.getElementById('kpi-bar');
+  kpiBar.style.display = 'flex';
+  kpiBar.innerHTML = `
+    <div class="kpi-item">
+      <div class="kpi-label">عدد القيود</div>
+      <div class="kpi-value">${entries.length}</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-label">إجمالي المدين</div>
+      <div class="kpi-value red">${fmt(totalDebit)}</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-label">إجمالي الدائن</div>
+      <div class="kpi-value green">${fmt(totalCredit)}</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-label">الرصيد الختامي</div>
+      <div class="kpi-value ${balance>=0?'green':'red'}">${fmt(balance)}</div>
+    </div>`;
+
+  // Table
+  const wrap = document.getElementById('stmt-wrap');
+  if (!rows.length) {
+    wrap.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-text">لا توجد قيود في هذه الفترة</div>
+      </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>التاريخ</th>
+          <th>رقم القيد</th>
+          <th>البيان</th>
+          <th style="text-align:left;">مدين</th>
+          <th style="text-align:left;">دائن</th>
+          <th style="text-align:left;">الرصيد</th>
+        </tr>
+      </thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>`;
+}
+
+// ── فلتر التاريخ ──────────────────────────────────────────
+document.getElementById('filter-apply-btn').addEventListener('click', () => {
+  _filterStart = document.getElementById('filter-start').value || null;
+  _filterEnd   = document.getElementById('filter-end').value   || null;
+  if (_selectedAcct) renderStatement();
+});
+
+document.getElementById('filter-reset-btn').addEventListener('click', () => {
+  _filterStart = null;
+  _filterEnd   = null;
+  if (_archive) {
+    document.getElementById('filter-start').value = _archive.period_start || '';
+    document.getElementById('filter-end').value   = _archive.period_end   || '';
+  }
+  if (_selectedAcct) renderStatement();
+});
+
+// ── بحث الحسابات ──────────────────────────────────────────
+document.getElementById('acct-search').addEventListener('input', function() {
+  renderAccountList(this.value.trim());
+});
+
+// ── تصدير CSV ──────────────────────────────────────────────
+document.getElementById('export-csv-btn').addEventListener('click', () => {
+  if (!_archive || !_selectedAcct) return;
+  const name    = resolveAccountName(_selectedAcct);
+  let entries = (_archive.account_ledger || [])
+    .filter(e => e.account_id === _selectedAcct);
+  if (_filterStart) entries = entries.filter(e => e.date >= _filterStart);
+  if (_filterEnd)   entries = entries.filter(e => e.date <= _filterEnd);
+  entries.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+
+  let balance = 0;
+  const BOM = '﻿';
+  const rows = entries.map(e => {
+    const d = parseFloat(e.debit  || 0);
+    const c = parseFloat(e.credit || 0);
+    balance += d - c;
+    return [
+      e.date || '',
+      e.voucher_number || '',
+      (e.description || '').replace(/,/g,'،'),
+      d > 0 ? d.toFixed(2) : '',
+      c > 0 ? c.toFixed(2) : '',
+      balance.toFixed(2),
+    ].join(',');
+  });
+
+  const csv = BOM + `التاريخ,رقم القيد,البيان,مدين,دائن,الرصيد\n` + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: `${_selectedAcct}_statement.csv` });
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+// ── Enter key للفلتر ──────────────────────────────────────
+document.getElementById('filter-start').addEventListener('keydown', e => { if (e.key==='Enter') document.getElementById('filter-apply-btn').click(); });
+document.getElementById('filter-end').addEventListener('keydown',   e => { if (e.key==='Enter') document.getElementById('filter-apply-btn').click(); });
+</script>
+
+</body>
+</html>

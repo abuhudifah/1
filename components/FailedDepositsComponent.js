@@ -269,7 +269,10 @@ const FailedDepositsComponent = {
                     <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
                   </button>
                   <button class="btn btn-secondary btn-sm fd-delete" data-id="${escapeHtml(fd.id)}"
-                    data-amount="${escapeHtml(String(fd.amount))}" title="حذف" style="color:var(--danger);">
+                    data-amount="${escapeHtml(String(fd.amount))}"
+                    data-status="${escapeHtml(fd.status)}"
+                    data-refund-amount="${escapeHtml(String(fd.refund_amount || 0))}"
+                    title="حذف" style="color:var(--danger);">
                     <i data-lucide="trash-2" style="width:12px;height:12px"></i>
                   </button>
                 </div>
@@ -302,7 +305,12 @@ const FailedDepositsComponent = {
       });
     });
     wrap.querySelectorAll('.fd-delete').forEach(btn => {
-      btn.addEventListener('click', () => this._delete(btn.dataset.id, btn.dataset.amount));
+      btn.addEventListener('click', () => this._delete(
+        btn.dataset.id,
+        btn.dataset.amount,
+        btn.dataset.status,
+        btn.dataset.refundAmount,
+      ));
     });
 
     if (window.lucide) lucide.createIcons();
@@ -827,9 +835,23 @@ const FailedDepositsComponent = {
   // ══════════════════════════════════════════════════════════
   // حذف
   // ══════════════════════════════════════════════════════════
-  async _delete(id, amount) {
+  async _delete(id, amount, status, refundAmount) {
+    const totalAmount   = parseFloat(amount)       || 0;
+    const totalRefunded = parseFloat(refundAmount) || 0;
+    const canDelete = status === FAILED_DEPOSIT_STATUS.REFUNDED ||
+                      status === FAILED_DEPOSIT_STATUS.REJECTED;
+
+    if (!canDelete) {
+      const remaining = totalAmount - totalRefunded;
+      const msg = status === FAILED_DEPOSIT_STATUS.PARTIAL_REFUND
+        ? `لا يمكن الحذف — لم يُستردّ المبلغ بالكامل بعد (المتبقي: ${formatCurrency(remaining)})`
+        : 'لا يمكن حذف الإيداع الفاشل — يجب استرداد المبلغ بالكامل أولاً';
+      showToast(msg, 'error');
+      return;
+    }
+
     const confirmed = await confirmDialog(
-      `حذف الإيداع الفاشل بمبلغ ${formatCurrency(amount)}؟`, 'حذف', 'إلغاء', 'danger'
+      `حذف الإيداع الفاشل بمبلغ ${formatCurrency(totalAmount)}؟`, 'حذف', 'إلغاء', 'danger'
     );
     if (!confirmed) return;
     const result = await repo.delete(TABLES.FAILED_DEPOSITS, id);

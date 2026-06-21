@@ -38,6 +38,8 @@ const TABLES = Object.freeze({
   ACCOUNT_LEDGER    : 'account_ledger',
   ACCOUNT_BALANCES  : 'account_balances',
   DAILY_CLOSINGS    : 'daily_closings',
+  PERIOD_CLOSINGS   : 'period_closings',
+  MONTHLY_SUMMARIES : 'monthly_summaries',
   SYSTEM_SETTINGS   : 'system_settings',
   COMPANIES         : 'companies',
   EXPENSE_ACCOUNTS  : 'expense_accounts',
@@ -75,6 +77,7 @@ const RPC = Object.freeze({
   CREATE_TRANSACTION_WITH_ENTRIES : 'create_transaction_with_entries', // params: {tx_data, entries_data}
   PERFORM_DAILY_CLOSE             : 'perform_daily_close',             // params: {p_date}
   REVERSE_TRANSACTION             : 'reverse_transaction',             // params: {p_transaction_id}
+  DELETE_TRANSACTION_COMPLETELY   : 'delete_transaction_completely',   // params: {p_transaction_id}
   UPDATE_DEBTOR_BALANCE           : 'update_debtor_balance',           // params: {p_debtor_id, p_amount}
   // دوال المصادقة
   VERIFY_QUICK_LOGIN              : 'verify_quick_login',              // params: {p_hash} → {user_id, valid}
@@ -93,6 +96,10 @@ const RPC = Object.freeze({
   GET_PENDING_APPROVALS           : 'get_pending_approvals',           // params: {} → [{id,type,amount,...}]
   CLEAR_AUDIT_LOGS                : 'clear_audit_logs',                // params: {p_before_date?} → {deleted, success}
   RESET_ALL_OPERATIONAL_DATA      : 'reset_all_operational_data',       // params: {} → 'OK' | EXCEPTION
+  PERFORM_PERIOD_CLOSE            : 'perform_period_close',             // params: {p_period_start, p_period_end, p_notes?}
+  GET_PERIOD_CLOSINGS             : 'get_period_closings',              // params: {} → [{id, close_date, ...}]
+  GET_PERIOD_SUMMARIES            : 'get_period_summaries',             // params: {p_closing_id} → [{account_id, ...}]
+  GET_DATABASE_USAGE              : 'get_database_usage',               // params: {} → {database, storage, tables, total_rows}
 });
 
 // ============================================================
@@ -108,6 +115,7 @@ const TRANSACTION_TYPES = Object.freeze({
   DELIVERY             : 'delivery',
   REFUND_SETTLEMENT    : 'refund_settlement',
   FAILED_DEPOSIT_REFUND: 'failed_deposit_refund',
+  JOURNAL_ENTRY        : 'journal_entry',
 });
 
 const TRANSACTION_TYPE_LABELS = Object.freeze({
@@ -119,6 +127,7 @@ const TRANSACTION_TYPE_LABELS = Object.freeze({
   delivery             : 'تسليم مباشر',
   refund_settlement    : 'تسوية استرداد',
   failed_deposit_refund: 'استرداد إيداع فاشل',
+  journal_entry        : 'قيد محاسبي',
 });
 
 // ============================================================

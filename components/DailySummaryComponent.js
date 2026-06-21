@@ -94,7 +94,11 @@ const DailySummaryComponent = {
       <option value="deposit">🏦 إيداع</option>
       <option value="bank_withdrawal">💳 سحب بنكي</option>
       <option value="expense">💸 مصروف</option>
-      <option value="receipt">🔄 تحويل</option>`;
+      <option value="receipt">🔄 تحويل</option>
+      <option value="delivery">📤 تسليم مباشر</option>
+      <option value="refund_settlement">↩️ تسوية استرداد</option>
+      <option value="failed_deposit_refund">🔃 استرداد إيداع فاشل</option>
+      <option value="journal_entry">📒 قيد محاسبي</option>`;
     typeSelect.addEventListener('change', () => {
       this._typeFilter = typeSelect.value;
       this._page = 1;
@@ -218,8 +222,10 @@ const DailySummaryComponent = {
 
     // تفاصيل الأنواع من transactions (للعرض والعدد فقط — ليست للأرقام المالية)
     const txs = AppStore.getState('transactions').filter(tx => !tx.is_reversed);
-    const s   = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
-    const cnt = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0 };
+    const s   = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0,
+                  refund_settlement:0, failed_deposit_refund:0, journal_entry:0 };
+    const cnt = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0,
+                  refund_settlement:0, failed_deposit_refund:0, journal_entry:0 };
     txs.forEach(tx => {
       if (s.hasOwnProperty(tx.type)) {
         s[tx.type]   += parseFloat(tx.amount || 0);
@@ -240,12 +246,15 @@ const DailySummaryComponent = {
       { label:'الرصيد السابق',                value:opening,           icon:'🏦', cls:'kpi-accent',
         subtitle: agentName || 'إجمالي المناديب', count:null, highlight:'var(--accent)' },
       // أنواع العمليات
-      { label:'تحصيلات',       value:s.collection,     icon:'💰', cls:'kpi-success',  count:cnt.collection },
-      { label:'إيداعات',       value:s.deposit,         icon:'🏧', cls:'kpi-info',     count:cnt.deposit },
-      { label:'سحب بنكي',     value:s.bank_withdrawal, icon:'💳', cls:'kpi-info',     count:cnt.bank_withdrawal },
-      { label:'مصروفات',       value:s.expense,         icon:'💸', cls:'kpi-danger',   count:cnt.expense },
-      { label:'حوالات واردة', value:s.receipt,         icon:'📥', cls:'kpi-success',  count:cnt.receipt },
-      { label:'حوالات صادرة', value:s.delivery,        icon:'📤', cls:'kpi-warning',  count:cnt.delivery },
+      { label:'تحصيلات',              value:s.collection,          icon:'💰', cls:'kpi-success',  count:cnt.collection },
+      { label:'إيداعات',              value:s.deposit,             icon:'🏧', cls:'kpi-info',     count:cnt.deposit },
+      { label:'سحب بنكي',            value:s.bank_withdrawal,     icon:'💳', cls:'kpi-info',     count:cnt.bank_withdrawal },
+      { label:'مصروفات',              value:s.expense,             icon:'💸', cls:'kpi-danger',   count:cnt.expense },
+      { label:'حوالات واردة',        value:s.receipt,             icon:'📥', cls:'kpi-success',  count:cnt.receipt },
+      { label:'حوالات صادرة',        value:s.delivery,            icon:'📤', cls:'kpi-warning',  count:cnt.delivery },
+      ...(cnt.refund_settlement     > 0 ? [{ label:'تسوية استرداد',       value:s.refund_settlement,    icon:'↩️', cls:'kpi-warning', count:cnt.refund_settlement }]    : []),
+      ...(cnt.failed_deposit_refund > 0 ? [{ label:'استرداد إيداع فاشل', value:s.failed_deposit_refund, icon:'🔃', cls:'kpi-warning', count:cnt.failed_deposit_refund }] : []),
+      ...(cnt.journal_entry         > 0 ? [{ label:'قيود محاسبية',         value:s.journal_entry,        icon:'📒', cls:'kpi-accent',  count:cnt.journal_entry }]         : []),
       // البطاقة الأخيرة: الرصيد الفعلي
       { label:'الرصيد الفعلي في الصندوق', value:closing, icon:'📊',
         cls:closing >= 0 ? 'kpi-success' : 'kpi-danger', count:null,
@@ -345,9 +354,11 @@ const DailySummaryComponent = {
   _buildTxRow(tx, users) {
     const color    = getTransactionColor(tx.type);
     const label    = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
-    const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'🔄'}[tx.type]||'📋';
+    const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'↩️',failed_deposit_refund:'🔃',journal_entry:'📒'}[tx.type]||'📋';
     const isToday  = tx.date===getCurrentSaudiDate();
     const canEdit  = AuthService.isAdmin()||isToday;
+    // الحذف: المدير دائماً | المندوب لعمليات اليوم الحالي فقط
+    const canDelete = AuthService.isAdmin()||isToday;
     const isFailed        = tx.sync_status===SYNC_STATUS.PENDING && !!tx.error_message;
     const isPending       = tx.sync_status===SYNC_STATUS.PENDING && !tx.error_message;
     const isApprovalPending = tx.approval_status === 'pending';
@@ -392,7 +403,7 @@ const DailySummaryComponent = {
                 <i data-lucide="pencil" style="width:14px;height:14px;pointer-events:none;"></i>
               </button>`:''
             }
-            ${AuthService.isAdmin()&&!tx.is_reversed?`
+            ${canDelete&&!tx.is_reversed?`
               <button class="btn-icon" data-action="delete" data-id="${escapeHtml(tx.id)}" title="حذف"
                 style="width:32px;height:32px;color:var(--danger);">
                 <i data-lucide="trash-2" style="width:14px;height:14px;pointer-events:none;"></i>
@@ -408,24 +419,62 @@ const DailySummaryComponent = {
   },
 
   async _handleDelete(tx) {
-    // ✅ المعاملات نهائية بعد المزامنة: الحذف الفعلي مسموح فقط ما دامت
-    //    العملية «معلّقة» (لم تُرفع للخادم بعد). بعد المزامنة → قيد عكسي.
     const isPending = tx.sync_status === 'pending';
-    const msg = isPending
-      ? `هل تريد حذف عملية ${TRANSACTION_TYPE_LABELS[tx.type]} بمبلغ ${formatCurrency(tx.amount)}؟ (لم تُزامن بعد)`
-      : `هذه العملية مُزامنة ونهائية. سيتم إنشاء قيد عكسي بدل الحذف. هل تريد المتابعة؟`;
-    const confirmed = await confirmDialog(msg,isPending?'حذف':'عكس','إلغاء','danger');
-    if (!confirmed) return;
+    const isAdmin   = AuthService.isAdmin();
+    const isToday   = tx.date === getCurrentSaudiDate();
+    const amtFmt    = formatCurrency(tx.amount);
+    const label     = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
+
+    // معاملة معلّقة (لم تُزامن) → حذف محلي مباشر
     if (isPending) {
-      const result = await repo.delete(TABLES.TRANSACTIONS,tx.id);
-      if(isOk(result)){AppStore.deleteTransaction(tx.id);showToast('تم حذف العملية','success');}
-      else showToast(`فشل: ${result.error}`,'error');
-    } else {
-      const result = await AccountingService.reverseEntries(tx.id);
-      if(isOk(result)){AppStore.markTransactionReversed(tx.id);showToast('تم عكس العملية بنجاح','success');}
-      else showToast(`فشل: ${result.error}`,'error');
+      const confirmed = await confirmDialog(
+        `هل تريد حذف عملية ${label} بمبلغ ${amtFmt}؟ (لم تُزامن بعد)`,
+        'حذف', 'إلغاء', 'danger',
+      );
+      if (!confirmed) return;
+      const result = await repo.delete(TABLES.TRANSACTIONS, tx.id);
+      if (isOk(result)) {
+        await AccountingService.cleanupLocalTransaction(tx.id);
+        AppStore.deleteTransaction(tx.id);
+        showToast('تم حذف العملية', 'success');
+      } else showToast(`فشل: ${result.error}`, 'error');
+      this._renderTransactionsList();
+      return;
     }
-    this._renderTransactionsList();
+
+    // المدير: قيد عكسي (يحفظ سجل التدقيق)
+    if (isAdmin) {
+      const confirmed = await confirmDialog(
+        `هذه العملية مُزامنة. سيتم إنشاء قيد عكسي بدل الحذف. هل تريد المتابعة؟`,
+        'عكس', 'إلغاء', 'danger',
+      );
+      if (!confirmed) return;
+      const result = await AccountingService.reverseEntries(tx.id);
+      if (isOk(result)) { AppStore.markTransactionReversed(tx.id); showToast('تم عكس العملية بنجاح', 'success'); }
+      else showToast(`فشل: ${result.error}`, 'error');
+      this._renderTransactionsList();
+      return;
+    }
+
+    // المندوب: حذف نهائي لعمليات اليوم الحالي فقط
+    if (!isToday) {
+      showToast('يمكنك حذف عمليات اليوم الحالي فقط', 'error');
+      return;
+    }
+    const confirmed = await confirmDialog(
+      `حذف نهائي لعملية ${label} بمبلغ ${amtFmt}؟ سيُعكس أثرها على رصيدك ولا يمكن التراجع.`,
+      'حذف نهائي', 'إلغاء', 'danger',
+    );
+    if (!confirmed) return;
+    const result = await AccountingService.deleteTransactionCompletely(tx.id);
+    if (isOk(result)) {
+      AppStore.deleteTransaction(tx.id);
+      showToast('تم حذف العملية نهائياً', 'success');
+      await this._loadData();
+    } else {
+      showToast(`فشل: ${result.error}`, 'error');
+      this._renderTransactionsList();
+    }
   },
 
   _shareTransaction(tx) {

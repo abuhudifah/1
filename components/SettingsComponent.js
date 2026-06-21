@@ -73,7 +73,27 @@ const SettingsComponent = {
 
     const settings  = AppStore.getState('systemSettings');
     const logo      = settings.get('logo')             || {};
-    const closeConf = settings.get('daily_close_time') || {};
+    /* ═══ 0. لوحة استخدام خطة Supabase المجانية ═══ */
+    const usageCard = document.createElement('div');
+    usageCard.className = 'glass-card';
+    usageCard.style.marginBottom = '0';
+    usageCard.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <h3 style="font-size:0.95rem;font-weight:700;margin:0;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.05rem;">☁️</span> استخدام خطة Supabase المجانية
+        </h3>
+        <button id="set-usage-refresh" class="btn btn-secondary btn-sm" style="gap:6px;">
+          <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> تحديث
+        </button>
+      </div>
+      <div id="set-usage-body">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="skeleton" style="height:58px;border-radius:10px;"></div>
+          <div class="skeleton" style="height:58px;border-radius:10px;"></div>
+          <div class="skeleton" style="height:40px;border-radius:10px;"></div>
+        </div>
+      </div>`;
+    adminWrap.appendChild(usageCard);
 
     /* ═══ 1. شعار النظام ═══ */
     const logoCard = this._buildCard('🖼️ شعار النظام');
@@ -94,33 +114,7 @@ const SettingsComponent = {
       <button id="set-logo-save" class="btn btn-primary btn-sm">حفظ الشعار</button>`;
     adminWrap.appendChild(logoCard);
 
-    /* ═══ 2. الإقفال التلقائي ═══ */
-    const lockCard = this._buildCard('⏰ الإقفال اليومي التلقائي');
-    lockCard.innerHTML += `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-        <label class="form-label" style="margin:0;flex:1;">تفعيل الإقفال التلقائي</label>
-        <input id="set-lock-enabled" type="checkbox" style="width:18px;height:18px;cursor:pointer;"
-          ${closeConf.enabled ? 'checked' : ''}>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">ساعة الإقفال</label>
-          <input id="set-lock-hour" type="number" class="form-control" min="0" max="23"
-            value="${closeConf.hour ?? 0}" placeholder="0-23">
-        </div>
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">الدقيقة</label>
-          <input id="set-lock-minute" type="number" class="form-control" min="0" max="59"
-            value="${closeConf.minute ?? 0}" placeholder="0-59">
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button id="set-lock-save"   class="btn btn-primary btn-sm">حفظ الإعدادات</button>
-        <button id="set-manual-close" class="btn btn-secondary btn-sm">إقفال يدوي الآن</button>
-      </div>`;
-    adminWrap.appendChild(lockCard);
-
-    /* ═══ 3. النسخ الاحتياطي ═══ */
+    /* ═══ 2. النسخ الاحتياطي ═══ */
     const backupCard = this._buildCard('💾 النسخ الاحتياطي والاستعادة');
     backupCard.innerHTML += `
       <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">
@@ -219,7 +213,10 @@ const SettingsComponent = {
 
     this._bindAdminEvents();
     if (window.lucide) lucide.createIcons();
-    await this._loadConflicts();
+    await Promise.all([
+      this._loadConflicts(),
+      this._loadDatabaseUsage(),
+    ]);
   },
 
   /* ══════════════════════════════════════════
@@ -238,12 +235,11 @@ const SettingsComponent = {
   ══════════════════════════════════════════ */
   _bindAdminEvents() {
     document.getElementById('set-logo-save')?.addEventListener('click',       () => this._saveLogo());
-    document.getElementById('set-lock-save')?.addEventListener('click',       () => this._saveLockSettings());
-    document.getElementById('set-manual-close')?.addEventListener('click',    () => this._manualClose());
     document.getElementById('set-export-btn')?.addEventListener('click',      () => this._exportBackup());
     document.getElementById('set-import-trigger')?.addEventListener('click',  () => document.getElementById('set-import-file')?.click());
     document.getElementById('set-import-file')?.addEventListener('change',    (e) => this._importBackup(e));
     document.getElementById('set-reset-data-btn')?.addEventListener('click',  () => this._resetAllData());
+    document.getElementById('set-usage-refresh')?.addEventListener('click',   () => this._loadDatabaseUsage());
     document.getElementById('sc-conflicts-resolve-all-server')?.addEventListener('click', () => this._resolveAllConflicts('server'));
     document.getElementById('sc-conflicts-clear-all')?.addEventListener('click', () => this._clearAllConflicts());
   },
@@ -314,52 +310,149 @@ const SettingsComponent = {
   },
 
   /* ══════════════════════════════════════════
-     حفظ إعدادات الإقفال
+     لوحة استخدام خطة Supabase المجانية
   ══════════════════════════════════════════ */
-  async _saveLockSettings() {
-    const enabled = document.getElementById('set-lock-enabled')?.checked || false;
-    const hour    = parseInt(document.getElementById('set-lock-hour')?.value) || 0;
-    const minute  = parseInt(document.getElementById('set-lock-minute')?.value) || 0;
+  async _loadDatabaseUsage() {
+    const body = document.getElementById('set-usage-body');
+    if (!body) return;
 
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      showToast('قيم الساعة أو الدقيقة خارج النطاق المسموح', 'error'); return;
-    }
-
-    const saveBtn = document.getElementById('set-lock-save');
-    const restore = setButtonLoading(saveBtn);
+    const btn = document.getElementById('set-usage-refresh');
+    const restore = btn ? setButtonLoading(btn) : () => {};
 
     try {
-      const settings = AppStore.getState('systemSettings');
-      const current  = settings.get('daily_close_time') || {};
-      const updated  = { ...current, enabled, hour, minute };
-      await repo.upsert(TABLES.SYSTEM_SETTINGS, { key: 'daily_close_time', value: updated }, 'key');
-      showToast(enabled ? `تم تفعيل الإقفال التلقائي (${hour}:${String(minute).padStart(2,'0')})` : 'تم تعطيل الإقفال التلقائي', 'success');
-      await AppStore.refreshData();
+      const result = await AccountingService.getDatabaseUsage();
+      if (!isOk(result) || !result.data) {
+        body.innerHTML = `
+          <div style="text-align:center;padding:18px;color:var(--text-muted);font-size:0.84rem;">
+            ⚠️ تعذّر قياس الاستخدام${result?.error ? ` — ${escapeHtml(result.error)}` : ''}
+          </div>`;
+        return;
+      }
+      this._renderUsage(body, result.data);
     } catch (e) {
-      showToast(`خطأ: ${e.message}`, 'error');
+      body.innerHTML = `<div style="color:var(--danger);font-size:0.84rem;padding:12px;">❌ ${escapeHtml(e.message)}</div>`;
     } finally {
       restore();
+      if (window.lucide) lucide.createIcons();
     }
   },
 
-  /* ══════════════════════════════════════════
-     إقفال يدوي
-  ══════════════════════════════════════════ */
-  async _manualClose() {
-    const confirmed = await confirmDialog(
-      'تنفيذ الإقفال اليومي الآن؟ سيُحسب ملخص اليوم وتُقفل العمليات.',
-      'تنفيذ', 'إلغاء', 'warning'
-    );
-    if (!confirmed) return;
+  _renderUsage(body, data) {
+    const db      = data.database || {};
+    const storage = data.storage  || {};
+    const tables  = Array.isArray(data.tables) ? data.tables : [];
 
-    const btn     = document.getElementById('set-manual-close');
-    const restore = setButtonLoading(btn, 'جاري الإقفال...');
-    const result  = await callRPC('perform_daily_close', { p_date: new Date().toISOString().split('T')[0] });
-    restore();
+    const dbPct      = Math.min(100, parseFloat(db.percent)      || 0);
+    const storagePct = Math.min(100, parseFloat(storage.percent) || 0);
 
-    isOk(result)
-      ? showToast('تم الإقفال اليومي بنجاح', 'success')
-      : showToast(`فشل الإقفال: ${result.error}`, 'error');
+    // عتبة الخطر: > 80% أحمر، > 60% برتقالي، غير ذلك أخضر
+    const colorFor = (p) => p >= 80 ? '#dc2626' : p >= 60 ? '#d97706' : '#059669';
+    const dbColor      = colorFor(dbPct);
+    const storageColor = colorFor(storagePct);
+    const dbWarning    = dbPct >= 60;
+
+    const bar = (label, icon, pct, color, used, limit, extra) => `
+      <div style="background:var(--bg-hover);border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <span style="font-size:0.85rem;font-weight:600;display:flex;align-items:center;gap:6px;">
+            <span>${icon}</span> ${label}
+          </span>
+          <span style="font-size:0.82rem;font-weight:700;color:${color};">${pct.toFixed(1)}%</span>
+        </div>
+        <div style="height:9px;border-radius:6px;background:rgba(148,163,184,0.22);overflow:hidden;margin-bottom:6px;">
+          <div style="height:100%;width:${pct}%;border-radius:6px;background:${color};
+            transition:width .5s ease;min-width:${pct > 0 ? '3px' : '0'};"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.74rem;color:var(--text-muted);">
+          <span>${this._formatBytes(used)} مستخدم${extra ? ` · ${extra}` : ''}</span>
+          <span>الحد: ${this._formatBytes(limit)}</span>
+        </div>
+      </div>`;
+
+    const totalRows = (data.total_rows || 0).toLocaleString('en-US');
+
+    // أكبر 6 جداول كأشرطة دقيقة
+    const maxTableBytes = tables.length ? Math.max(...tables.map(t => t.bytes || 0)) : 1;
+    const tablesHtml = tables.slice(0, 6).map(t => {
+      const w = Math.max(2, Math.round(((t.bytes || 0) / maxTableBytes) * 100));
+      return `
+        <div style="display:flex;align-items:center;gap:8px;font-size:0.76rem;">
+          <span style="flex:0 0 120px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+            title="${escapeHtml(t.table_name)}">${escapeHtml(t.table_name)}</span>
+          <div style="flex:1;height:6px;border-radius:4px;background:rgba(148,163,184,0.18);overflow:hidden;">
+            <div style="height:100%;width:${w}%;background:var(--primary);border-radius:4px;"></div>
+          </div>
+          <span style="flex:0 0 64px;text-align:left;color:var(--text-muted);">${this._formatBytes(t.bytes || 0)}</span>
+          <span style="flex:0 0 56px;text-align:left;color:var(--text-muted);">${(t.row_count || 0).toLocaleString('en-US')}</span>
+        </div>`;
+    }).join('');
+
+    body.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        ${bar('قاعدة البيانات', '🗄️', dbPct, dbColor, db.used_bytes || 0, db.limit_bytes || 0, `${totalRows} صف`)}
+        ${bar('التخزين (الملفات)', '📦', storagePct, storageColor, storage.used_bytes || 0, storage.limit_bytes || 0, `${storage.object_count || 0} ملف`)}
+
+        ${dbWarning ? `
+          <div style="background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.28);
+            border-radius:10px;padding:10px 12px;font-size:0.8rem;color:#b45309;line-height:1.6;">
+            ⚠️ قاعدة البيانات تقترب من الحد المجاني. يُنصح بتفريغ مساحة عبر <strong>إقفال فترة محاسبية</strong>
+            (يُصدّر العمليات القديمة ثم يحذفها من السحابة).
+          </div>` : ''}
+
+        <details style="border:1px solid var(--border-color);border-radius:10px;padding:0;overflow:hidden;">
+          <summary style="cursor:pointer;padding:10px 14px;font-size:0.82rem;font-weight:600;
+            background:var(--bg-hover);user-select:none;">
+            📊 تفصيل أكبر الجداول
+          </summary>
+          <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:8px;font-size:0.72rem;color:var(--text-muted);font-weight:600;">
+              <span style="flex:0 0 120px;">الجدول</span>
+              <span style="flex:1;"></span>
+              <span style="flex:0 0 64px;text-align:left;">الحجم</span>
+              <span style="flex:0 0 56px;text-align:left;">صفوف</span>
+            </div>
+            ${tablesHtml || '<div style="color:var(--text-muted);font-size:0.8rem;">لا توجد بيانات</div>'}
+          </div>
+        </details>
+
+        <button id="set-usage-goto-close" class="btn btn-primary btn-sm"
+          style="gap:6px;justify-content:center;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;">
+          <i data-lucide="archive" style="width:14px;height:14px;"></i>
+          الانتقال إلى إقفال الفترة لتفريغ مساحة
+        </button>
+
+        <div style="font-size:0.72rem;color:var(--text-muted);text-align:center;">
+          آخر قياس: ${data.measured_at ? new Date(data.measured_at).toLocaleString('ar-SA') : '—'}
+        </div>
+      </div>`;
+
+    document.getElementById('set-usage-goto-close')?.addEventListener('click', () => this._gotoPeriodClose());
+    if (window.lucide) lucide.createIcons();
+  },
+
+  _gotoPeriodClose() {
+    const nav = window.App?.navigateTo || window._appNavigateTo;
+    if (typeof nav !== 'function') {
+      showToast('تعذّر فتح واجهة الإقفال', 'error');
+      return;
+    }
+    Promise.resolve(nav(TABS.ACCOUNT_MANAGEMENT)).then(() => {
+      // فتح نافذة الإقفال بعد تحميل تبويب إدارة الحسابات
+      setTimeout(() => {
+        if (window.AccountManagementComponent?._openPeriodCloseModal) {
+          AccountManagementComponent._openPeriodCloseModal();
+        }
+      }, 400);
+    });
+  },
+
+  _formatBytes(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let val = n / 1024, i = 0;
+    while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+    return `${val.toFixed(val >= 100 ? 0 : 1)} ${units[i]}`;
   },
 
   /* ══════════════════════════════════════════

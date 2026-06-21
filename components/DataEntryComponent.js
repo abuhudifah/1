@@ -19,15 +19,28 @@
  */
 'use strict';
 
+// بحث ذكي متعدد الكلمات: كل كلمة في الاستعلام يجب أن تكون موجودة (كجزء) في النص بأي ترتيب
+const _smartSearch = (text, query) => {
+  if (!text || !query || !query.trim()) return false;
+  const h = text.toLowerCase();
+  return query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(w => h.includes(w));
+};
+
 const DataEntryComponent = {
   _activeForm  : 'collection',
   _container   : null,
   _sortedBanks : [],
   _beneficiariesCache: [], // مستفيدو الإيداع/السحب (حسابات بنكية)
   _companyBeneficiaries: [], // مستفيدو التحصيل من شركة
+  _dropdownControllers: [],        // AbortController لمستمعي إغلاق القوائم المنسدلة
+  _refreshCompanyBeneficiaries: null, // callback لتحديث قائمة شركات المستفيدين
+  _refreshBankBeneficiaries: null,    // callback لتحديث قائمة بنوك المستفيدين
 
   async render(container) {
     this._container = container;
+    // إلغاء مستمعي الإغلاق القديمة عند كل render لتفادي التراكم
+    this._dropdownControllers.forEach(c => c.abort());
+    this._dropdownControllers = [];
     container.innerHTML = `<div style="padding:20px;">
       <div class="skeleton skeleton-card" style="height:48px;margin-bottom:16px;"></div>
       ${renderSkeleton('card', 1)}
@@ -73,6 +86,9 @@ const DataEntryComponent = {
         beneficiary_account: accountNumber,
       });
       await this._loadBeneficiaries();
+      // تحديث الـ UI فوراً بعد الحفظ
+      if (type === 'company' && this._refreshCompanyBeneficiaries) this._refreshCompanyBeneficiaries();
+      if (type === 'bank'    && this._refreshBankBeneficiaries)    this._refreshBankBeneficiaries();
     } catch (e) { console.warn(`⚠️ _saveBeneficiary(${type}):`, e.message); }
   },
 
@@ -342,11 +358,11 @@ const DataEntryComponent = {
 
     const dropdown = document.createElement('div');
     dropdown.style.cssText = `
-      position:absolute;top:100%;right:0;left:0;z-index:9999;
+      position:absolute;bottom:calc(100% + 4px);right:0;left:0;z-index:9999;
       background:var(--glass-bg-heavy);border:1px solid var(--border-color);
       border-radius:12px;box-shadow:var(--shadow-lg);
       overflow:hidden;display:none;
-      backdrop-filter:blur(16px);margin-top:4px;`;
+      backdrop-filter:blur(16px);`;
 
     const hiddenId = document.createElement('input');
     hiddenId.type = 'hidden';
@@ -363,7 +379,7 @@ const DataEntryComponent = {
       dropdown.innerHTML = '';
       if (q.length < 2) { dropdown.style.display = 'none'; return; }
 
-      const matches = allBanks.filter(b => b.name?.toLowerCase().includes(q)).slice(0, 3);
+      const matches = allBanks.filter(b => _smartSearch(b.name, query)).slice(0, 4);
 
       if (!matches.length) {
         const noResult = document.createElement('div');
@@ -397,7 +413,9 @@ const DataEntryComponent = {
       resultDisplay.style.display = 'none';
       renderDropdown(input.value);
     });
-    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dropdown.style.display = 'none'; });
+    const _bankCtrl = new AbortController();
+    this._dropdownControllers.push(_bankCtrl);
+    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dropdown.style.display = 'none'; }, { signal: _bankCtrl.signal });
 
     wrap.appendChild(input);
     wrap.appendChild(dropdown);
@@ -420,11 +438,11 @@ const DataEntryComponent = {
 
     const dropdown = document.createElement('div');
     dropdown.style.cssText = `
-      position:absolute;top:100%;right:0;left:0;z-index:9999;
+      position:absolute;bottom:calc(100% + 4px);right:0;left:0;z-index:9999;
       background:var(--glass-bg-heavy);border:1px solid var(--border-color);
       border-radius:12px;box-shadow:var(--shadow-lg);
       overflow:hidden;display:none;
-      backdrop-filter:blur(16px);margin-top:4px;`;
+      backdrop-filter:blur(16px);`;
 
     const hiddenId = document.createElement('input');
     hiddenId.type = 'hidden';
@@ -443,7 +461,7 @@ const DataEntryComponent = {
       dropdown.innerHTML = '';
       if (q.length < 2) { dropdown.style.display = 'none'; return; }
 
-      const matches = companies.filter(c => c.name?.toLowerCase().includes(q)).slice(0, 3);
+      const matches = companies.filter(c => _smartSearch(c.name, query)).slice(0, 4);
 
       if (!matches.length) {
         const noResult = document.createElement('div');
@@ -477,7 +495,9 @@ const DataEntryComponent = {
       resultDisplay.style.display = 'none';
       renderDropdown(input.value);
     });
-    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dropdown.style.display = 'none'; });
+    const _compCtrl = new AbortController();
+    this._dropdownControllers.push(_compCtrl);
+    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dropdown.style.display = 'none'; }, { signal: _compCtrl.signal });
 
     wrap.appendChild(input);
     wrap.appendChild(dropdown);
@@ -506,19 +526,28 @@ const DataEntryComponent = {
         return;
       }
       this._companyBeneficiaries.forEach(b => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'btn btn-secondary btn-sm';
-        chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
-        chip.textContent = b.name;
+        const chip = document.createElement('div');
+        chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;background:var(--bg-input);border:1px solid var(--border-color);';
+        chip.innerHTML = `<span>${escapeHtml(b.beneficiary_name || b.name || '—')}</span><span style="color:var(--danger);font-weight:700;padding-right:2px;" title="حذف">✕</span>`;
+        chip.querySelector('span:last-child').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            const userId = AuthService.getCurrentUserId();
+            await supabaseClient.from(TABLES.USER_BENEFICIARIES).delete()
+              .eq('user_id', userId).eq('beneficiary_id', b.beneficiary_id);
+            await this._loadBeneficiaries();
+            refreshList();
+          } catch(err) { console.warn('فشل حذف المستفيد:', err.message); }
+        });
         chip.addEventListener('click', () => {
-          const company = AppStore.getState('companies').find(c => c.id === b.id);
-          if (company) onSelect(company);
+          const company = (AppStore.getState('companies') || []).find(c => c.id === b.beneficiary_id);
+          onSelect(company || { id: b.beneficiary_id, name: b.beneficiary_name || b.name, account_number: b.beneficiary_account });
         });
         listDiv.appendChild(chip);
       });
     };
-    
+
+    this._refreshCompanyBeneficiaries = refreshList;
     refreshList();
     wrap.appendChild(listDiv);
     return wrap;
@@ -531,7 +560,7 @@ const DataEntryComponent = {
     
     const label = document.createElement('div');
     label.style.cssText = 'font-size:0.75rem;color:var(--text-muted);margin-bottom:6px;';
-    label.textContent = 'الحسابات البنكية المحفوظة:';
+    label.textContent = 'وصول سريع (حسب الاستخدام):';
     wrap.appendChild(label);
     
     const listDiv = document.createElement('div');
@@ -556,6 +585,7 @@ const DataEntryComponent = {
       });
     };
     
+    this._refreshBankBeneficiaries = refreshList;
     refreshList();
     wrap.appendChild(listDiv);
     return wrap;
@@ -719,11 +749,11 @@ const DataEntryComponent = {
     const dd = document.createElement('div');
     dd.id = 'col-customer-dropdown';
     dd.style.cssText = `
-      position:absolute;top:100%;right:0;left:0;z-index:9999;
+      position:absolute;bottom:calc(100% + 4px);right:0;left:0;z-index:9999;
       background:var(--glass-bg-heavy);border:1px solid var(--border-color);
       border-radius:12px;box-shadow:var(--shadow-lg);
       overflow:hidden;display:none;
-      backdrop-filter:blur(16px);margin-top:4px;`;
+      backdrop-filter:blur(16px);`;
 
     const custId = document.createElement('input');
     custId.type = 'hidden'; custId.id = 'col-debtor-id';
@@ -757,7 +787,7 @@ const DataEntryComponent = {
       const allDebtors = _getDebtors();
       dd.innerHTML = '';
       if (trimQ.length < 2) { dd.style.display = 'none'; return; }
-      const matches = allDebtors.filter(d => d.name?.toLowerCase().includes(trimQ)).slice(0, 3);
+      const matches = allDebtors.filter(d => _smartSearch(d.name, q)).slice(0, 4);
 
       if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ)) {
         const newItem = document.createElement('div');
@@ -819,7 +849,9 @@ const DataEntryComponent = {
     };
 
     input.addEventListener('input', () => { custId.value = ''; debtInfo.style.display = 'none'; render(input.value); });
-    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dd.style.display = 'none'; });
+    const _custCtrl = new AbortController();
+    this._dropdownControllers.push(_custCtrl);
+    document.addEventListener('click', e => { if (!wrap.contains(e.target)) dd.style.display = 'none'; }, { signal: _custCtrl.signal });
 
     /* ── زر إضافة عميل جديد (دائم تحت مربع البحث) ── */
     const addClientBtn = document.createElement('button');
@@ -896,7 +928,7 @@ const DataEntryComponent = {
     // ✅ حقل بحث رقم الحساب البنكي
     const bankField = this._field('wd-bank-search', 'البحث عن حساب بنكي', true);
     let selectedBank = null;
-    const bankSearch = this._buildBankAccountSearch('wd-bank-search', 'ابحث باسم البنك أو رقم الحساب', (bank) => {
+    const bankSearch = this._buildBankAccountSearch('wd-bank-search', 'ابحث باسم البنك...', (bank) => {
       selectedBank = bank;
       const ceilingInfo = document.getElementById('wd-ceiling-info');
       if (ceilingInfo && bank) {
@@ -1011,7 +1043,7 @@ const DataEntryComponent = {
     // ✅ حقل بحث رقم الحساب البنكي
     const bankField = this._field('dep-bank-search', 'البحث عن حساب بنكي', true);
     let selectedBank = null;
-    const bankSearch = this._buildBankAccountSearch('dep-bank-search', 'ابحث باسم البنك أو رقم الحساب', (bank) => {
+    const bankSearch = this._buildBankAccountSearch('dep-bank-search', 'ابحث باسم البنك...', (bank) => {
       selectedBank = bank;
       const ceilingInfo = document.getElementById('dep-ceiling-info');
       if (ceilingInfo && bank) {
@@ -1300,16 +1332,16 @@ const DataEntryComponent = {
         chip.style.cssText = 'font-size:0.72rem;padding:4px 10px;border-radius:20px;';
         chip.textContent = b.display_name;
         chip.addEventListener('click', () => {
-          acctInput.value = `AGT-${b.beneficiary_id.slice(0,6)}`;
+          acctSelect.value = b.beneficiary_id;
           hiddenRecipientId.value = b.beneficiary_id;
           acctResult.style.display = '';
           acctResult.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
-                <span style="font-weight:700;">${escapeHtml(b.display_name)}</span>
-                <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">(مندوب)</span>
+                <span style="font-weight:700;">${escapeHtml(b.display_name || b.beneficiary_name || '—')}</span>
+                <span style="font-size:0.72rem;color:var(--text-muted);margin-right:6px;">(مستفيد محفوظ)</span>
               </div>
-              <span style="color:var(--success);font-size:0.75rem;">✓ مستفيد محفوظ</span>
+              <span style="color:var(--success);font-size:0.75rem;">✓</span>
             </div>`;
           saveBeneficiaryWrap.style.display = 'none';
         });
@@ -1715,11 +1747,11 @@ const DataEntryComponent = {
       const modeSelect = document.getElementById('tr-mode');
       if (modeSelect) modeSelect.value = 'transfer';
       const reasonField = document.getElementById('tr-reason');
-      if (reasonField) reasonField.value = '';
-      const acctInput = document.getElementById('tr-account-num');
-      if (acctInput) acctInput.value = '';
+      if (reasonField) { reasonField.value = ''; reasonField.style.display = 'none'; }
+      const acctSelect = document.getElementById('tr-recipient-select');
+      if (acctSelect) acctSelect.value = '';
       const acctResult = document.getElementById('tr-account-result');
-      if (acctResult) acctResult.style.display = 'none';
+      if (acctResult) { acctResult.style.display = 'none'; acctResult.innerHTML = ''; }
       const hiddenRecipientId = document.getElementById('tr-recipient-id');
       if (hiddenRecipientId) hiddenRecipientId.value = '';
       const saveBeneficiaryCheck = document.getElementById('tr-save-beneficiary');

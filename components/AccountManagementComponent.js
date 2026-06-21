@@ -12,7 +12,9 @@
  * ✅ 4. إضافة زر نسخ رقم الحساب مع fallback آمن.
  * ✅ 5. إصلاح _loadStatement لتعمل Offline-First (Supabase ← Dexie).
  * ✅ 6. إصلاح _saveNewAccount لاستخدام generate_account_number والإدراج المباشر.
- * ✅ 7. تحسين _postEntries لاستخدام post_manual_journal_entries RPC مع fallback.
+ * ✅ 7. ترحيل القيود عبر AccountingService.createTransactionWithEntries (Clean Slate):
+ *      كل قيد ينشئ سجلاً في transactions + قيوداً في account_ledger دفعة واحدة،
+ *      فيظهر في الملخص اليومي وجميع العمليات والحسابات المحاسبية.
  * ✅ 8. إضافة فحوصات typeof للكائنات العامة (db, SyncQueue, AppStore, PrintService, copyToClipboard).
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
@@ -27,6 +29,7 @@ const AccountManagementComponent = {
   _allAccounts        : [], // قائمة كل الحسابات لاستخدامها في القيود
   _currentAddType     : null,
   _currentJournalType : 'simple',
+  _armedArchivePeriod : null, // الفترة التي صُدِّر أرشيفها وجاهزة للإقفال {start,end}
 
   // شجرة الحسابات الافتراضية
   DEFAULT_CHART : [
@@ -85,6 +88,15 @@ const AccountManagementComponent = {
     refreshBtn.addEventListener('click', () => this._loadChart());
     btnGroup.appendChild(refreshBtn);
 
+    if (AuthService.isAdmin()) {
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'btn btn-secondary btn-sm';
+      closeBtn.style.cssText = 'border-color:rgba(139,92,246,0.4);color:#8b5cf6;';
+      closeBtn.innerHTML = '<i data-lucide="archive" style="width:14px;height:14px;"></i> إقفال الفترة';
+      closeBtn.addEventListener('click', () => this._openPeriodCloseModal());
+      btnGroup.appendChild(closeBtn);
+    }
+
     titleRow.appendChild(btnGroup);
     wrap.appendChild(titleRow);
 
@@ -112,6 +124,14 @@ const AccountManagementComponent = {
         <div class="skeleton" style="height:44px;border-radius:8px;"></div>
       </div>`).join('');
     wrap.appendChild(chartEl);
+
+    /* ── قسم إقفال الفترة (للمدير فقط) ── */
+    if (AuthService.isAdmin()) {
+      const periodCloseSection = document.createElement('div');
+      periodCloseSection.id = 'acct-period-close-section';
+      periodCloseSection.style.display = 'none';
+      wrap.appendChild(periodCloseSection);
+    }
 
     /* ── قسم كشف الحساب ── */
     const stmtSection = document.createElement('div');
@@ -1404,7 +1424,7 @@ const AccountManagementComponent = {
     }
 
     if (!tx) {
-      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      const dir = debit > 0 ? 'عليكم' : 'لكم';
       // FIX: استخدام وصف القيد المخزَّن، وإلا إضافة اسم الطرف المقابل إن وُجد
       if (e.description) return { label: 'قيد محاسبي', details: e.description };
       const cpStr = counterpart ? ` — ${dir === 'لكم' ? 'من' : 'إلى'} حساب ${counterpart}` : '';
@@ -1421,7 +1441,7 @@ const AccountManagementComponent = {
         return { label: 'سحب بنكي', details: withUser(`لكم سحب نقدي من حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
       if (tx.type === 'failed_deposit_refund')
         return { label: 'استرداد إيداع فاشل', details: withUser(`عليكم استرداد إيداع فاشل من حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
-      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      const dir = debit > 0 ? 'عليكم' : 'لكم';
       return { label: 'قيد بسيط', details: withUser(`${dir} قيد بسيط`) };
     }
 
@@ -1452,7 +1472,7 @@ const AccountManagementComponent = {
         }
         return { label: `تحويل إلى ${otherName}`, details: withUser(`عليكم حوالة نقدية من حسابكم إلى حساب ${otherName}`) };
       }
-      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      const dir = debit > 0 ? 'عليكم' : 'لكم';
       return { label: 'قيد', details: withUser(`${dir} قيد`) };
     }
 
@@ -1811,12 +1831,16 @@ const AccountManagementComponent = {
       <div id="journal-simple-form">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
           <div class="form-group" style="margin:0;">
-            <label class="form-label">الحساب المدين <span class="required">*</span></label>
-            <select id="j-debit-acc" class="form-control"></select>
+            <label class="form-label">من حساب <span class="required">*</span>
+              <span style="font-size:0.7rem;color:var(--danger);font-weight:600;">(يُسجَّل في كشفه: عليكم)</span>
+            </label>
+            <select id="j-from-acc" class="form-control"></select>
           </div>
           <div class="form-group" style="margin:0;">
-            <label class="form-label">الحساب الدائن <span class="required">*</span></label>
-            <select id="j-credit-acc" class="form-control"></select>
+            <label class="form-label">إلى حساب <span class="required">*</span>
+              <span style="font-size:0.7rem;color:var(--success);font-weight:600;">(يُسجَّل في كشفه: لكم)</span>
+            </label>
+            <select id="j-to-acc" class="form-control"></select>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
@@ -1873,12 +1897,12 @@ const AccountManagementComponent = {
       `<option value="${escapeHtml(a.account_id)}">${escapeHtml(a.name || a.account_id)}</option>`
     ).join('');
 
-    const dSel = document.getElementById('j-debit-acc');
-    const cSel = document.getElementById('j-credit-acc');
-    if (dSel) dSel.innerHTML = '<option value="">— اختر —</option>' + accOptions;
-    if (cSel) cSel.innerHTML = '<option value="">— اختر —</option>' + accOptions;
+    const fromSel = document.getElementById('j-from-acc');
+    const toSel   = document.getElementById('j-to-acc');
+    if (fromSel) fromSel.innerHTML = '<option value="">— اختر —</option>' + accOptions;
+    if (toSel)   toSel.innerHTML   = '<option value="">— اختر —</option>' + accOptions;
 
-    if (preAccount && dSel) dSel.value = preAccount;
+    if (preAccount && fromSel) fromSel.value = preAccount;
 
     const amtEl  = document.getElementById('j-amount');
     const descEl = document.getElementById('j-desc');
@@ -2014,33 +2038,33 @@ const AccountManagementComponent = {
   },
 
   async _saveSimpleEntry(errEl) {
-    const debitAcc  = document.getElementById('j-debit-acc')?.value;
-    const creditAcc = document.getElementById('j-credit-acc')?.value;
-    const amount    = parseFloat(document.getElementById('j-amount')?.value || 0);
-    const date      = document.getElementById('j-date')?.value      || getCurrentSaudiDate();
-    const desc      = document.getElementById('j-desc')?.value?.trim() || '';
+    // "من حساب" = الطرف المدين (عليكم) | "إلى حساب" = الطرف الدائن (لكم)
+    // مطابق لمنطق الإيداع/التحصيل: مدين→عليكم ، دائن→لكم
+    const fromAcc = document.getElementById('j-from-acc')?.value;
+    const toAcc   = document.getElementById('j-to-acc')?.value;
+    const amount  = parseFloat(document.getElementById('j-amount')?.value || 0);
+    const date    = document.getElementById('j-date')?.value      || getCurrentSaudiDate();
+    const desc    = document.getElementById('j-desc')?.value?.trim() || '';
 
-    if (!debitAcc)         { errEl.textContent = 'اختر الحساب المدين'; return; }
-    if (!creditAcc)        { errEl.textContent = 'اختر الحساب الدائن'; return; }
-    if (debitAcc === creditAcc) { errEl.textContent = 'لا يمكن أن يكون الحساب المدين والدائن نفسه'; return; }
+    if (!fromAcc)            { errEl.textContent = 'اختر حساب "من"'; return; }
+    if (!toAcc)             { errEl.textContent = 'اختر حساب "إلى"'; return; }
+    if (fromAcc === toAcc)  { errEl.textContent = 'لا يمكن أن يكون حساب "من" و"إلى" نفسه'; return; }
     if (!amount || amount <= 0) { errEl.textContent = 'المبلغ يجب أن يكون أكبر من صفر'; return; }
 
-    const voucherNum = `JV-${Date.now()}`;
-    const entries = [
-      { account_id: debitAcc,  debit: amount, credit: 0,      description: desc, date, voucher_number: voucherNum },
-      { account_id: creditAcc, debit: 0,      credit: amount, description: desc, date, voucher_number: voucherNum },
+    const journalEntries = [
+      { account_id: fromAcc, debit: amount, credit: 0,      description: desc }, // من → عليكم
+      { account_id: toAcc,   debit: 0,      credit: amount, description: desc }, // إلى → لكم
     ];
 
-    await this._postEntries(entries, errEl);
+    await this._postJournalEntry({ amount, date, details: desc, journalEntries }, errEl);
   },
 
   async _saveDoubleEntry(errEl) {
-    const lines     = [...document.querySelectorAll('.journal-line')];
-    const date      = document.getElementById('jd-date')?.value  || getCurrentSaudiDate();
-    const desc      = document.getElementById('jd-desc')?.value?.trim() || '';
-    const voucherNum = `JV-${Date.now()}`;
+    const lines = [...document.querySelectorAll('.journal-line')];
+    const date  = document.getElementById('jd-date')?.value?.trim() || getCurrentSaudiDate();
+    const desc  = document.getElementById('jd-desc')?.value?.trim() || '';
 
-    const entries = [];
+    const journalEntries = [];
     let totalDebit = 0, totalCredit = 0;
 
     for (const line of lines) {
@@ -2051,71 +2075,55 @@ const AccountManagementComponent = {
       if (!accId) continue;
       if (debit > 0 && credit > 0) { errEl.textContent = 'كل سطر يجب أن يكون مدين أو دائن فقط، ليس كليهما'; return; }
 
-      entries.push({ account_id: accId, debit, credit, description: desc, date, voucher_number: voucherNum });
+      journalEntries.push({ account_id: accId, debit, credit, description: desc });
       totalDebit  += debit;
       totalCredit += credit;
     }
 
-    if (entries.length < 2)  { errEl.textContent = 'القيد يجب أن يحتوي سطرين على الأقل'; return; }
+    if (journalEntries.length < 2) { errEl.textContent = 'القيد يجب أن يحتوي سطرين على الأقل'; return; }
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
       errEl.textContent = `القيد غير متوازن — المدين (${Math.round(totalDebit).toLocaleString('en-US')}) ≠ الدائن (${Math.round(totalCredit).toLocaleString('en-US')})`;
       return;
     }
 
-    await this._postEntries(entries, errEl);
+    await this._postJournalEntry({ amount: totalDebit, date, details: desc, journalEntries }, errEl);
   },
 
-  // ✅ إصلاح جوهري: ترحيل القيود باستخدام RPC الموجودة مع Fallback
-  async _postEntries(entries, errEl) {
+  // ─────────────────────────────────────────────────────────
+  // ترحيل القيد عبر AccountingService.createTransactionWithEntries
+  // يضمن إنشاء سجل في transactions + قيود في account_ledger دفعة واحدة
+  // ─────────────────────────────────────────────────────────
+  async _postJournalEntry({ amount, date, details, journalEntries }, errEl) {
     try {
-      if (!isOfflineMode() && isOnline()) {
-        try {
-          const { data, error } = await supabaseClient.rpc('post_manual_journal_entries', {
-            p_entries: entries,
-            p_user_id: AuthService.getCurrentUserId(),
-          });
-          if (error) throw error;
-          if (data && !data.ok) throw new Error(data.error);
-          
-          if (typeof db !== 'undefined' && db.isOpen()) {
-            for (const e of entries) {
-              const current = await db.account_balances.get(e.account_id);
-              const bal     = parseFloat(current?.balance || 0) + e.debit - e.credit;
-              await db.account_balances.put({ account_id: e.account_id, balance: bal, last_updated: new Date().toISOString() });
-            }
-          }
-          showToast('✅ تم ترحيل القيد بنجاح', 'success');
-        } catch (rpcErr) {
-          console.warn('RPC فشل، سيتم الحفظ محلياً', rpcErr);
-          await this._saveEntriesLocally(entries);
-          showToast('تم حفظ القيد محلياً وسيتم مزامنته لاحقاً', 'warning');
-        }
-      } else {
-        await this._saveEntriesLocally(entries);
-        showToast('تم حفظ القيد محلياً (غير متصل)', 'warning');
+      // ربط القيد بالمندوب المعني (إن وُجد حساب AGT_ في الأطراف) ليظهر في ملخصه
+      // اليومي ويصبح مرئياً له عبر RLS. يُفضَّل الطرف الدائن (إلى/لكم)، وإلا أي طرف
+      // مندوب، وإلا منشئ القيد (المدير).
+      const creatorId  = AuthService.getCurrentUserId();
+      const agentEntry = journalEntries.find(e => e.account_id.startsWith('AGT_') && e.credit > 0)
+                      || journalEntries.find(e => e.account_id.startsWith('AGT_'));
+      const linkedAgentId = agentEntry ? agentEntry.account_id.slice(4) : creatorId;
+
+      const result = await AccountingService.createTransactionWithEntries({
+        type            : TRANSACTION_TYPES.JOURNAL_ENTRY,
+        amount,
+        date,
+        details         : details || 'قيد محاسبي يدوي',
+        agent_id        : linkedAgentId,
+        executed_by     : creatorId,
+        approval_status : 'approved',
+        _journal_entries: journalEntries,
+      });
+
+      if (!isOk(result)) {
+        errEl.textContent = result.error || 'فشل ترحيل القيد';
+        return;
       }
 
+      showToast('✅ تم ترحيل القيد بنجاح', 'success');
       this._closeJournalModal();
       await this._loadChart();
     } catch (e) {
       errEl.textContent = `فشل ترحيل القيد: ${e.message}`;
-    }
-  },
-
-  // حفظ القيود محلياً (مع SyncQueue)
-  async _saveEntriesLocally(entries) {
-    if (typeof db === 'undefined' || !db.isOpen()) throw new Error('قاعدة البيانات المحلية غير متوفرة');
-    for (const e of entries) {
-      const id = generateUUID();
-      const record = { ...e, id, sync_status: SYNC_STATUS.PENDING, created_at: new Date().toISOString() };
-      await db.account_ledger.put(record);
-      if (typeof SyncQueue !== 'undefined') {
-        await SyncQueue.add(SYNC_ACTIONS.CREATE, 'account_ledger', id, record);
-      }
-
-      const current = await db.account_balances.get(e.account_id);
-      const bal     = parseFloat(current?.balance || 0) + e.debit - e.credit;
-      await db.account_balances.put({ account_id: e.account_id, balance: bal, last_updated: new Date().toISOString() });
     }
   },
 
@@ -2493,6 +2501,265 @@ const AccountManagementComponent = {
     } finally {
       restore();
     }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // إقفال الفترة — نافذة الإدارة
+  // ─────────────────────────────────────────────────────────
+  async _openPeriodCloseModal() {
+    const existing = document.getElementById('period-close-modal');
+    if (existing) { existing.style.display = 'flex'; await this._loadPeriodClosings(); return; }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'period-close-modal';
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'display:flex;z-index:9999;';
+    overlay.addEventListener('click', e => { if (e.target === overlay) this._closePeriodCloseModal(); });
+
+    const today = new Date();
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0,10);
+    const lastOfPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().slice(0,10);
+    const firstOfYear = `${today.getFullYear()}-01-01`;
+    const lastOfPrevYear = `${today.getFullYear()-1}-12-31`;
+
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:640px;width:95%;max-height:90vh;overflow-y:auto;">
+        <div class="modal-header" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);padding:18px 22px;border-radius:12px 12px 0 0;">
+          <h3 style="color:#fff;font-size:1.05rem;font-weight:700;margin:0;">🗂️ إقفال الفترة المحاسبية</h3>
+          <button id="pc-modal-close" class="modal-close" style="color:#e9d5ff;">✕</button>
+        </div>
+        <div style="padding:20px;">
+
+          <div class="glass-card" style="background:rgba(124,58,237,0.06);border:1px solid rgba(124,58,237,0.2);margin-bottom:18px;padding:14px;">
+            <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;line-height:1.7;">
+              ⚠️ <strong>تحذير:</strong> عند تنفيذ الإقفال ستُحذف جميع المعاملات وقيود الحساب للفترة المحددة من قاعدة البيانات السحابية
+              وتُستبدل بأرصدة افتتاحية. تأكد من تحميل ملف الأرشيف أولاً.
+            </p>
+          </div>
+
+          <!-- اختيار الفترة -->
+          <div style="margin-bottom:16px;">
+            <label class="form-label">نطاق الفترة</label>
+            <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+              <button class="btn btn-sm btn-secondary period-preset"
+                data-start="${firstOfYear}" data-end="${lastOfPrevYear}" style="font-size:0.78rem;">
+                السنة الماضية
+              </button>
+              <button class="btn btn-sm btn-secondary period-preset"
+                data-start="${firstOfYear}" data-end="${lastOfPrevMonth}" style="font-size:0.78rem;">
+                من بداية السنة حتى الشهر الماضي
+              </button>
+              <button class="btn btn-sm btn-secondary period-preset"
+                data-start="${firstOfMonth}" data-end="${lastOfPrevMonth}" style="font-size:0.78rem;">
+                الشهر الماضي فقط
+              </button>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+                <label class="form-label" style="font-size:0.78rem;">من تاريخ</label>
+                <input id="pc-start" type="date" class="form-control" value="${firstOfYear}">
+              </div>
+              <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+                <label class="form-label" style="font-size:0.78rem;">إلى تاريخ</label>
+                <input id="pc-end" type="date" class="form-control" value="${lastOfPrevMonth}">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:16px;">
+            <label class="form-label" style="font-size:0.82rem;">ملاحظات الإقفال (اختياري)</label>
+            <textarea id="pc-notes" class="form-control" rows="2"
+              placeholder="ملاحظات للمرجعية..." style="resize:none;font-size:0.85rem;"></textarea>
+          </div>
+
+          <div id="pc-error" style="color:var(--danger);font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button id="pc-export-btn" class="btn btn-secondary" style="flex:1;border-color:rgba(16,185,129,0.4);color:#10b981;">
+              <i data-lucide="download" style="width:14px;height:14px;"></i> تحميل أرشيف JSON
+            </button>
+            <button id="pc-close-btn" class="btn btn-primary" style="flex:1;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;"
+              disabled>
+              <i data-lucide="archive" style="width:14px;height:14px;"></i> تنفيذ الإقفال
+            </button>
+          </div>
+          <p id="pc-export-note" style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;display:none;">
+            ✅ تم تحميل الأرشيف — يمكنك الآن تنفيذ الإقفال
+          </p>
+
+          <!-- سجل الإقفالات السابقة -->
+          <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;">
+            <h4 style="font-size:0.9rem;font-weight:700;color:var(--text-primary);margin-bottom:12px;">📋 سجل الإقفالات السابقة</h4>
+            <div id="pc-history" style="font-size:0.82rem;">
+              <div class="skeleton" style="height:44px;border-radius:8px;"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+    if (window.lucide) lucide.createIcons();
+
+    document.getElementById('pc-modal-close').addEventListener('click', () => this._closePeriodCloseModal());
+
+    overlay.querySelectorAll('.period-preset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('pc-start').value = btn.dataset.start;
+        document.getElementById('pc-end').value   = btn.dataset.end;
+        this._disarmPeriodClose();
+      });
+    });
+
+    // أي تغيير في الفترة يُلغي تسليح الإقفال — يجب إعادة تصدير الأرشيف للفترة الجديدة
+    document.getElementById('pc-start')?.addEventListener('change', () => this._disarmPeriodClose());
+    document.getElementById('pc-end')?.addEventListener('change',   () => this._disarmPeriodClose());
+
+    document.getElementById('pc-export-btn').addEventListener('click', async () => {
+      const start = document.getElementById('pc-start')?.value;
+      const end   = document.getElementById('pc-end')?.value;
+      await this._executePeriodExport(() => {
+        // تسليح الإقفال للفترة المُصدَّرة بالضبط فقط
+        this._armedArchivePeriod = { start, end };
+        const closeBtn = document.getElementById('pc-close-btn');
+        if (closeBtn) closeBtn.disabled = false;
+        const note = document.getElementById('pc-export-note');
+        if (note) note.style.display = 'block';
+      });
+    });
+
+    document.getElementById('pc-close-btn').addEventListener('click', async () => {
+      const start = document.getElementById('pc-start')?.value;
+      const end   = document.getElementById('pc-end')?.value;
+      const armed = this._armedArchivePeriod;
+      if (!armed || armed.start !== start || armed.end !== end) {
+        showToast('يجب تحميل أرشيف الفترة المحددة أولاً قبل تنفيذ الإقفال', 'error');
+        this._disarmPeriodClose();
+        return;
+      }
+      await this._executePeriodClose();
+    });
+
+    await this._loadPeriodClosings();
+  },
+
+  // إلغاء تسليح الإقفال — يُعطّل زر الإقفال حتى يُصدَّر أرشيف الفترة الحالية
+  _disarmPeriodClose() {
+    this._armedArchivePeriod = null;
+    const closeBtn = document.getElementById('pc-close-btn');
+    if (closeBtn) closeBtn.disabled = true;
+    const note = document.getElementById('pc-export-note');
+    if (note) note.style.display = 'none';
+  },
+
+  _closePeriodCloseModal() {
+    const modal = document.getElementById('period-close-modal');
+    if (modal) modal.style.display = 'none';
+  },
+
+  async _executePeriodExport(onSuccess) {
+    const start = document.getElementById('pc-start')?.value;
+    const end   = document.getElementById('pc-end')?.value;
+    const errEl = document.getElementById('pc-error');
+    if (errEl) errEl.style.display = 'none';
+
+    if (!start || !end || start > end) {
+      if (errEl) { errEl.textContent = 'يرجى تحديد فترة صحيحة (من ≤ إلى)'; errEl.style.display = 'block'; }
+      return;
+    }
+
+    const btn = document.getElementById('pc-export-btn');
+    const restore = setButtonLoading(btn, 'جارٍ التجميع...');
+
+    try {
+      const bundle = await AccountingService.exportPeriodData(start, end);
+      if (!isOk(bundle)) throw new Error(bundle.error || 'فشل تجميع البيانات');
+
+      const data = bundle.data;
+      const filename = `archive_${start}_${end}_${Date.now()}.json`;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast(`✅ تم تحميل الأرشيف (${data.transactions?.length || 0} معاملة)`, 'success');
+      if (onSuccess) onSuccess();
+    } catch (e) {
+      if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+      showToast('فشل تحميل الأرشيف: ' + e.message, 'error');
+    } finally {
+      restore();
+    }
+  },
+
+  async _executePeriodClose() {
+    const start = document.getElementById('pc-start')?.value;
+    const end   = document.getElementById('pc-end')?.value;
+    const notes = document.getElementById('pc-notes')?.value.trim() || '';
+    const errEl = document.getElementById('pc-error');
+    if (errEl) errEl.style.display = 'none';
+
+    const confirmed = await confirmDialog(
+      `تنفيذ إقفال الفترة من ${start} إلى ${end}؟\n\nسيتم حذف جميع المعاملات وقيود الحساب للفترة المحددة من قاعدة البيانات بشكل نهائي.`,
+      'تنفيذ الإقفال', 'إلغاء', 'danger'
+    );
+    if (!confirmed) return;
+
+    const btn = document.getElementById('pc-close-btn');
+    const restore = setButtonLoading(btn, 'جارٍ الإقفال...');
+
+    try {
+      const result = await AccountingService.performPeriodClose(start, end, notes);
+      if (!isOk(result)) throw new Error(result.error || 'فشل الإقفال');
+
+      const stats = result.data;
+      showToast(
+        `✅ تم الإقفال — حُذفت ${stats?.transactions_deleted || 0} معاملة و${stats?.ledger_entries_deleted || 0} قيد`,
+        'success'
+      );
+      this._disarmPeriodClose();   // يتطلب إعادة تصدير قبل أي إقفال لاحق
+      this._closePeriodCloseModal();
+      await this._loadChart();
+    } catch (e) {
+      if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+      showToast('فشل تنفيذ الإقفال: ' + e.message, 'error');
+    } finally {
+      restore();
+    }
+  },
+
+  async _loadPeriodClosings() {
+    const histEl = document.getElementById('pc-history');
+    if (!histEl) return;
+
+    const result = await AccountingService.getPeriodClosings();
+    if (!isOk(result) || !result.data?.length) {
+      histEl.innerHTML = `<p style="color:var(--text-muted);text-align:center;padding:12px 0;">لا توجد إقفالات سابقة</p>`;
+      return;
+    }
+
+    histEl.innerHTML = result.data.map(c => `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;
+        padding:10px 12px;border-radius:8px;background:var(--surface);margin-bottom:8px;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:700;font-size:0.82rem;color:var(--text-primary);">
+            ${escapeHtml(c.period_start)} ← ${escapeHtml(c.period_end)}
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">
+            بواسطة: ${escapeHtml(c.closed_by_name || '—')} · ${escapeHtml(formatDateArabic(c.created_at?.slice(0,10)))}
+          </div>
+          ${c.notes ? `<div style="font-size:0.75rem;color:var(--text-secondary);margin-top:3px;">${escapeHtml(c.notes)}</div>` : ''}
+        </div>
+        <div style="text-align:left;white-space:nowrap;">
+          <div style="font-size:0.75rem;color:var(--text-muted);">${(c.transactions_deleted || 0)} معاملة محذوفة</div>
+          <span style="font-size:0.7rem;padding:2px 8px;border-radius:20px;background:rgba(16,185,129,0.1);color:#10b981;">مُقفل</span>
+        </div>
+      </div>`).join('');
   },
 
   // ─────────────────────────────────────────────────────────

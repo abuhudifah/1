@@ -564,7 +564,7 @@ const DashboardComponent = {
       el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:16px;">لا توجد عمليات في هذه الفترة</div>`;
       return;
     }
-    const typeIcons = { collection:'💰', deposit:'🏦', expense:'💸', receipt:'📥', delivery:'📤', refund_settlement:'🔄' };
+    const typeIcons = { collection:'💰', deposit:'🏦', bank_withdrawal:'💳', expense:'💸', receipt:'📥', delivery:'📤', refund_settlement:'↩️', failed_deposit_refund:'🔃', journal_entry:'📒' };
     el.innerHTML = recent.map(tx => {
       const amt   = Math.round(parseFloat(tx.amount)||0);
       const icon  = typeIcons[tx.type]||'📋';
