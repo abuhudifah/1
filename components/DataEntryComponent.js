@@ -19,11 +19,19 @@
  */
 'use strict';
 
+// تطبيع النص: يحوّل أحرف العرض العربية (Presentation Forms) إلى قياسية + توحيد الهمزات والتاء
+const _normalize = s => (s || '')
+  .normalize('NFKC')
+  .toLowerCase()
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/ى/g, 'ي')
+  .replace(/ة/g, 'ه');
+
 // بحث ذكي متعدد الكلمات: كل كلمة في الاستعلام يجب أن تكون موجودة (كجزء) في النص بأي ترتيب
 const _smartSearch = (text, query) => {
   if (!text || !query || !query.trim()) return false;
-  const h = text.toLowerCase();
-  return query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(w => h.includes(w));
+  const h = _normalize(text);
+  return _normalize(query).split(/\s+/).filter(Boolean).every(w => h.includes(w));
 };
 
 const DataEntryComponent = {
