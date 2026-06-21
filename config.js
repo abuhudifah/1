@@ -98,6 +98,7 @@ const RPC = Object.freeze({
   PERFORM_PERIOD_CLOSE            : 'perform_period_close',             // params: {p_period_start, p_period_end, p_notes?}
   GET_PERIOD_CLOSINGS             : 'get_period_closings',              // params: {} → [{id, close_date, ...}]
   GET_PERIOD_SUMMARIES            : 'get_period_summaries',             // params: {p_closing_id} → [{account_id, ...}]
+  GET_DATABASE_USAGE              : 'get_database_usage',               // params: {} → {database, storage, tables, total_rows}
 });
 
 // ============================================================

@@ -758,6 +758,21 @@ async function getPeriodClosings() {
 }
 
 // ============================================================
+// قياس استخدام قاعدة البيانات والتخزين (خطة Supabase المجانية)
+// ============================================================
+
+async function getDatabaseUsage() {
+  try {
+    if (isOfflineMode() || !isOnline()) return err('يجب الاتصال بالإنترنت لقياس الاستخدام');
+    const result = await callRPC(RPC.GET_DATABASE_USAGE, {});
+    if (!isOk(result)) return err(result.error || 'فشل قياس استخدام قاعدة البيانات');
+    return ok(result.data);
+  } catch (e) {
+    return err(`فشل قياس الاستخدام: ${e.message}`);
+  }
+}
+
+// ============================================================
 // عكس معاملة
 // ============================================================
 
@@ -1104,6 +1119,7 @@ const AccountingService = {
   performPeriodClose,
   exportPeriodData,
   getPeriodClosings,
+  getDatabaseUsage,
   reverseEntries,
   validateLedger,
   getDailyDepositsTotal,
