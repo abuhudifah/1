@@ -831,6 +831,71 @@ async function reverseEntries(transactionId) {
 }
 
 // ============================================================
+// الحذف الكامل — يحذف المعاملة وقيودها ويعكس أثرها على الأرصدة
+// التفويض على الخادم: المدير دائماً | المندوب لعملياته في نفس اليوم فقط
+// ============================================================
+
+async function deleteTransactionCompletely(transactionId) {
+  try {
+    if (!isOfflineMode() && isOnline()) {
+      const { data, error } = await supabaseClient.rpc(
+        RPC.DELETE_TRANSACTION_COMPLETELY,
+        { p_transaction_id: transactionId }
+      );
+      if (error) return err(_humanizeRpcError(error));
+
+      // تنظيف محلي: عكس الأرصدة + حذف القيود + حذف المعاملة من Dexie
+      await cleanupLocalTransaction(transactionId);
+      if (typeof db !== 'undefined' && db.isOpen()) {
+        await db.transactions.delete(transactionId).catch(() => {});
+      }
+
+      window.dispatchEvent(new CustomEvent('accounting:transactionDeleted', {
+        detail: { transactionId },
+      }));
+      return ok(data || { success: true });
+    }
+
+    return err('يجب الاتصال بالإنترنت للحذف النهائي');
+
+  } catch (e) {
+    return err(`فشل حذف المعاملة: ${e.message}`);
+  }
+}
+
+// ============================================================
+// تنظيف معاملة محلية (Dexie): عكس أثر قيودها على الأرصدة ثم حذف القيود
+// يُستخدم بعد حذف معاملة معلّقة لم تُزامن، أو ضمن الحذف الكامل.
+// ملاحظة: لا يحذف صف المعاملة نفسه — يترك ذلك للمُستدعي.
+// ============================================================
+
+async function cleanupLocalTransaction(transactionId) {
+  try {
+    if (typeof db === 'undefined' || !db.isOpen()) return;
+
+    const entries = await db.account_ledger
+      .where('reference_id').equals(transactionId).toArray();
+
+    // عكس أثر القيود على الأرصدة المحلية
+    for (const e of entries) {
+      const debit  = parseFloat(e.debit  || 0);
+      const credit = parseFloat(e.credit || 0);
+      const existing = await db.account_balances.get(e.account_id);
+      const current  = existing ? parseFloat(existing.balance || 0) : 0;
+      await db.account_balances.put({
+        account_id  : e.account_id,
+        balance     : current - debit + credit,
+        last_updated: new Date().toISOString(),
+      });
+    }
+
+    await db.account_ledger.where('reference_id').equals(transactionId).delete();
+  } catch (e) {
+    console.warn('⚠️ cleanupLocalTransaction:', e.message);
+  }
+}
+
+// ============================================================
 // التحقق من توازن القيود
 // ============================================================
 
@@ -1121,6 +1186,8 @@ const AccountingService = {
   getPeriodClosings,
   getDatabaseUsage,
   reverseEntries,
+  deleteTransactionCompletely,
+  cleanupLocalTransaction,
   validateLedger,
   getDailyDepositsTotal,
   getAgentDailySummary,

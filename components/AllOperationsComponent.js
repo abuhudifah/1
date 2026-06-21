@@ -666,30 +666,40 @@ const AllOperationsComponent = {
     const isPending = tx.sync_status === SYNC_STATUS.PENDING;
     const label     = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
     const amtFmt    = `${Math.round(parseFloat(tx.amount)||0).toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}`;
-    const msg = isPending
-      ? `هل تريد حذف عملية "${label}" بمبلغ ${amtFmt}؟ (لم تُزامن بعد)`
-      : `هذه العملية مُزامنة ونهائية — سيتم إنشاء قيد عكسي في دفتر الأستاذ بدل الحذف المباشر.\n\nالنوع: ${label}\nالمبلغ: ${amtFmt}\n\nهل تريد المتابعة؟`;
-
-    const confirmed = await confirmDialog(msg, isPending ? 'حذف' : 'عكس', 'إلغاء', 'danger');
-    if (!confirmed) return;
 
     if (isPending) {
       // معاملة لم تُزامن: حذف مباشر (لا قيود في account_ledger على الخادم)
+      const confirmed = await confirmDialog(
+        `هل تريد حذف عملية "${label}" بمبلغ ${amtFmt}؟ (لم تُزامن بعد)`,
+        'حذف', 'إلغاء', 'danger',
+      );
+      if (!confirmed) return;
       const result = await repo.delete(TABLES.TRANSACTIONS, tx.id);
       if (isOk(result)) {
-        // BND-3.8: حذف القيود المحلية وعكس تأثيرها على account_balances في Dexie
-        if (typeof AccountingService !== 'undefined') {
-          await AccountingService.cleanupLocalTransaction(tx.id);
-        } else if (typeof db !== 'undefined' && db.isOpen()) {
-          await db.account_ledger.where('reference_id').equals(tx.id).delete().catch(() => {});
-        }
+        // حذف القيود المحلية وعكس تأثيرها على account_balances في Dexie
+        await AccountingService.cleanupLocalTransaction(tx.id);
         showToast('✅ تم حذف العملية', 'success');
         await this._load();
       } else {
         showToast(`❌ ${result.error}`, 'error');
       }
+      return;
+    }
+
+    // معاملة مُزامنة: اختيار بين الحذف النهائي أو القيد العكسي
+    const choice = await this._chooseDeleteAction(label, amtFmt);
+    if (!choice) return;
+
+    if (choice === 'delete') {
+      const result = await AccountingService.deleteTransactionCompletely(tx.id);
+      if (isOk(result)) {
+        showToast('✅ تم حذف العملية نهائياً وعكس أثرها على الأرصدة', 'success');
+        await this._load();
+      } else {
+        showToast(`❌ ${result.error}`, 'error');
+      }
     } else {
-      // معاملة مزامنة: قيد عكسي يحفظ سجل التدقيق ويعكس account_ledger
+      // قيد عكسي يحفظ سجل التدقيق ويعكس account_ledger
       const result = await AccountingService.reverseEntries(tx.id);
       if (isOk(result)) {
         showToast('✅ تم عكس العملية وتسجيل القيد العكسي', 'success');
@@ -698,6 +708,48 @@ const AllOperationsComponent = {
         showToast(`❌ ${result.error}`, 'error');
       }
     }
+  },
+
+  // نافذة اختيار: حذف نهائي / عكس / إلغاء — تُعيد 'delete' | 'reverse' | null
+  _chooseDeleteAction(label, amtFmt) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.style.cssText = 'display:flex;z-index:99999;';
+      const done = (v) => { overlay.remove(); resolve(v); };
+      overlay.addEventListener('click', e => { if (e.target === overlay) done(null); });
+
+      const box = document.createElement('div');
+      box.className = 'modal-box';
+      box.style.maxWidth = '440px';
+      box.innerHTML = `
+        <div class="modal-header">
+          <h3 class="modal-title">🗑️ حذف العملية</h3>
+          <button class="modal-close" data-act="cancel">✕</button>
+        </div>
+        <div style="padding:4px 2px 14px;font-size:0.9rem;line-height:1.8;color:var(--text-secondary);">
+          العملية: <b style="color:var(--text-primary);">${escapeHtml(label)}</b> — ${escapeHtml(amtFmt)}<br>
+          اختر طريقة المعالجة:
+          <div style="margin-top:10px;font-size:0.8rem;color:var(--text-muted);line-height:1.9;">
+            • <b style="color:var(--danger);">حذف نهائي:</b> يزيل العملية وقيودها ويعكس أثرها على الأرصدة (لا يُمكن التراجع).<br>
+            • <b style="color:var(--warning);">قيد عكسي:</b> يبقي العملية ويضيف قيداً معاكساً (يحفظ سجل التدقيق).
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn" data-act="delete" style="flex:1;min-width:120px;background:var(--danger);color:#fff;border:none;">حذف نهائي</button>
+          <button class="btn" data-act="reverse" style="flex:1;min-width:120px;background:var(--warning);color:#fff;border:none;">قيد عكسي</button>
+          <button class="btn btn-secondary" data-act="cancel" style="flex:1;min-width:90px;">إلغاء</button>
+        </div>`;
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      box.querySelectorAll('[data-act]').forEach(b => {
+        b.addEventListener('click', () => {
+          const act = b.dataset.act;
+          done(act === 'delete' ? 'delete' : act === 'reverse' ? 'reverse' : null);
+        });
+      });
+    });
   },
 
   async onResume() {

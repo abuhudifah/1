@@ -1424,7 +1424,7 @@ const AccountManagementComponent = {
     }
 
     if (!tx) {
-      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      const dir = debit > 0 ? 'عليكم' : 'لكم';
       // FIX: استخدام وصف القيد المخزَّن، وإلا إضافة اسم الطرف المقابل إن وُجد
       if (e.description) return { label: 'قيد محاسبي', details: e.description };
       const cpStr = counterpart ? ` — ${dir === 'لكم' ? 'من' : 'إلى'} حساب ${counterpart}` : '';
@@ -1441,7 +1441,7 @@ const AccountManagementComponent = {
         return { label: 'سحب بنكي', details: withUser(`لكم سحب نقدي من حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
       if (tx.type === 'failed_deposit_refund')
         return { label: 'استرداد إيداع فاشل', details: withUser(`عليكم استرداد إيداع فاشل من حساب ${tx.bankName || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
-      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      const dir = debit > 0 ? 'عليكم' : 'لكم';
       return { label: 'قيد بسيط', details: withUser(`${dir} قيد بسيط`) };
     }
 
@@ -1472,7 +1472,7 @@ const AccountManagementComponent = {
         }
         return { label: `تحويل إلى ${otherName}`, details: withUser(`عليكم حوالة نقدية من حسابكم إلى حساب ${otherName}`) };
       }
-      const dir = debit > 0 ? 'لكم' : 'عليكم';
+      const dir = debit > 0 ? 'عليكم' : 'لكم';
       return { label: 'قيد', details: withUser(`${dir} قيد`) };
     }
 
@@ -1831,12 +1831,16 @@ const AccountManagementComponent = {
       <div id="journal-simple-form">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
           <div class="form-group" style="margin:0;">
-            <label class="form-label">الحساب المدين <span class="required">*</span></label>
-            <select id="j-debit-acc" class="form-control"></select>
+            <label class="form-label">من حساب <span class="required">*</span>
+              <span style="font-size:0.7rem;color:var(--danger);font-weight:600;">(يُسجَّل في كشفه: عليكم)</span>
+            </label>
+            <select id="j-from-acc" class="form-control"></select>
           </div>
           <div class="form-group" style="margin:0;">
-            <label class="form-label">الحساب الدائن <span class="required">*</span></label>
-            <select id="j-credit-acc" class="form-control"></select>
+            <label class="form-label">إلى حساب <span class="required">*</span>
+              <span style="font-size:0.7rem;color:var(--success);font-weight:600;">(يُسجَّل في كشفه: لكم)</span>
+            </label>
+            <select id="j-to-acc" class="form-control"></select>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
@@ -1893,12 +1897,12 @@ const AccountManagementComponent = {
       `<option value="${escapeHtml(a.account_id)}">${escapeHtml(a.name || a.account_id)}</option>`
     ).join('');
 
-    const dSel = document.getElementById('j-debit-acc');
-    const cSel = document.getElementById('j-credit-acc');
-    if (dSel) dSel.innerHTML = '<option value="">— اختر —</option>' + accOptions;
-    if (cSel) cSel.innerHTML = '<option value="">— اختر —</option>' + accOptions;
+    const fromSel = document.getElementById('j-from-acc');
+    const toSel   = document.getElementById('j-to-acc');
+    if (fromSel) fromSel.innerHTML = '<option value="">— اختر —</option>' + accOptions;
+    if (toSel)   toSel.innerHTML   = '<option value="">— اختر —</option>' + accOptions;
 
-    if (preAccount && dSel) dSel.value = preAccount;
+    if (preAccount && fromSel) fromSel.value = preAccount;
 
     const amtEl  = document.getElementById('j-amount');
     const descEl = document.getElementById('j-desc');
@@ -2034,20 +2038,22 @@ const AccountManagementComponent = {
   },
 
   async _saveSimpleEntry(errEl) {
-    const debitAcc  = document.getElementById('j-debit-acc')?.value;
-    const creditAcc = document.getElementById('j-credit-acc')?.value;
-    const amount    = parseFloat(document.getElementById('j-amount')?.value || 0);
-    const date      = document.getElementById('j-date')?.value      || getCurrentSaudiDate();
-    const desc      = document.getElementById('j-desc')?.value?.trim() || '';
+    // "من حساب" = الطرف المدين (عليكم) | "إلى حساب" = الطرف الدائن (لكم)
+    // مطابق لمنطق الإيداع/التحصيل: مدين→عليكم ، دائن→لكم
+    const fromAcc = document.getElementById('j-from-acc')?.value;
+    const toAcc   = document.getElementById('j-to-acc')?.value;
+    const amount  = parseFloat(document.getElementById('j-amount')?.value || 0);
+    const date    = document.getElementById('j-date')?.value      || getCurrentSaudiDate();
+    const desc    = document.getElementById('j-desc')?.value?.trim() || '';
 
-    if (!debitAcc)              { errEl.textContent = 'اختر الحساب المدين'; return; }
-    if (!creditAcc)             { errEl.textContent = 'اختر الحساب الدائن'; return; }
-    if (debitAcc === creditAcc) { errEl.textContent = 'لا يمكن أن يكون الحساب المدين والدائن نفسه'; return; }
+    if (!fromAcc)            { errEl.textContent = 'اختر حساب "من"'; return; }
+    if (!toAcc)             { errEl.textContent = 'اختر حساب "إلى"'; return; }
+    if (fromAcc === toAcc)  { errEl.textContent = 'لا يمكن أن يكون حساب "من" و"إلى" نفسه'; return; }
     if (!amount || amount <= 0) { errEl.textContent = 'المبلغ يجب أن يكون أكبر من صفر'; return; }
 
     const journalEntries = [
-      { account_id: debitAcc,  debit: amount, credit: 0,      description: desc },
-      { account_id: creditAcc, debit: 0,      credit: amount, description: desc },
+      { account_id: fromAcc, debit: amount, credit: 0,      description: desc }, // من → عليكم
+      { account_id: toAcc,   debit: 0,      credit: amount, description: desc }, // إلى → لكم
     ];
 
     await this._postJournalEntry({ amount, date, details: desc, journalEntries }, errEl);
@@ -2089,12 +2095,21 @@ const AccountManagementComponent = {
   // ─────────────────────────────────────────────────────────
   async _postJournalEntry({ amount, date, details, journalEntries }, errEl) {
     try {
+      // ربط القيد بالمندوب المعني (إن وُجد حساب AGT_ في الأطراف) ليظهر في ملخصه
+      // اليومي ويصبح مرئياً له عبر RLS. يُفضَّل الطرف الدائن (إلى/لكم)، وإلا أي طرف
+      // مندوب، وإلا منشئ القيد (المدير).
+      const creatorId  = AuthService.getCurrentUserId();
+      const agentEntry = journalEntries.find(e => e.account_id.startsWith('AGT_') && e.credit > 0)
+                      || journalEntries.find(e => e.account_id.startsWith('AGT_'));
+      const linkedAgentId = agentEntry ? agentEntry.account_id.slice(4) : creatorId;
+
       const result = await AccountingService.createTransactionWithEntries({
         type            : TRANSACTION_TYPES.JOURNAL_ENTRY,
         amount,
         date,
         details         : details || 'قيد محاسبي يدوي',
-        agent_id        : AuthService.getCurrentUserId(),
+        agent_id        : linkedAgentId,
+        executed_by     : creatorId,
         approval_status : 'approved',
         _journal_entries: journalEntries,
       });

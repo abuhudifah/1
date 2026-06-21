@@ -357,6 +357,8 @@ const DailySummaryComponent = {
     const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'↩️',failed_deposit_refund:'🔃',journal_entry:'📒'}[tx.type]||'📋';
     const isToday  = tx.date===getCurrentSaudiDate();
     const canEdit  = AuthService.isAdmin()||isToday;
+    // الحذف: المدير دائماً | المندوب لعمليات اليوم الحالي فقط
+    const canDelete = AuthService.isAdmin()||isToday;
     const isFailed        = tx.sync_status===SYNC_STATUS.PENDING && !!tx.error_message;
     const isPending       = tx.sync_status===SYNC_STATUS.PENDING && !tx.error_message;
     const isApprovalPending = tx.approval_status === 'pending';
@@ -401,7 +403,7 @@ const DailySummaryComponent = {
                 <i data-lucide="pencil" style="width:14px;height:14px;pointer-events:none;"></i>
               </button>`:''
             }
-            ${AuthService.isAdmin()&&!tx.is_reversed?`
+            ${canDelete&&!tx.is_reversed?`
               <button class="btn-icon" data-action="delete" data-id="${escapeHtml(tx.id)}" title="حذف"
                 style="width:32px;height:32px;color:var(--danger);">
                 <i data-lucide="trash-2" style="width:14px;height:14px;pointer-events:none;"></i>
@@ -417,24 +419,62 @@ const DailySummaryComponent = {
   },
 
   async _handleDelete(tx) {
-    // ✅ المعاملات نهائية بعد المزامنة: الحذف الفعلي مسموح فقط ما دامت
-    //    العملية «معلّقة» (لم تُرفع للخادم بعد). بعد المزامنة → قيد عكسي.
     const isPending = tx.sync_status === 'pending';
-    const msg = isPending
-      ? `هل تريد حذف عملية ${TRANSACTION_TYPE_LABELS[tx.type]} بمبلغ ${formatCurrency(tx.amount)}؟ (لم تُزامن بعد)`
-      : `هذه العملية مُزامنة ونهائية. سيتم إنشاء قيد عكسي بدل الحذف. هل تريد المتابعة؟`;
-    const confirmed = await confirmDialog(msg,isPending?'حذف':'عكس','إلغاء','danger');
-    if (!confirmed) return;
+    const isAdmin   = AuthService.isAdmin();
+    const isToday   = tx.date === getCurrentSaudiDate();
+    const amtFmt    = formatCurrency(tx.amount);
+    const label     = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
+
+    // معاملة معلّقة (لم تُزامن) → حذف محلي مباشر
     if (isPending) {
-      const result = await repo.delete(TABLES.TRANSACTIONS,tx.id);
-      if(isOk(result)){AppStore.deleteTransaction(tx.id);showToast('تم حذف العملية','success');}
-      else showToast(`فشل: ${result.error}`,'error');
-    } else {
-      const result = await AccountingService.reverseEntries(tx.id);
-      if(isOk(result)){AppStore.markTransactionReversed(tx.id);showToast('تم عكس العملية بنجاح','success');}
-      else showToast(`فشل: ${result.error}`,'error');
+      const confirmed = await confirmDialog(
+        `هل تريد حذف عملية ${label} بمبلغ ${amtFmt}؟ (لم تُزامن بعد)`,
+        'حذف', 'إلغاء', 'danger',
+      );
+      if (!confirmed) return;
+      const result = await repo.delete(TABLES.TRANSACTIONS, tx.id);
+      if (isOk(result)) {
+        await AccountingService.cleanupLocalTransaction(tx.id);
+        AppStore.deleteTransaction(tx.id);
+        showToast('تم حذف العملية', 'success');
+      } else showToast(`فشل: ${result.error}`, 'error');
+      this._renderTransactionsList();
+      return;
     }
-    this._renderTransactionsList();
+
+    // المدير: قيد عكسي (يحفظ سجل التدقيق)
+    if (isAdmin) {
+      const confirmed = await confirmDialog(
+        `هذه العملية مُزامنة. سيتم إنشاء قيد عكسي بدل الحذف. هل تريد المتابعة؟`,
+        'عكس', 'إلغاء', 'danger',
+      );
+      if (!confirmed) return;
+      const result = await AccountingService.reverseEntries(tx.id);
+      if (isOk(result)) { AppStore.markTransactionReversed(tx.id); showToast('تم عكس العملية بنجاح', 'success'); }
+      else showToast(`فشل: ${result.error}`, 'error');
+      this._renderTransactionsList();
+      return;
+    }
+
+    // المندوب: حذف نهائي لعمليات اليوم الحالي فقط
+    if (!isToday) {
+      showToast('يمكنك حذف عمليات اليوم الحالي فقط', 'error');
+      return;
+    }
+    const confirmed = await confirmDialog(
+      `حذف نهائي لعملية ${label} بمبلغ ${amtFmt}؟ سيُعكس أثرها على رصيدك ولا يمكن التراجع.`,
+      'حذف نهائي', 'إلغاء', 'danger',
+    );
+    if (!confirmed) return;
+    const result = await AccountingService.deleteTransactionCompletely(tx.id);
+    if (isOk(result)) {
+      AppStore.deleteTransaction(tx.id);
+      showToast('تم حذف العملية نهائياً', 'success');
+      await this._loadData();
+    } else {
+      showToast(`فشل: ${result.error}`, 'error');
+      this._renderTransactionsList();
+    }
   },
 
   _shareTransaction(tx) {

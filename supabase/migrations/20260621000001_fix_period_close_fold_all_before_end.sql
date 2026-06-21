@@ -10,6 +10,7 @@ CREATE OR REPLACE FUNCTION public.perform_period_close(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path TO 'public'
 AS $$
 DECLARE
   v_caller_role   text;
