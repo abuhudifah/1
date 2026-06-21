@@ -134,6 +134,23 @@ const OutboxService = {
         .modify({ sync_status: 'pending' });
     } catch { /* تجاهل */ }
 
+    // تنظيف العمليات العالقة أكثر من 24 ساعة → نقلها إلى sync_conflicts
+    try {
+      const staleThreshold = Date.now() - 24 * 60 * 60 * 1000;
+      const allPending = await db.sync_queue
+        .where('sync_status').anyOf(['pending', 'failed'])
+        .toArray();
+      for (const item of allPending) {
+        const createdAt = new Date(item.created_at || item.local_timestamp || 0).getTime();
+        if (createdAt > 0 && createdAt < staleThreshold) {
+          if (typeof SyncQueue !== 'undefined') {
+            await SyncQueue._moveToConflicts(item, 'عملية عالقة أكثر من 24 ساعة — نُقلت تلقائياً');
+            await SyncQueue.remove(item.id);
+          }
+        }
+      }
+    } catch { /* تجاهل */ }
+
     // مزامنة sync_conflicts → Dexie: أي عملية وصلت للتعارضات يجب أن يكون sync_status='failed'
     // يُعالج العمليات العالقة التي وُضعت في sync_conflicts قبل تطبيق هذا الإصلاح
     try {
