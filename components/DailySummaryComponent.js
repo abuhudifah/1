@@ -332,7 +332,7 @@ const DailySummaryComponent = {
         if (!tx) return;
         if (btn.dataset.action==='edit')   this._openEditModal(tx);
         if (btn.dataset.action==='delete') this._handleDelete(tx);
-        if (btn.dataset.action==='share')  this._shareTransaction(tx);
+        if (btn.dataset.action==='copy')   this._copyTransaction(tx);
       });
     });
 
@@ -351,19 +351,39 @@ const DailySummaryComponent = {
     if (window.lucide) lucide.createIcons();
   },
 
+  _resolveAccountName(tx) {
+    if (tx.customer_name) return tx.customer_name;
+    if (tx.bank_account_id) {
+      const banks = AppStore.getState('bankAccounts') || [];
+      const bank = banks.find(b => b.id === tx.bank_account_id);
+      if (bank) return bank.name || bank.account_number || '';
+    }
+    if (tx.company_id) {
+      const companies = AppStore.getState('companies') || [];
+      const comp = companies.find(c => c.id === tx.company_id);
+      if (comp) return comp.name || '';
+    }
+    if (tx.to_agent_id) {
+      const users = AppStore.getState('users') || [];
+      const toAgent = users.find(u => u.id === tx.to_agent_id);
+      if (toAgent) return toAgent.display_name || '';
+    }
+    return '';
+  },
+
   _buildTxRow(tx, users) {
     const color    = getTransactionColor(tx.type);
     const label    = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
     const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'↩️',failed_deposit_refund:'🔃',journal_entry:'📒'}[tx.type]||'📋';
     const isToday  = tx.date===getCurrentSaudiDate();
     const canEdit  = AuthService.isAdmin()||isToday;
-    // الحذف: المدير دائماً | المندوب لعمليات اليوم الحالي فقط
     const canDelete = AuthService.isAdmin()||isToday;
     const isFailed        = tx.sync_status===SYNC_STATUS.PENDING && !!tx.error_message;
     const isPending       = tx.sync_status===SYNC_STATUS.PENDING && !tx.error_message;
     const isApprovalPending = tx.approval_status === 'pending';
     const isRejected      = tx.approval_status === 'rejected';
     const agent    = users.find(u=>u.id===tx.agent_id);
+    const accountName = this._resolveAccountName(tx);
 
     return `
       <div style="display:flex;align-items:center;justify-content:space-between;
@@ -379,6 +399,7 @@ const DailySummaryComponent = {
           <div style="min-width:0;">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span style="font-weight:700;font-size:0.9rem;">${escapeHtml(label)}</span>
+              ${accountName?`<span style="font-size:0.78rem;color:var(--text-muted);font-weight:500;">← ${escapeHtml(accountName)}</span>`:''}
               ${tx.is_reversed?'<span class="badge badge-danger" style="font-size:0.68rem;">مُعكوس</span>':''}
               ${isApprovalPending?'<span class="badge" style="font-size:0.68rem;background:rgba(217,119,6,0.15);color:var(--warning);">⏳ بانتظار الموافقة</span>':''}
               ${isRejected?'<span class="badge badge-danger" style="font-size:0.68rem;">مرفوض</span>':''}
@@ -386,7 +407,6 @@ const DailySummaryComponent = {
               ${isPending ? '<span class="sync-dot pending" title="معلق مزامنة — بانتظار الاتصال"></span>' : ''}
             </div>
             <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
-              ${tx.customer_name?escapeHtml(tx.customer_name)+' · ':''}
               ${AuthService.isAdmin()&&agent&&agent.id!==AuthService.getCurrentUserId()?`${escapeHtml(agent.display_name)} · `:''}
               ${escapeHtml(timeAgo(tx.created_at))}
             </div>
@@ -409,9 +429,9 @@ const DailySummaryComponent = {
                 <i data-lucide="trash-2" style="width:14px;height:14px;pointer-events:none;"></i>
               </button>`:''
             }
-            <button class="btn-icon" data-action="share" data-id="${escapeHtml(tx.id)}" title="مشاركة"
-              style="width:32px;height:32px;color:var(--success);">
-              <i data-lucide="share-2" style="width:14px;height:14px;pointer-events:none;"></i>
+            <button class="btn-icon" data-action="copy" data-id="${escapeHtml(tx.id)}" title="نسخ"
+              style="width:32px;height:32px;color:var(--accent);">
+              <i data-lucide="copy" style="width:14px;height:14px;pointer-events:none;"></i>
             </button>
           </div>
         </div>
@@ -477,17 +497,32 @@ const DailySummaryComponent = {
     }
   },
 
-  _shareTransaction(tx) {
+  _copyTransaction(tx) {
     const label = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
+    const accountName = this._resolveAccountName(tx);
+    const agent = (AppStore.getState('users')||[]).find(u=>u.id===tx.agent_id);
+    const bankName = tx.bank_account_id
+      ? ((AppStore.getState('bankAccounts')||[]).find(b=>b.id===tx.bank_account_id)?.name || '')
+      : '';
+    const companyName = tx.company_id
+      ? ((AppStore.getState('companies')||[]).find(c=>c.id===tx.company_id)?.name || '')
+      : '';
     const text = [
       `📊 *${label}*`,
       `💰 المبلغ: ${formatCurrency(tx.amount)}`,
       `📅 التاريخ: ${formatDateArabic(tx.date)}`,
-      tx.customer_name?`👤 العميل: ${tx.customer_name}`:'',
-      tx.details?`📝 ${tx.details}`:'',
+      `⏰ الوقت: ${tx.time || '—'}`,
+      accountName ? `🏷️ الحساب: ${accountName}` : '',
+      tx.customer_name ? `👤 العميل: ${tx.customer_name}` : '',
+      bankName ? `🏦 البنك: ${bankName}` : '',
+      companyName ? `🏢 الشركة: ${companyName}` : '',
+      agent ? `👤 المندوب: ${agent.display_name}` : '',
+      tx.details ? `📝 ملاحظات: ${tx.details}` : '',
+      tx.expense_type ? `📂 نوع المصروف: ${tx.expense_type}` : '',
+      `🔖 رقم العملية: ${tx.id?.substring(0,8) || '—'}`,
       `— نظام أبو حذيفة 🔐`,
     ].filter(Boolean).join('\n');
-    shareText(text,'تفاصيل العملية');
+    copyToClipboard(text, 'تم نسخ بيانات القيد');
   },
 
   async _exportDailyExcel() {
@@ -744,10 +779,15 @@ const DailySummaryComponent = {
   },
 
   _openEditModal(tx) {
-    // ✅ المعاملات نهائية بعد المزامنة: التعديل مسموح فقط للعمليات «المعلّقة».
-    //    بعد المزامنة، التصحيح يكون بالحذف (الذي يُنشئ قيداً عكسياً).
-    if (tx.sync_status !== 'pending') {
-      showToast('هذه العملية مُزامنة ونهائية — للتصحيح استخدم الحذف (قيد عكسي)','info',4000);
+    // القيود اليدوية تُبنى من سطور (_journal_entries) لا تُحفظ في الصف — يتعذّر
+    // إعادة إنشاؤها تلقائياً، لذا لا تُعدَّل من هنا (تُصحَّح بالحذف/العكس).
+    if (tx.type === TRANSACTION_TYPES.JOURNAL_ENTRY) {
+      showToast('القيد اليدوي يُصحَّح بالحذف ثم إعادة الإدخال','info',4000);
+      return;
+    }
+    // العملية المُزامنة تتطلب اتصالاً (الحذف النهائي على الخادم يعكس الأرصدة أولاً)
+    if (tx.sync_status !== SYNC_STATUS.PENDING && (isOfflineMode() || !isOnline())) {
+      showToast('تعديل عملية مُزامنة يتطلب اتصالاً بالإنترنت','warning',4000);
       return;
     }
     const body = document.getElementById('edit-modal-body');
@@ -765,6 +805,9 @@ const DailySummaryComponent = {
         <label class="form-label">ملاحظات</label>
         <textarea id="edit-details" class="form-control" rows="2">${escapeHtml(tx.details||'')}</textarea>
       </div>
+      <div style="font-size:0.76rem;color:var(--text-muted);background:var(--bg-hover);border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.6;">
+        ℹ️ سيُعاد ترحيل القيد بالقيم الجديدة ويُحدَّث تأثيره على جميع الحسابات والأرصدة في كل الواجهات.
+      </div>
       <div id="edit-error" class="form-error"></div>
       <div style="display:flex;gap:10px;margin-top:16px;">
         <button id="edit-save-btn" class="btn btn-primary" style="flex:2;">حفظ التعديل</button>
@@ -780,18 +823,65 @@ const DailySummaryComponent = {
       if (!isValidAmount(amount)) { if(errEl)errEl.textContent='المبلغ غير صالح'; return; }
       const btn = document.getElementById('edit-save-btn');
       const restore = setButtonLoading(btn);
-      const result = await repo.update(TABLES.TRANSACTIONS,tx.id,{
-        amount:parseFloat(amount), date:date||tx.date, details:details?.trim()||null,
-      });
+      const result = await this._editTransaction(tx, { amount, date, details });
       restore();
-      if(isOk(result)){
-        AppStore.updateTransaction(tx.id,{amount:parseFloat(amount),date,details});
-        showToast('تم تعديل العملية بنجاح','success');
+      if (isOk(result)) {
+        showToast('تم تعديل القيد وتحديث الأرصدة بنجاح','success');
         this._closeEditModal();
-        this._renderTransactionsList();
-      } else { if(errEl)errEl.textContent=result.error; }
+        await this._loadData();
+      } else if (errEl) {
+        errEl.textContent = result.error || 'تعذّر تعديل العملية';
+      }
     });
     this._editModal.style.display='flex';
+  },
+
+  // تعديل فعلي للقيد: حذف العملية الأصلية كلياً (عكس الأرصدة + حذف قيودها) ثم
+  // إعادة إنشائها بنفس خصائصها مع القيم المُعدَّلة — فتُبنى قيود محاسبية جديدة
+  // صحيحة وينعكس الأثر على جميع الحسابات والواجهات (يستخدم المسارات المعتمدة).
+  async _editTransaction(tx, { amount, date, details }) {
+    const newAmount  = parseFloat(amount);
+    const newDate    = date || tx.date;
+    const newDetails = details?.trim() || null;
+
+    // 1) حذف القيد الأصلي وعكس أثره على الأرصدة
+    const wasPending = tx.sync_status === SYNC_STATUS.PENDING;
+    let delResult;
+    if (wasPending) {
+      // لم تُزامن بعد → حذف محلي + إزالة من طابور المزامنة لمنع إعادة إنشائها لاحقاً
+      delResult = await repo.delete(TABLES.TRANSACTIONS, tx.id);
+      if (isOk(delResult)) {
+        await AccountingService.cleanupLocalTransaction(tx.id);
+        try {
+          if (typeof db !== 'undefined' && db.isOpen()) {
+            await db.sync_queue.where('record_id').equals(String(tx.id)).delete();
+          }
+        } catch (_e) { /* غير حرج — لن يُعاد الإنشاء لأن العملية حُذفت محلياً */ }
+      }
+    } else {
+      delResult = await AccountingService.deleteTransactionCompletely(tx.id);
+    }
+    if (!isOk(delResult)) return delResult;
+    AppStore.deleteTransaction(tx.id);
+
+    // 2) إعادة إنشاء القيد بالقيم الجديدة (قيود محاسبية جديدة + تحديث الأرصدة)
+    const newTxData = {
+      type            : tx.type,
+      amount          : newAmount,
+      date            : newDate,
+      agent_id        : tx.agent_id,
+      company_id      : tx.company_id || null,
+      bank_account_id : tx.bank_account_id || null,
+      customer_id     : tx.customer_id || null,
+      customer_name   : tx.customer_name || null,
+      to_agent_id     : tx.to_agent_id || null,
+      from_agent_id   : tx.from_agent_id || null,
+      expense_type    : tx.expense_type || null,
+      details         : newDetails,
+    };
+    if (tx.approval_status) newTxData.approval_status = tx.approval_status;
+
+    return await AccountingService.createTransactionWithEntries(newTxData);
   },
 
   _closeEditModal() { if(this._editModal)this._editModal.style.display='none'; },

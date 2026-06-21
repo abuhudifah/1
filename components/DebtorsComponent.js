@@ -64,13 +64,11 @@ const DebtorsComponent = {
       wrap.appendChild(statsEl);
     }
 
-    /* ── فلتر المنطقة (للإدارة) ── */
-    if (isAdmin) {
-      const filterWrap = document.createElement('div');
-      filterWrap.id = 'debtors-filter';
-      filterWrap.style.cssText = 'margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
-      wrap.appendChild(filterWrap);
-    }
+    /* ── فلتر المنطقة (للإدارة والمندوب) ── */
+    const filterWrap = document.createElement('div');
+    filterWrap.id = 'debtors-filter';
+    filterWrap.style.cssText = 'margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+    wrap.appendChild(filterWrap);
 
     /* ── منطقة القائمة ── */
     const listEl = document.createElement('div');
@@ -142,9 +140,10 @@ const DebtorsComponent = {
 
       this._debtorsCache = debtors;
 
+      this._renderRegionFilter(debtors);
+
       if (isAdmin) {
         this._renderStats(debtors, this._regionFilter);
-        this._renderRegionFilter(debtors);
         this._renderAdminTable(listEl, this._applySearchFilter(debtors));
       } else {
         this._renderAgentCards(listEl, this._applySearchFilter(debtors));
@@ -334,8 +333,18 @@ const DebtorsComponent = {
   },
 
   /* ── بطاقات المندوب ── */
-  _renderAgentCards(listEl, debtors) {
+  _renderAgentCards(listEl, allDebtors) {
+    const debtors = this._regionFilter
+      ? allDebtors.filter(d => (d.region || '').trim() === this._regionFilter)
+      : allDebtors;
     listEl.innerHTML = '';
+    if (debtors.length === 0) {
+      listEl.innerHTML = `<div class="empty-state">
+        <div class="empty-state-icon">🔍</div>
+        <div class="empty-state-text">${this._regionFilter ? `لا يوجد عملاء في منطقة "${escapeHtml(this._regionFilter)}"` : 'لا يوجد عملاء مطابقين'}</div>
+      </div>`;
+      return;
+    }
     const grid = document.createElement('div');
     grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;';
 
