@@ -312,8 +312,9 @@ const AllOperationsComponent = {
     const canDelete   = currentRole === 'admin';
 
     const typeIcons = {
-      collection:'💰', deposit:'🏦', expense:'💸',
-      receipt:'📥', delivery:'📤', refund_settlement:'🔄'
+      collection:'💰', deposit:'🏦', bank_withdrawal:'💳', expense:'💸',
+      receipt:'📥', delivery:'📤', refund_settlement:'↩️',
+      failed_deposit_refund:'🔃', journal_entry:'📒',
     };
 
     const table = document.createElement('div');

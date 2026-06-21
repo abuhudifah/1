@@ -215,6 +215,25 @@ function _buildBankWithdrawalEntries(tx, companyId, voucher) {
   ];
 }
 
+// القيد اليدوي — الحسابات المدينة والدائنة يحددها المستخدم في tx._journal_entries
+// tx._journal_entries: [{ account_id, debit, credit, description }]
+// tx.amount: إجمالي المدين (= إجمالي الدائن للقيد المتوازن)
+function _buildJournalEntryEntries(tx, voucher) {
+  const rawEntries = tx._journal_entries;
+  if (!Array.isArray(rawEntries) || rawEntries.length < 2) {
+    return err('القيد اليدوي يتطلب سطرين على الأقل في _journal_entries');
+  }
+  const date = tx.date || getCurrentSaudiDate();
+  return rawEntries.map(e => ({
+    voucher_number: voucher,
+    date,
+    account_id : e.account_id,
+    debit      : parseFloat(e.debit  || 0),
+    credit     : parseFloat(e.credit || 0),
+    description: e.description || tx.details || 'قيد محاسبي يدوي',
+  }));
+}
+
 function _buildRefundSettlementEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
@@ -297,6 +316,9 @@ async function buildEntries(tx) {
         break;
       case TRANSACTION_TYPES.DELIVERY:
         entries = _buildDeliveryEntries(tx, await _generateVoucherNumber());
+        break;
+      case TRANSACTION_TYPES.JOURNAL_ENTRY:
+        entries = _buildJournalEntryEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.REFUND_SETTLEMENT:
         entries = _buildRefundSettlementEntries(tx, await _generateVoucherNumber());
@@ -592,7 +614,7 @@ async function getStatement(accountId, fromDate, toDate, options = {}) {
 }
 
 // ============================================================
-// الإقفال اليومي
+// الإقفال اليومي (محتفظ به للتوافق)
 // ============================================================
 
 async function dailyClose(date = null) {
@@ -614,6 +636,124 @@ async function dailyClose(date = null) {
 
   } catch (e) {
     return err(`فشل الإقفال اليومي: ${e.message}`);
+  }
+}
+
+// ============================================================
+// تصدير بيانات الفترة (قبل الإقفال) — يُعيد JSON كاملاً
+// ============================================================
+
+async function exportPeriodData(periodStart, periodEnd) {
+  try {
+    if (isOfflineMode() || !isOnline()) return err('يجب الاتصال بالإنترنت للتصدير');
+
+    // جلب المعاملات
+    const { data: transactions, error: txErr } = await supabaseClient
+      .from(TABLES.TRANSACTIONS)
+      .select('*')
+      .gte('date', periodStart)
+      .lte('date', periodEnd)
+      .order('date', { ascending: true });
+    if (txErr) return err(`فشل جلب المعاملات: ${txErr.message}`);
+
+    // جلب القيود المحاسبية
+    const { data: ledger, error: ledgerErr } = await supabaseClient
+      .from(TABLES.ACCOUNT_LEDGER)
+      .select('*')
+      .gte('date', periodStart)
+      .lte('date', periodEnd)
+      .order('date', { ascending: true });
+    if (ledgerErr) return err(`فشل جلب دفتر الأستاذ: ${ledgerErr.message}`);
+
+    // جلب الأرصدة الحالية
+    const { data: balances, error: balErr } = await supabaseClient
+      .from(TABLES.ACCOUNT_BALANCES)
+      .select('*');
+    if (balErr) return err(`فشل جلب الأرصدة: ${balErr.message}`);
+
+    // حساب ملخصات الحسابات من القيود
+    const summaryMap = {};
+    for (const entry of (ledger || [])) {
+      if (!summaryMap[entry.account_id]) {
+        summaryMap[entry.account_id] = { account_id: entry.account_id, total_debit: 0, total_credit: 0 };
+      }
+      summaryMap[entry.account_id].total_debit  += parseFloat(entry.debit  || 0);
+      summaryMap[entry.account_id].total_credit += parseFloat(entry.credit || 0);
+    }
+    for (const bal of (balances || [])) {
+      if (summaryMap[bal.account_id]) {
+        const net = summaryMap[bal.account_id].total_debit - summaryMap[bal.account_id].total_credit;
+        summaryMap[bal.account_id].closing_balance  = parseFloat(bal.balance || 0);
+        summaryMap[bal.account_id].opening_balance  = parseFloat(bal.balance || 0) - net;
+      }
+    }
+
+    // البيانات المرجعية
+    const users     = (typeof AppStore !== 'undefined') ? (AppStore.getState('users')        || []) : [];
+    const companies = (typeof AppStore !== 'undefined') ? (AppStore.getState('companies')    || []) : [];
+    const banks     = (typeof AppStore !== 'undefined') ? (AppStore.getState('bankAccounts') || []) : [];
+
+    // خريطة الأرصدة {account_id → balance} لعارض الأرشيف
+    const balanceMap = {};
+    for (const b of (balances || [])) balanceMap[b.account_id] = b.balance;
+
+    const exportData = {
+      metadata: {
+        version      : '2.0',
+        exported_at  : new Date().toISOString(),
+        period_start : periodStart,
+        period_end   : periodEnd,
+        exported_by  : AuthService.getCurrentUser()?.display_name || '',
+        system       : 'نظام أبو حذيفة',
+      },
+      period_start     : periodStart,
+      period_end       : periodEnd,
+      account_balances : balanceMap,
+      account_ledger   : ledger || [],
+      monthly_summaries: Object.values(summaryMap),
+      transactions     : transactions || [],
+      ledger_entries   : ledger || [],
+      reference        : { users, companies, bank_accounts: banks },
+    };
+
+    return ok(exportData);
+  } catch (e) {
+    return err(`فشل التصدير: ${e.message}`);
+  }
+}
+
+// ============================================================
+// الإقفال الدوري — يصدّر البيانات ثم يُقفل الفترة على الخادم
+// ============================================================
+
+async function performPeriodClose(periodStart, periodEnd, notes = '') {
+  try {
+    if (!AuthService.isAdmin()) return err('الإقفال الدوري مسموح للمدير فقط');
+    if (isOfflineMode() || !isOnline()) return err('يجب الاتصال بالإنترنت لتنفيذ الإقفال');
+
+    const result = await callRPC(RPC.PERFORM_PERIOD_CLOSE, {
+      p_period_start: periodStart,
+      p_period_end  : periodEnd,
+      p_notes       : notes || null,
+    });
+    return result;
+  } catch (e) {
+    return err(`فشل الإقفال الدوري: ${e.message}`);
+  }
+}
+
+// ============================================================
+// جلب سجل الإقفالات السابقة
+// ============================================================
+
+async function getPeriodClosings() {
+  try {
+    if (isOfflineMode() || !isOnline()) return ok([]);
+    const result = await callRPC(RPC.GET_PERIOD_CLOSINGS, {});
+    if (!isOk(result)) return ok([]);
+    return ok(Array.isArray(result.data) ? result.data : []);
+  } catch (e) {
+    return ok([]);
   }
 }
 
@@ -961,6 +1101,9 @@ const AccountingService = {
   getAccountBalance,
   getStatement,
   dailyClose,
+  performPeriodClose,
+  exportPeriodData,
+  getPeriodClosings,
   reverseEntries,
   validateLedger,
   getDailyDepositsTotal,
