@@ -154,13 +154,16 @@
 | `components/NotificationsComponent.js` | قراءة/إخفاء الإشعارات، إرسال جديد | repo، AppStore.js | 🟡 متوسط |
 | `components/SettingsComponent.js` | رفع الشعار، نسخ احتياطي، إعادة تعيين | supabaseClient، AppStore.js | 🟡 متوسط |
 | `components/ProfileSettingsComponent.js` | إعدادات الملف الشخصي، تفعيل الدخول السريع | AuthService.js | 🟡 متوسط |
-| `services/IdleTimer.js` | الخروج التلقائي بعد 5 دقائق خمول (للمناديب فقط) | AuthService.js، App.js | 🟡 متوسط |
+| `services/OutboxService.js` | معالجة الطابور المحلي عند استعادة الاتصال (FIFO، retry) | SyncQueue.js، Dexie.js | 🟠 عالي |
+| `services/RealtimeChannelManager.js` | إدارة اشتراكات Supabase Realtime (تسجيل/إلغاء) | supabaseClient، App.js | 🟡 متوسط |
+| `services/SessionVault.js` | تخزين بيانات الجلسة مشفرة (PBKDF2 + AES-GCM) | OfflineAuthService.js | 🟠 عالي |
+| `services/IdleTimer.js` | خروج تلقائي: 30 دقيقة للمندوبين، 90 دقيقة للمدير والمساعد | AuthService.js، App.js | 🟡 متوسط |
 | `services/ThemeManager.js` | إدارة الوضع المظلم/الفاتح، مزامنة عبر التبويبات | localStorage | 🟢 منخفض |
 | `utils/QuickLoginBanner.js` | بانر دعوة لتفعيل الدخول السريع (snooze/dismiss) | AuthService.js، localStorage | 🟢 منخفض |
 | `index.html` | نقطة دخول HTML، ترتيب تحميل السكريبتات | جميع الملفات | 🔴 حرج |
 | `assets/css/styles.css` | تصميم glassmorphism، الوضع المظلم، متجاوب | index.html | 🟡 متوسط |
 | `README.md` | توثيق البنية المعمارية | — | 🟢 منخفض |
-| `Setup.md` | دليل إعداد Supabase (9 ملفات SQL) | — | 🟡 متوسط |
+| `Setup.md` | دليل إعداد Supabase (27 ملف migration) | — | 🟡 متوسط |
 
 ---
 
@@ -236,7 +239,7 @@ App.js (Bootstrap) ←──────────────────┘
 
 2. **checkSession() يتحقق فقط من وجود session Supabase:** لا يتحقق من أن المستخدم لا يزال نشطاً في قاعدة البيانات (`is_active`). يمكن لمستخدم موقوف الاستمرار في العمل إذا كان لديه توكن غير منتهٍ.
 
-3. **IdleTimer يعمل فقط للمناديب:** المدير والمساعد الإداري لا يُطبَّق عليهم Idle Timeout — إذا نسي المدير جهازه مفتوحاً لا يوجد أي حماية تلقائية.
+3. ~~**IdleTimer يعمل فقط للمناديب:**~~ ✅ **مُصلَح** — IdleTimer الآن يطبق على جميع الأدوار: 30 دقيقة للمندوب، 90 دقيقة للمدير والمساعد (IdleTimer.js:12-15).
 
 ### مشاكل الصلاحيات
 
@@ -603,10 +606,10 @@ expense_accounts ──→ transactions (expense_type)
 | R13 | استهلاك حصة Supabase المجانية | 🟡 متوسطة | توقف الخدمة بالكامل | 🟡 متوسطة |
 | R14 | `resolveConflict()` تستخدم upsert بدون onConflict | 🟡 متوسطة | إنشاء سجل مكرر عند حل التعارض | 🟡 متوسطة |
 | R15 | بيانات مالية غير مشفرة في IndexedDB | 🟡 متوسطة | قراءة بيانات من devtools أو مشاركة الجهاز | 🟠 عالية |
-| R16 | لا Idle Timeout للمدير والمساعد | 🟡 متوسطة | جهاز مفتوح بدون رقابة | 🟡 متوسطة |
+| R16 | ~~لا Idle Timeout للمدير والمساعد~~ | ✅ **مُصلَح** | IdleTimer الآن: 30 دقيقة (مندوب)، 90 دقيقة (مدير/مساعد) | — |
 | R17 | استعلامات Supabase مكررة في Dashboard | 🟡 متوسطة | بطء وزيادة تكلفة | 🔴 مؤكد |
 | R18 | `select('*')` يجلب quick_equation_hash | 🟢 منخفضة | بيانات حساسة في network tab | 🔴 مؤكد |
-| R19 | IdleTimer للمندوبين فقط | 🟢 منخفضة | عدم تسجيل خروج تلقائي للمدير | 🟡 متوسطة |
+| R19 | ~~IdleTimer للمندوبين فقط~~ | ✅ **مُصلَح** | IdleTimer الآن مُطبَّق على المدير والمساعد (90 دقيقة) | — |
 | R20 | لا محدودية للمبلغ الأقصى في isValidAmount | 🟢 منخفضة | إدخال مبالغ خاطئة ضخمة | 🟡 متوسطة |
 
 ---
@@ -632,7 +635,7 @@ expense_accounts ──→ transactions (expense_type)
 | P2.2 | **إصلاح `_voucherCounter`** — استخدام sequence في Supabase بدلاً من متغير محلي | تكرار أرقام الإيصالات | AccountingService.js |
 | P2.3 | **تجميع استعلامات Dashboard في RPC واحدة** — استخدام `get_admin_dashboard` بالكامل | ضغط غير ضروري على Supabase | DashboardComponent.js |
 | P2.4 | **إضافة UNIQUE constraint على `transactions.id` في Supabase** | تكرار المعاملات عند انقطاع الاتصال | Supabase Migration |
-| P2.5 | **تطبيق Idle Timeout على المدير والمساعد** | جهاز مفتوح بلا حماية | services/IdleTimer.js |
+| P2.5 | ✅ **مُنجَز** ~~تطبيق Idle Timeout على المدير والمساعد~~ — المدير والمساعد يحصلان على 90 دقيقة | — | services/IdleTimer.js |
 | P2.6 | **إضافة حد أقصى للمبلغ في `isValidAmount()`** | إدخال مبالغ خاطئة ضخمة | utils/helpers.js |
 | P2.7 | **إضافة `select` محدد بدلاً من `select('*')`** لاستبعاد `quick_equation_hash` من استعلامات القوائم | تسريب بيانات حساسة | جميع الملفات |
 | P2.8 | **التحقق من صلاحية الجلسة (`is_active`) عند كل تنقل بين التبويبات** | مستخدم موقوف يستمر في العمل | AuthService.js |
@@ -673,7 +676,7 @@ expense_accounts ──→ transactions (expense_type)
 
 1. **إعدادات RLS في Supabase:** التقرير لا يملك إمكانية التحقق من سياسات Row Level Security الفعلية — هذا المجال الأكثر خطراً وغير المرئي.
 
-2. **ملفات SQL للـ Migrations:** Setup.md يشير إلى 9 ملفات SQL لكنها غير موجودة في المشروع — البنية الكاملة لقاعدة البيانات وقيودها والفهارس والـ RLS غير معروفة.
+2. **ملفات SQL للـ Migrations:** المستودع يحتوي على **27 ملف migration** في مجلد `supabase/migrations/` (من `20260612000000` إلى `20260621000002`). RLS مُفعَّل على الجداول الحرجة.
 
 3. **إعدادات Supabase Storage Bucket (`logos`):** هل الـ Bucket عام أم خاص؟ غير معروف.
 
