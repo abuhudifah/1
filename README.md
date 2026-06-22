@@ -22,7 +22,7 @@
 ### المرحلة 1 — الدخول السريع (Quick Login)
 - [x] نظام معادلة رياضية للدخول السريع بدون كلمة مرور
 - [x] تشفير SHA-256 مع Salt ثابت (`ahu_secure_salt_v1_2024`)
-- [x] Token Rotation عبر RPC `verify_quick_login_token`
+- [x] Token Rotation عبر RPC `verify_quick_login`
 - [x] حماية Brute Force في sessionStorage (5 محاولات → قفل 15 دقيقة)
 - [x] `PasswordDialog` احترافي يحل محل `window.prompt()`
 - [x] `QuickLoginBanner` — إشعار ذكي لتفعيل الدخول السريع بعد أول دخول
@@ -37,7 +37,7 @@
 
 ### المرحلة 3 — الأمان المتقدم
 - [x] جلسة مطلقة 8 ساعات (`sessionExpiresAt`) — تسجيل خروج تلقائي
-- [x] `IdleTimer` — خروج تلقائي للمندوبين بعد 5 دقائق خمول (30 دقيقة للإدارة)
+- [x] `IdleTimer` — خروج تلقائي للمندوبين بعد 30 دقيقة خمول (90 دقيقة للمدير والمساعد)
 - [x] إزالة جميع `console.log` الحساسة (كلمات مرور، tokens، بيانات مستخدمين)
 - [x] معالجة أخطاء الشبكة في `quickLogin` — لا يُحذف localStorage عند انقطاع الاتصال
 - [x] 25+ كتلة `catch {}` فارغة أصبحت `catch (e)` مع `console.warn`
@@ -77,9 +77,12 @@
 ├── services/
 │   ├── AuthService.js                # تسجيل دخول، جلسة، Quick Login، صلاحيات
 │   ├── OfflineAuthService.js         # دخول Offline عبر PIN محلي
+│   ├── SessionVault.js               # تخزين بيانات الجلسة مشفرة (PBKDF2 + AES-GCM)
 │   ├── LocalOperationsService.js     # حفظ العمليات محلياً عند Offline
+│   ├── OutboxService.js              # معالجة الطابور المحلي عند استعادة الاتصال
 │   ├── SyncEngine.js                 # مزامنة العمليات المعلقة مع Supabase
 │   ├── SyncService.js                # جدولة المزامنة التلقائية (30 ثانية)
+│   ├── RealtimeChannelManager.js     # إدارة اشتراكات Supabase Realtime
 │   ├── AccountingService.js          # قيود القيد المزدوج (v4.0)
 │   ├── ThemeManager.js               # وضع مظلم/فاتح
 │   ├── IdleTimer.js                  # خروج تلقائي بالخمول
@@ -92,7 +95,7 @@
 ├── components/
 │   ├── LoginComponent.js             # شاشة الدخول (تقليدي + معادلة + Offline)
 │   ├── DashboardComponent.js         # لوحة التحكم + KPIs + رسوم بيانية
-│   ├── DataEntryComponent.js         # إدخال العمليات (5 أنواع)
+│   ├── DataEntryComponent.js         # إدخال العمليات (10 أنواع)
 │   ├── DailySummaryComponent.js      # ملخص يومي
 │   ├── BankAccountsComponent.js      # إدارة الحسابات البنكية
 │   ├── DebtorsComponent.js           # إدارة المدينين
@@ -113,7 +116,30 @@
     ├── 20260612000000_phase_0_schema_enhancement.sql
     ├── 20260612000001_phase_1_quick_login_tokens.sql
     ├── 20260612000002_phase_2a_jwt_session_fix.sql
-    └── 20260612000003_phase_2b_offline_rpcs.sql
+    ├── 20260612000003_phase_2b_offline_rpcs.sql
+    ├── 20260612000004_phase_7a_secure_reset_rpc.sql
+    ├── 20260612000005_phase_7b_beneficiaries_schema.sql
+    ├── 20260612000006_unified_account_numbers.sql
+    ├── 20260612000007_fix_bank_account_numbers.sql
+    ├── 20260612000008_add_agent_permission_columns.sql
+    ├── 20260613000001_fix_quick_login_token_consistency.sql
+    ├── 20260613000002_fix_reset_rpc_proper_delete.sql
+    ├── 20260615000001_fix_quick_login_no_password_damage_and_agent_debtors.sql
+    ├── 20260615000002_phase_r1_device_registry_and_reversal.sql
+    ├── 20260616000001_cleanup_legacy_offline_sessions.sql
+    ├── 20260617000001_optimize_ledger_indexes.sql
+    ├── 20260617000002_rls_debtors_admin_only.sql
+    ├── 20260617000003_allow_agent_debtor_insert.sql
+    ├── 20260617000004_add_opening_balance_to_bank_accounts.sql
+    ├── 20260617000005_drop_unique_account_prefix.sql
+    ├── 20260618000001_agent_users_select_policy.sql
+    ├── 20260619000001_rls_financial_tables.sql
+    ├── 20260619000002_rls_cleanup_legacy_policies.sql
+    ├── 20260619000003_add_quick_login_enabled.sql
+    ├── 20260619000004_version_locking_and_ledger_idempotency.sql
+    ├── 20260620000001_fix_rpc_idempotency_key_type.sql
+    ├── 20260621000001_fix_period_close_fold_all_before_end.sql
+    └── 20260621000002_add_delete_transaction_completely.sql
 ```
 
 ---
@@ -173,8 +199,38 @@
 | `transfer_requests` | طلبات التحويل بين المندوبين |
 | `quick_login_tokens` | رموز الدخول السريع (مع انتهاء صلاحية) |
 
-**RPC Functions:**
-`create_transaction_with_entries`، `get_admin_dashboard`، `get_daily_summary`، `get_chart_of_accounts`، `get_account_statement`، `get_audit_logs`، `verify_quick_login_token`، `perform_daily_close`، `reverse_transaction`، `approve_transaction`، `reject_transaction`، `reset_all_operational_data`
+**RPC Functions (23 دالة):**
+
+| الدالة | الغرض |
+|--------|-------|
+| `create_transaction_with_entries` | إنشاء عملية + قيود ذريًا |
+| `perform_daily_close` | إغلاق اليومية |
+| `reverse_transaction` | عكس عملية |
+| `delete_transaction_completely` | حذف عملية وقيودها نهائياً |
+| `update_debtor_balance` | تحديث رصيد المدين |
+| `verify_quick_login` | تحقق + تدوير رمز الدخول السريع |
+| `create_quick_login_token` | إنشاء رمز دخول سريع |
+| `get_admin_dashboard` | KPIs للوحة التحكم |
+| `get_daily_summary` | ملخص يومي |
+| `get_chart_of_accounts` | هيكل الحسابات |
+| `get_account_statement` | كشف حساب |
+| `get_bank_statement` | كشف حساب بنكي |
+| `get_audit_logs` | سجل التدقيق |
+| `get_opening_balance` | الرصيد الافتتاحي لحساب |
+| `get_next_voucher_number` | رقم القيد التالي |
+| `approve_transaction` | موافقة على معاملة معلّقة |
+| `reject_transaction` | رفض معاملة معلّقة |
+| `get_pending_approvals` | قائمة المعاملات المعلّقة |
+| `clear_audit_logs` | حذف سجلات تدقيق قديمة |
+| `reset_all_operational_data` | إعادة تعيين كاملة |
+| `perform_period_close` | إغلاق دوري |
+| `get_period_closings` | قائمة الإغلاقات الدورية |
+| `get_period_summaries` | ملخصات دورة معينة |
+| `get_database_usage` | إحصائيات استخدام قاعدة البيانات |
+| `register_device` | تسجيل جهاز |
+| `revoke_device` | إلغاء جهاز |
+| `touch_device` | تحديث last_seen_at |
+| `generate_account_number` | توليد رقم حساب |
 
 ---
 
@@ -184,7 +240,7 @@
 |-------|-----------------|
 | `admin` | جميع التبويبات الـ 12 |
 | `admin_assistant` | dashboard، data-entry، daily-summary، bank-accounts، debtors، failed-deposits، notifications، all-operations |
-| `agent` | data-entry، daily-summary، notifications |
+| `agent` | data-entry، daily-summary، bank-accounts، debtors، failed-deposits، notifications، settings |
 
 ---
 
@@ -210,7 +266,7 @@
 | Quick Login Hash | `SHA-256(userId:equation:ahu_secure_salt_v1_2024)` |
 | Brute Force | 5 محاولات → قفل 15 دقيقة (sessionStorage) |
 | الجلسة | 8 ساعات مطلقة (`sessionExpiresAt`) ثم خروج تلقائي |
-| IdleTimer | خروج تلقائي للمندوبين بعد 5 دقائق خمول |
+| IdleTimer | خروج تلقائي: 30 دقيقة للمندوبين، 90 دقيقة للمدير والمساعد |
 | RLS | مفعّل على جميع جداول Supabase |
 | Audit Log | UPDATE/DELETE فقط على الجداول الحرجة، الحقول المتغيرة فقط |
 | eval() | ممنوع تماماً — صفر استخدامات في الكود |
@@ -252,8 +308,8 @@ python3 -m http.server 8080
 ### تطبيق الـ Migrations (بالترتيب)
 ```bash
 supabase db push
-# أو يدوياً بالترتيب:
-# 20260612000000 → 20260612000001 → 20260612000002 → 20260612000003
+# أو يدوياً بالترتيب الزمني (27 ملف migration)
+# من 20260612000000 إلى 20260621000002
 ```
 
 ---
