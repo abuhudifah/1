@@ -614,6 +614,16 @@ async function _navigateTo(tabId) {
   // لا تكرار إذا ضغط المستخدم على التبويب النشط ذاته
   if (tabId === _activeComponentId) return;
 
+  // تحذير عند مغادرة نموذج إدخال بيانات غير محفوظ
+  if (_activeComponentId === TABS.DATA_ENTRY
+      && window.DataEntryComponent?.hasUnsavedData?.()) {
+    const leave = await confirmDialog(
+      'لديك بيانات غير محفوظة في نموذج الإدخال.\nهل تريد المغادرة بدون حفظ؟',
+      'مغادرة', 'البقاء', 'warning'
+    );
+    if (!leave) return;
+  }
+
   AppStore.setCurrentTab(tabId);
   _updateNavHighlight(tabId);
 

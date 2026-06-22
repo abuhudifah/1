@@ -781,13 +781,13 @@ textarea.form-control {
 }
 
 .header-user-role-tag {
-  font-size    : 0.67rem;
+  font-size    : 0.75rem;
   font-weight  : 600;
-  color        : rgba(255,255,255,0.65);
-  background   : rgba(255,255,255,0.09);
-  padding      : 1px 8px;
+  color        : rgba(255,255,255,0.85);
+  background   : rgba(255,255,255,0.12);
+  padding      : 2px 8px;
   border-radius: 20px;
-  border       : 1px solid rgba(255,255,255,0.12);
+  border       : 1px solid rgba(255,255,255,0.18);
   white-space  : nowrap;
   display      : inline-block;
   width        : fit-content;
@@ -809,9 +809,9 @@ textarea.form-control {
   gap            : 3px;
   padding        : 7px 10px;
   border-radius  : 12px;
-  background     : rgba(255,255,255,0.07);
-  border         : 1px solid rgba(255,255,255,0.10);
-  color          : rgba(255,255,255,0.82);
+  background     : rgba(255,255,255,0.09);
+  border         : 1px solid rgba(255,255,255,0.13);
+  color          : rgba(255,255,255,0.92);
   cursor         : pointer;
   transition     : all var(--transition-fast);
   font-family    : var(--font-arabic);
@@ -835,7 +835,7 @@ textarea.form-control {
 }
 
 .header-action-label {
-  font-size  : 0.67rem;
+  font-size  : 0.75rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -859,24 +859,24 @@ textarea.form-control {
   background   : rgba(255,255,255,0.06);
   border       : 1px solid rgba(255,255,255,0.10);
   border-radius: 20px;
-  color        : rgba(255,255,255,0.70);
+  color        : rgba(255,255,255,0.88);
   padding      : 5px 10px;
   cursor       : pointer;
   transition   : all var(--transition-fast);
-  font-size    : 0.72rem;
+  font-size    : 0.75rem;
   font-family  : var(--font-arabic);
 }
 .header-sync-pill:hover {
-  background  : rgba(255,255,255,0.12);
+  background  : rgba(255,255,255,0.14);
   color       : #fff;
-  border-color: rgba(255,255,255,0.20);
+  border-color: rgba(255,255,255,0.24);
 }
 
-.sync-label { font-size: 0.72rem; }
+.sync-label { font-size: 0.75rem; }
 .sync-count {
   background   : var(--warning);
   color        : #fff;
-  font-size    : 0.60rem;
+  font-size    : 0.70rem;
   font-weight  : 700;
   border-radius: 10px;
   padding      : 1px 5px;
@@ -903,7 +903,7 @@ textarea.form-control {
   border-radius: 50%;
   flex-shrink  : 0;
 }
-.header-conn-pill .conn-label { font-size: 0.70rem; }
+.header-conn-pill .conn-label { font-size: 0.75rem; }
 
 .conn-online {
   background  : rgba(16,185,129,0.10);
@@ -977,7 +977,7 @@ textarea.form-control {
   border       : 1px solid rgba(245,158,11,0.40);
   border-radius: 10px;
   color        : #fbbf24;
-  font-size    : 0.65rem;
+  font-size    : 0.75rem;
   font-family  : var(--font-arabic);
   padding      : 2px 8px;
   cursor       : pointer;
@@ -995,12 +995,12 @@ textarea.form-control {
   position    : absolute;
   top         : -4px;
   left        : -4px;
-  width       : 17px;
-  height      : 17px;
+  width       : 18px;
+  height      : 18px;
   border-radius: 50%;
   background  : var(--danger);
   color       : #fff;
-  font-size   : 0.60rem;
+  font-size   : 0.68rem;
   font-weight : 700;
   display     : flex;
   align-items : center;
@@ -1515,39 +1515,8 @@ textarea.form-control {
 }
 
 /* ============================================================
-   14. الوضع المظلم
+   14. الوضع المظلم — التعريف الموحّد في القسم السفلي
    ============================================================ */
-
-body.dark-mode,
-html.dark :root {
-  --primary        : #f8fafc;
-  --accent         : #3b82f6;
-  --accent-light   : #60a5fa;
-
-  --bg-page        : #0f172a;
-  --bg-card        : #1e293b;
-  --bg-input       : #1e293b;
-  --bg-hover       : #293548;
-
-  --glass-bg       : rgba(30, 41, 59, 0.88);
-  --glass-bg-heavy : rgba(30, 41, 59, 0.97);
-  --glass-border   : rgba(248, 250, 252, 0.07);
-  --glass-hover    : rgba(30, 41, 59, 0.95);
-  --glass-shadow   : 0 8px 32px rgba(0, 0, 0, 0.32);
-
-  --text-primary   : #f1f5f9;
-  --text-secondary : #94a3b8;
-  --text-muted     : #64748b;
-
-  --border-color   : rgba(248, 250, 252, 0.08);
-
-  --header-bg      : rgba(15, 23, 42, 0.99);
-  --nav-bg         : rgba(15, 23, 42, 0.95);
-
-  --shadow-sm  : 0 2px 8px rgba(0,0,0,0.20);
-  --shadow-md  : 0 8px 24px rgba(0,0,0,0.30);
-  --shadow-lg  : 0 20px 56px rgba(0,0,0,0.42);
-}
 
 body.dark-mode {
   background-color: var(--bg-page);
@@ -2437,6 +2406,10 @@ body, .glass-card, .glass-card-sm, .kpi-card, .modal-box,
    ════════════════════════════════════════════════ */
 
 body.dark-mode {
+  --primary        : #f8fafc;
+  --accent         : #3b82f6;
+  --accent-light   : #60a5fa;
+
   --bg-page        : #0b0f1a;
   --bg-card        : #141924;
   --bg-input       : #1a2030;

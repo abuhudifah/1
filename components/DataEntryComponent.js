@@ -44,6 +44,16 @@ const DataEntryComponent = {
   _refreshCompanyBeneficiaries: null, // callback لتحديث قائمة شركات المستفيدين
   _refreshBankBeneficiaries: null,    // callback لتحديث قائمة بنوك المستفيدين
 
+  hasUnsavedData() {
+    const area = document.getElementById('data-entry-form-area');
+    if (!area) return false;
+    const inputs = area.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]), textarea');
+    for (const el of inputs) {
+      if (el.value && el.value.trim()) return true;
+    }
+    return false;
+  },
+
   async render(container) {
     this._container = container;
     // إلغاء مستمعي الإغلاق القديمة عند كل render لتفادي التراكم
