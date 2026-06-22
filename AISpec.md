@@ -1,9 +1,9 @@
 # AISpec — المواصفات الكاملة للنظام
 ## نظام أبو حذيفة المتكامل للصرافة والتحويلات
 
-> **الإصدار:** 2.0 (مبني على الكود المصدري حصرًا)  
-> **تاريخ الاستخراج:** 2026-06-19  
-> **المصادر:** config.js، App.js، جميع Services، جميع Components، جميع ملفات SQL (24 migration)  
+> **الإصدار:** 2.1 (مبني على الكود المصدري حصرًا)  
+> **تاريخ الاستخراج:** 2026-06-22  
+> **المصادر:** config.js، App.js، جميع Services، جميع Components، جميع ملفات SQL (27 migration)  
 > **السياسة:** لا شيء من هذه الوثيقة مصدره ملفات التوثيق — كل قيمة مستخرجة مباشرةً من الكود
 
 ---
@@ -17,7 +17,7 @@
 ## 1.2 نطاق الحل
 
 ### داخل النطاق
-- تسجيل 7 أنواع من العمليات المالية (تحصيل، إيداع، سحب، مصروف، تحويل، تسليم، تسوية استرداد)
+- تسجيل 10 أنواع من العمليات المالية (تحصيل، إيداع، سحب، مصروف، تحويل، تسليم، تسوية استرداد، استرداد إيداع فاشل، قيد محاسبي، تسليم عهدة)
 - محاسبة بالقيد المزدوج مع دفتر أستاذ كامل
 - إدارة حسابات بنكية مرتبطة بشركات
 - إدارة عملاء مديونين مع تتبع الديون
@@ -393,7 +393,7 @@ db.version(DEXIE_CONFIG.DB_VERSION).stores({
 
 ## 2.5 أنواع العمليات
 
-من `config.js:96-114`:
+من `config.js:109-120` (TRANSACTION_TYPES + TRANSACTION_TYPE_LABELS):
 
 | القيمة | التسمية العربية |
 |--------|----------------|
@@ -404,6 +404,9 @@ db.version(DEXIE_CONFIG.DB_VERSION).stores({
 | `receipt` | تحويل |
 | `delivery` | تسليم مباشر |
 | `refund_settlement` | تسوية استرداد |
+| `failed_deposit_refund` | استرداد إيداع فاشل |
+| `journal_entry` | قيد محاسبي |
+| `external_handover` | تسليم عهدة |
 
 ---
 
@@ -442,6 +445,10 @@ db.version(DEXIE_CONFIG.DB_VERSION).stores({
 | `delivery` | `AGT_<to_agent_id>` | `AGT_<from_agent_id>` | مباشر بلا موافقة |
 | `refund_settlement` + `company_id` | `AGT_<agent_id>` | `COMP_<company_id>` | |
 | `refund_settlement` بلا شركة | `AGT_<agent_id>` | `GENERAL_FUND` | الحالة الوحيدة التي يُستخدم فيها `GENERAL_FUND` |
+| `failed_deposit_refund` | `AGT_<agent_id>` | `COMP_<company_id>` | استرداد مبلغ إيداع فاشل من الشركة للمندوب |
+| `journal_entry` | `AGT_<agent_id>` | `COMP_<company_id>` | قيد تسوية يدوي — يتطلب شركة |
+| `external_handover` + `debtor_settlement` | `DEBTOR_SETTLEMENT` | `AGT_<agent_id>` | الوجهة الافتراضية — تسوية ديون |
+| `external_handover` + `general_fund` | `GENERAL_FUND` | `AGT_<agent_id>` | وجهة الصندوق العام — مُحدَّدة في `expense_type` |
 
 **قاعدة ملزمة:** `BNK_*` لا يظهر في أي قيد أبدًا. الحساب البنكي وسم في `transactions.bank_account_id` فقط.
 
@@ -647,9 +654,10 @@ SECURITY_CONFIG = {
 
 | الدور | المهلة | المصدر |
 |-------|--------|--------|
-| `agent` | **5 دقائق** (`5 * 60 * 1000` ms) | IdleTimer.js:28 |
-| `admin` أو `admin_assistant` | **90 دقيقة** (`90 * 60 * 1000` ms) | IdleTimer.js:31 |
-| تحذير مسبق | 60 ثانية قبل انتهاء المهلة | IdleTimer.js:34 |
+| `agent` | **30 دقيقة** (`AGENT_IDLE_TIMEOUT_MS = 30 * 60 * 1000` ms) | IdleTimer.js:12 |
+| `admin` أو `admin_assistant` | **90 دقيقة** (`ADMIN_IDLE_TIMEOUT_MS = 90 * 60 * 1000` ms) | IdleTimer.js:15 |
+
+**لا يوجد تحذير مسبق** — عند انتهاء المهلة يتم تسجيل الخروج مباشرةً ويظهر إشعار toast يُعلم المستخدم.
 
 أحداث النشاط التي تُعيد المهلة: `mousemove, keydown, click, scroll, touchstart, touchmove`
 
@@ -720,7 +728,7 @@ token = SHA-256( userId + ":" + normalize(equation) + ":" + "ahu_secure_salt_v1_
 1. يُدخل اسم المستخدم (أو يُختار)
 2. يُدخل المعادلة الرياضية
 3. النظام يحسب: `SHA-256(userId:normalize(equation):salt)`
-4. يُرسَل الهاش لـ RPC `verify_quick_login_token`
+4. يُرسَل الهاش لـ RPC `verify_quick_login`
 5. الـ RPC يتحقق من الهاش ويُدوِّر الرمز ويُصدر JWT
 6. جلب بيانات المستخدم كاملة
 
@@ -753,7 +761,7 @@ token = SHA-256( userId + ":" + normalize(equation) + ":" + "ahu_secure_salt_v1_
 **الممثل:** أي مستخدم مسجَّل دخوله لديه `data-entry`
 
 **الخطوات:**
-1. اختيار النوع من 7 أنواع
+1. اختيار النوع من 10 أنواع
 2. إدخال البيانات المطلوبة (تتغير حسب النوع)
 3. التحقق المحلي من الصحة (المبلغ 0.01-10,000,000)
 4. `Ctrl+S` أو زر الحفظ
@@ -898,6 +906,9 @@ token = SHA-256( userId + ":" + normalize(equation) + ":" + "ahu_secure_salt_v1_
 | `receipt` | المبلغ، التاريخ، المندوب المُرسِل، ملاحظات |
 | `delivery` | المبلغ، التاريخ، المندوب المُستلِم، ملاحظات |
 | `refund_settlement` | المبلغ، التاريخ، الشركة (اختياري)، ملاحظات |
+| `failed_deposit_refund` | المبلغ، التاريخ، الشركة، ملاحظات |
+| `journal_entry` | المبلغ، التاريخ، الشركة، ملاحظات |
+| `external_handover` | المبلغ، التاريخ، الوجهة (debtor_settlement/general_fund)، الجهة المستلمة، ملاحظات |
 
 **حد المبلغ:** 0.01 – 10,000,000 SAR  
 **اختصار:** `Ctrl+S` = حفظ
@@ -1119,7 +1130,7 @@ src/
 ├── store/           # إدارة الحالة المركزية
 ├── components/      # مكونات UI (بإطار عمل)
 │   ├── ui/          # Button, Input, Table, Toast, Modal
-│   ├── forms/       # TransactionForm (7 أنواع)
+│   ├── forms/       # TransactionForm (10 أنواع)
 │   └── pages/       # كل تبويب كمكوّن منفصل
 └── utils/           # helpers, formatters, validators
 ```
@@ -1136,7 +1147,7 @@ src/
 
 | المرحلة | المحتوى |
 |---------|---------|
-| MVP | Auth (3 أنواع) + data-entry (7 أنواع) + offline + مزامنة |
+| MVP | Auth (3 أنواع) + data-entry (10 أنواع) + offline + مزامنة |
 | v1.1 | daily-summary + إغلاق + bank-accounts + debtors + failed-deposits |
 | v1.2 | dashboard + all-operations + audit-log + users + account-management |
 | v2.0 | PWA كامل + تقارير متقدمة |
@@ -1148,23 +1159,33 @@ src/
 | الدالة | الغرض | المصدر |
 |--------|--------|--------|
 | `create_transaction_with_entries` | إنشاء عملية + قيود ذريًا | أصلي |
-| `verify_quick_login_token` | تحقق + تدوير رمز الدخول السريع | migration 20260612000001 |
+| `verify_quick_login` | تحقق + تدوير رمز الدخول السريع | migration 20260612000001 |
 | `create_quick_login_token` | إنشاء رمز دخول سريع | migration 20260612000001 |
 | `perform_daily_close` | إغلاق اليومية | أصلي |
 | `reverse_transaction` | عكس عملية | أصلي |
+| `delete_transaction_completely` | حذف عملية وقيودها نهائياً | migration 20260621000002 |
+| `update_debtor_balance` | تحديث رصيد المدين | أصلي |
 | `approve_transaction` | موافقة على receipt معلّق | أصلي |
 | `reject_transaction` | رفض receipt معلّق | أصلي |
+| `get_pending_approvals` | قائمة المعاملات المعلّقة | أصلي |
 | `get_admin_dashboard` | KPIs للوحة التحكم | أصلي |
 | `get_daily_summary` | ملخص يومي | أصلي |
 | `get_chart_of_accounts` | هيكل الحسابات | أصلي |
 | `get_account_statement` | كشف حساب | أصلي |
+| `get_bank_statement` | كشف حساب بنكي | أصلي |
 | `get_audit_logs` | سجل التدقيق | أصلي |
+| `get_opening_balance` | الرصيد الافتتاحي لحساب | أصلي |
+| `get_next_voucher_number` | رقم قيد جديد | أصلي |
+| `clear_audit_logs` | حذف سجلات تدقيق قديمة | أصلي |
 | `reset_all_operational_data` | إعادة تعيين كاملة | migration 20260612000004 |
+| `perform_period_close` | إغلاق دوري | migration 20260621000001 |
+| `get_period_closings` | قائمة الإغلاقات الدورية | migration 20260621000001 |
+| `get_period_summaries` | ملخصات دورة معينة | migration 20260621000001 |
+| `get_database_usage` | إحصائيات استخدام قاعدة البيانات | أصلي |
 | `register_device` | تسجيل جهاز | migration 20260615000002 |
 | `revoke_device` | إلغاء جهاز | migration 20260615000002 |
 | `touch_device` | تحديث last_seen_at | migration 20260615000002 |
 | `generate_account_number` | توليد رقم حساب | migration 20260612000008 |
-| `get_next_voucher_number` | رقم قيد جديد | أصلي |
 
 ---
 
@@ -1173,7 +1194,8 @@ src/
 ```typescript
 type TransactionType = 
   | 'collection' | 'deposit' | 'bank_withdrawal'
-  | 'expense' | 'receipt' | 'delivery' | 'refund_settlement';
+  | 'expense' | 'receipt' | 'delivery' | 'refund_settlement'
+  | 'failed_deposit_refund' | 'journal_entry' | 'external_handover';
 
 type UserRole = 'admin' | 'admin_assistant' | 'agent';
 
@@ -1206,5 +1228,5 @@ const SPECIAL_ACCOUNTS = {
 
 ---
 
-> **نهاية AISpec v2.0**  
+> **نهاية AISpec v2.1**  
 > كل قيمة في هذه الوثيقة مستخرجة مباشرةً من ملفات الكود المصدري — لا توثيق خارجي، لا افتراضات غير مُوسَّمة.

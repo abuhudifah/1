@@ -1,5 +1,35 @@
 # تقرير التحديثات الشامل — نظام أبو حذيفة للصرافة
-**التاريخ:** 2026-06-08  
+
+---
+
+## جلسة 2026-06-22
+**الفرع:** `claude/fervent-wright-cxm031`
+
+### 1. إصلاح RLS — حلقة لا نهائية في جدول `users`
+**migration:** `20260619000002_rls_cleanup_legacy_policies.sql`
+
+سياسة `admin_can_update_any_quick_hash` كانت تتسبب في infinite recursion عند أي محاولة UPDATE لأن السياسة نفسها تستعلم من `users`. تم حذفها — صلاحية UPDATE للمدير مكفولة بالسياسة العامة `allow_admin_full_access`.
+
+### 2. نوع عملية جديد: `external_handover` (تسليم عهدة)
+**الملفات:** `DataEntryComponent.js`، `AccountingService.js`، `DailySummaryComponent.js`، `config.js`
+
+- **`DataEntryComponent._saveExternalHandover()`:** يحفظ `handover_destination` (وقتي) و`expense_type` (دائم في DB) معًا لضمان عمل القيد المحاسبي بعد التحديث
+- **`AccountingService._buildExternalHandoverEntries()`:** يقرأ الوجهة من `tx.handover_destination || tx.expense_type`؛ وجهة `debtor_settlement` → DR `DEBTOR_SETTLEMENT` / CR `AGT_<agent>`؛ وجهة `general_fund` → DR `GENERAL_FUND` / CR `AGT_<agent>`
+- **`DailySummaryComponent`:** إضافة بطاقة KPI شرطية لـ `external_handover` وأيقونة `📤` في خريطة الأنواع
+- **`config.js`:** إضافة `EXTERNAL_HANDOVER` لـ `TRANSACTION_TYPES` و`TRANSACTION_TYPE_LABELS`
+
+### 3. إصلاح `IdleTimer` — حذف التحذير المسبق
+**الملف:** `services/IdleTimer.js`
+
+حُذف toast التحذير الذي كان يظهر 60 ثانية قبل انتهاء المهلة. بعد الإصلاح: عند انتهاء المهلة يتم تسجيل الخروج مباشرةً ويظهر إشعار toast فوق شاشة الدخول.  
+المهلات الفعلية: **30 دقيقة** للمندوب، **90 دقيقة** للمدير والمساعد.
+
+### 4. `DebtorsComponent` — فلتر المنطقة
+إضافة فلتر بالمنطقة في واجهة المدير لتصفية قائمة المدينين.
+
+---
+
+## جلسة 2026-06-08
 **الفرع:** `claude/charming-cori-N4Hcf`  
 **الـ Commits المُغطَّاة:** `1d407bc` → `5e99d3a`
 

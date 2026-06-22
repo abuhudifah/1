@@ -23,16 +23,34 @@
 ### الطريقة أ — باستخدام SQL Editor (الأسهل)
 
 1. في Dashboard → **SQL Editor** → **New query**
-2. انسخ والصق محتوى كل ملف من مجلد `/supabase/migrations/` بالترتيب:
-   - `step_01_drop_all_old_objects.sql`
-   - `step_02_create_trigger_function.sql`
-   - `step_03_create_base_tables.sql`
-   - `step_04_create_linked_tables.sql`
-   - `step_05_create_indexes.sql`
-   - `step_06_create_rls_helper_functions.sql`
-   - `step_07_create_rpc_functions.sql`
-   - `step_08_enable_rls_and_policies.sql`
-   - `step_09_grants_and_realtime.sql`
+2. انسخ والصق محتوى كل ملف من مجلد `/supabase/migrations/` **بالترتيب الزمني** (27 ملف):
+   - `20260612000000_phase_0_schema_enhancement.sql`
+   - `20260612000001_phase_1_quick_login_tokens.sql`
+   - `20260612000002_phase_2a_jwt_session_fix.sql`
+   - `20260612000003_phase_2b_offline_rpcs.sql`
+   - `20260612000004_phase_7a_secure_reset_rpc.sql`
+   - `20260612000005_phase_7b_beneficiaries_schema.sql`
+   - `20260612000006_unified_account_numbers.sql`
+   - `20260612000007_fix_bank_account_numbers.sql`
+   - `20260612000008_add_agent_permission_columns.sql`
+   - `20260613000001_fix_quick_login_token_consistency.sql`
+   - `20260613000002_fix_reset_rpc_proper_delete.sql`
+   - `20260615000001_fix_quick_login_no_password_damage_and_agent_debtors.sql`
+   - `20260615000002_phase_r1_device_registry_and_reversal.sql`
+   - `20260616000001_cleanup_legacy_offline_sessions.sql`
+   - `20260617000001_optimize_ledger_indexes.sql`
+   - `20260617000002_rls_debtors_admin_only.sql`
+   - `20260617000003_allow_agent_debtor_insert.sql`
+   - `20260617000004_add_opening_balance_to_bank_accounts.sql`
+   - `20260617000005_drop_unique_account_prefix.sql`
+   - `20260618000001_agent_users_select_policy.sql`
+   - `20260619000001_rls_financial_tables.sql`
+   - `20260619000002_rls_cleanup_legacy_policies.sql`
+   - `20260619000003_add_quick_login_enabled.sql`
+   - `20260619000004_version_locking_and_ledger_idempotency.sql`
+   - `20260620000001_fix_rpc_idempotency_key_type.sql`
+   - `20260621000001_fix_period_close_fold_all_before_end.sql`
+   - `20260621000002_add_delete_transaction_completely.sql`
 3. اضغط **Run** لكل ملف
 
 ### الطريقة ب — باستخدام Supabase CLI
@@ -183,7 +201,7 @@ python -m http.server 8080
 ## التحقق من اكتمال الإعداد
 
 ```sql
--- تحقق من الجداول (يجب أن تكون 13)
+-- تحقق من الجداول (يجب أن تكون 20+)
 SELECT COUNT(*) AS table_count
 FROM information_schema.tables
 WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
@@ -192,19 +210,30 @@ WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
 SELECT COUNT(*) AS policy_count
 FROM pg_policies WHERE schemaname = 'public';
 
--- تحقق من الدوال (يجب أن تكون 5+)
+-- تحقق من الدوال الرئيسية (يجب أن تكون 20+)
 SELECT routine_name FROM information_schema.routines
 WHERE routine_schema = 'public' AND routine_type = 'FUNCTION'
-  AND routine_name NOT LIKE 'handle_%';
+ORDER BY routine_name;
 
 -- تحقق من إعدادات النظام
 SELECT key, value FROM public.system_settings;
 ```
 
 النتائج المتوقعة:
-- `table_count` = 13
+- `table_count` ≥ 20
 - `policy_count` ≥ 32
-- الدوال: `create_transaction_with_entries`, `perform_daily_close`, `reverse_transaction`, `update_debtor_balance`, `verify_quick_login`
+- الدوال الرئيسية المتوقعة:
+  `create_transaction_with_entries`, `delete_transaction_completely`,
+  `perform_daily_close`, `perform_period_close`,
+  `reverse_transaction`, `update_debtor_balance`,
+  `verify_quick_login`, `create_quick_login_token`,
+  `approve_transaction`, `reject_transaction`, `get_pending_approvals`,
+  `get_admin_dashboard`, `get_daily_summary`, `get_chart_of_accounts`,
+  `get_account_statement`, `get_bank_statement`, `get_audit_logs`,
+  `get_opening_balance`, `get_next_voucher_number`, `clear_audit_logs`,
+  `reset_all_operational_data`, `get_period_closings`, `get_period_summaries`,
+  `get_database_usage`, `register_device`, `revoke_device`, `touch_device`,
+  `generate_account_number`
 - الإعدادات: `logo`, `daily_close_time`, `auto_lock`
 
 ---

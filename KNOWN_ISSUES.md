@@ -1,6 +1,6 @@
 # Known Issues & Limitations
 
-> Last updated: 2026-06-11
+> Last updated: 2026-06-22
 > Status key: 🟢 Resolved | 🟡 Mitigated (workaround in place) | 🔴 Open
 
 ---
@@ -37,6 +37,17 @@
 **Fix (Repository.js FIX-4):** `TABLE_PRIMARY_KEYS` map defines per-table PK columns. All CRUD operations accept an optional `pkColumn` override.
 **File:** `repository/Repository.js`
 
+### KI-011 — IdleTimer auto-logout without warning
+**Symptom (original):** `IdleTimer` was showing a warning toast 60 seconds before logout. If the user dismissed it by interacting, the timer reset silently with no visual confirmation.
+**Fix:** The 60-second warning toast was removed entirely. Auto-logout fires immediately when the idle timeout is reached; a toast notification appears afterward (above the login screen) to inform the user.
+**Actual timeouts from `services/IdleTimer.js`:** agent = 30 min, admin/admin_assistant = 90 min.
+**File:** `services/IdleTimer.js`
+
+### KI-017 — RLS infinite recursion on users table
+**Symptom:** The policy `admin_can_update_any_quick_hash` on the `users` table caused a PostgreSQL infinite recursion error when any UPDATE was attempted (the policy itself queried `users`, triggering the same policy again).
+**Fix (migration 20260619000002):** Policy `admin_can_update_any_quick_hash` was dropped. Admin UPDATE access is handled correctly by the surviving `allow_admin_full_access` policy.
+**File:** `supabase/migrations/20260619000002_rls_cleanup_legacy_policies.sql`
+
 ---
 
 ## 🟡 Mitigated Issues (Workarounds in Place)
@@ -60,11 +71,6 @@
 **Description:** `Ctrl+F` is intercepted via `e.preventDefault()` to focus the in-app search field. However, this overrides the browser's built-in page search, which may surprise users who want native Find.
 **Mitigation:** The shortcut only fires if a search input exists in the current tab's content (`#app-content input[type="search"]`). If none is found, the event is not prevented.
 **Workaround:** Users can use `Ctrl+G` for browser Find-in-page instead, or click the address bar and use the browser menu.
-
-### KI-011 — IdleTimer warning fires once but logout requires full timeout
-**Description:** `IdleTimer` shows a warning 60 seconds before logout. However, if the user dismisses the warning by interacting with the page, the timer does not visually confirm it has been reset (no toast or indicator).
-**Mitigation:** Any user interaction (mousemove, keydown, touchstart, scroll) resets the timer silently. The warning disappears automatically.
-**Planned Fix:** Phase 8 — Add a subtle "session renewed" toast on reset.
 
 ---
 
