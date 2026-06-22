@@ -98,7 +98,8 @@ const DailySummaryComponent = {
       <option value="delivery">📤 تسليم مباشر</option>
       <option value="refund_settlement">↩️ تسوية استرداد</option>
       <option value="failed_deposit_refund">🔃 استرداد إيداع فاشل</option>
-      <option value="journal_entry">📒 قيد محاسبي</option>`;
+      <option value="journal_entry">📒 قيد محاسبي</option>
+      <option value="external_handover">📤 تسليم عهدة</option>`;
     typeSelect.addEventListener('change', () => {
       this._typeFilter = typeSelect.value;
       this._page = 1;
@@ -223,9 +224,9 @@ const DailySummaryComponent = {
     // تفاصيل الأنواع من transactions (للعرض والعدد فقط — ليست للأرقام المالية)
     const txs = AppStore.getState('transactions').filter(tx => !tx.is_reversed);
     const s   = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0,
-                  refund_settlement:0, failed_deposit_refund:0, journal_entry:0 };
+                  refund_settlement:0, failed_deposit_refund:0, journal_entry:0, external_handover:0 };
     const cnt = { collection:0, deposit:0, bank_withdrawal:0, expense:0, receipt:0, delivery:0,
-                  refund_settlement:0, failed_deposit_refund:0, journal_entry:0 };
+                  refund_settlement:0, failed_deposit_refund:0, journal_entry:0, external_handover:0 };
     txs.forEach(tx => {
       if (s.hasOwnProperty(tx.type)) {
         s[tx.type]   += parseFloat(tx.amount || 0);
@@ -255,6 +256,7 @@ const DailySummaryComponent = {
       ...(cnt.refund_settlement     > 0 ? [{ label:'تسوية استرداد',       value:s.refund_settlement,    icon:'↩️', cls:'kpi-warning', count:cnt.refund_settlement }]    : []),
       ...(cnt.failed_deposit_refund > 0 ? [{ label:'استرداد إيداع فاشل', value:s.failed_deposit_refund, icon:'🔃', cls:'kpi-warning', count:cnt.failed_deposit_refund }] : []),
       ...(cnt.journal_entry         > 0 ? [{ label:'قيود محاسبية',         value:s.journal_entry,        icon:'📒', cls:'kpi-accent',  count:cnt.journal_entry }]         : []),
+      ...(cnt.external_handover    > 0 ? [{ label:'تسليم عهدة',           value:s.external_handover,    icon:'📤', cls:'kpi-warning', count:cnt.external_handover }]     : []),
       // البطاقة الأخيرة: الرصيد الفعلي
       { label:'الرصيد الفعلي في الصندوق', value:closing, icon:'📊',
         cls:closing >= 0 ? 'kpi-success' : 'kpi-danger', count:null,
@@ -374,7 +376,7 @@ const DailySummaryComponent = {
   _buildTxRow(tx, users) {
     const color    = getTransactionColor(tx.type);
     const label    = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
-    const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'↩️',failed_deposit_refund:'🔃',journal_entry:'📒'}[tx.type]||'📋';
+    const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'↩️',failed_deposit_refund:'🔃',journal_entry:'📒',external_handover:'📤'}[tx.type]||'📋';
     const isToday  = tx.date===getCurrentSaudiDate();
     const canEdit  = AuthService.isAdmin()||isToday;
     const canDelete = AuthService.isAdmin()||isToday;

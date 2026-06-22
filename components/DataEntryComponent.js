@@ -1444,7 +1444,8 @@ const DataEntryComponent = {
       date                 : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
       agent_id             : agentId,
       agent_name           : agentName,
-      handover_destination : destination,
+      handover_destination : destination,  // وقتي — للبناء الفوري فقط
+      expense_type         : destination,  // دائم — محفوظ في DB للتعديل اللاحق
       details              : party,
     });
     restore();

@@ -242,11 +242,15 @@ function _buildExternalHandoverEntries(tx, voucher) {
   const agentName = tx.agent_name || 'المندوب';
   const party     = tx.details   || 'طرف خارجي';
 
-  const destAcc = tx.handover_destination === 'general_fund'
+  // handover_destination: حقل وقتي للبناء الأولي
+  // expense_type: المصدر الدائم (محفوظ في DB) — يُستخدم عند التعديل اللاحق
+  const dest = tx.handover_destination || tx.expense_type || 'debtor_settlement';
+
+  const destAcc = dest === 'general_fund'
     ? GENERAL_ACCOUNT_ID
     : DEBTOR_SETTLEMENT_ID;
 
-  const destLabel = tx.handover_destination === 'general_fund'
+  const destLabel = dest === 'general_fund'
     ? 'الصندوق الرئيسي'
     : 'حساب تسوية العملاء';
 
