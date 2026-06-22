@@ -234,6 +234,30 @@ function _buildJournalEntryEntries(tx, voucher) {
   }));
 }
 
+// تسليم عهدة لطرف خارجي — عكس التحصيل من مديون تماماً
+// الوجهة إما DEBTOR_SETTLEMENT أو GENERAL_FUND حسب tx.handover_destination
+function _buildExternalHandoverEntries(tx, voucher) {
+  const date      = tx.date || getCurrentSaudiDate();
+  const agentAcc  = AccountId.agent(tx.agent_id);
+  const agentName = tx.agent_name || 'المندوب';
+  const party     = tx.details   || 'طرف خارجي';
+
+  const destAcc = tx.handover_destination === 'general_fund'
+    ? GENERAL_ACCOUNT_ID
+    : DEBTOR_SETTLEMENT_ID;
+
+  const destLabel = tx.handover_destination === 'general_fund'
+    ? 'الصندوق الرئيسي'
+    : 'حساب تسوية العملاء';
+
+  return [
+    { voucher_number: voucher, date, account_id: destAcc,  debit: tx.amount, credit: 0,
+      description: `تسليم عهدة إلى ${destLabel} — ${party}` },
+    { voucher_number: voucher, date, account_id: agentAcc, debit: 0, credit: tx.amount,
+      description: `إخلاء عهدة ${agentName} — تسليم إلى ${destLabel}` },
+  ];
+}
+
 function _buildRefundSettlementEntries(tx, voucher) {
   const date     = tx.date || getCurrentSaudiDate();
   const agentAcc = AccountId.agent(tx.agent_id);
@@ -319,6 +343,9 @@ async function buildEntries(tx) {
         break;
       case TRANSACTION_TYPES.JOURNAL_ENTRY:
         entries = _buildJournalEntryEntries(tx, await _generateVoucherNumber());
+        break;
+      case TRANSACTION_TYPES.EXTERNAL_HANDOVER:
+        entries = _buildExternalHandoverEntries(tx, await _generateVoucherNumber());
         break;
       case TRANSACTION_TYPES.REFUND_SETTLEMENT:
         entries = _buildRefundSettlementEntries(tx, await _generateVoucherNumber());
