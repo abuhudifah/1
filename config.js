@@ -116,6 +116,7 @@ const TRANSACTION_TYPES = Object.freeze({
   REFUND_SETTLEMENT    : 'refund_settlement',
   FAILED_DEPOSIT_REFUND: 'failed_deposit_refund',
   JOURNAL_ENTRY        : 'journal_entry',
+  EXTERNAL_HANDOVER    : 'external_handover',
 });
 
 const TRANSACTION_TYPE_LABELS = Object.freeze({
@@ -128,6 +129,7 @@ const TRANSACTION_TYPE_LABELS = Object.freeze({
   refund_settlement    : 'تسوية استرداد',
   failed_deposit_refund: 'استرداد إيداع فاشل',
   journal_entry        : 'قيد محاسبي',
+  external_handover    : 'تسليم عهدة',
 });
 
 // ============================================================

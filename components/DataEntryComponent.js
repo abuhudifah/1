@@ -284,7 +284,8 @@ const DataEntryComponent = {
       { id:'deposit',         label:'إيداع بنكي',   icon:'🏦' },
       { id:'bank_withdrawal', label:'سحب بنكي',     icon:'💳' },
       { id:'expense',         label:'مصروف',        icon:'💸' },
-      { id:'transfer', label:'تحويل / طلب أموال', icon:'🔄'},
+      { id:'transfer',          label:'تحويل / طلب أموال', icon:'🔄'},
+      { id:'external_handover', label:'تسليم عهدة',         icon:'📤'},
     ];
 
     forms.forEach(f => {
@@ -322,7 +323,8 @@ const DataEntryComponent = {
       case 'deposit':         card.appendChild(this._buildDepositForm());        break;
       case 'bank_withdrawal': card.appendChild(this._buildBankWithdrawalForm()); break;
       case 'expense':         card.appendChild(this._buildExpenseForm());        break;
-      case 'transfer':        card.appendChild(this._buildTransferForm());       break;
+      case 'transfer':          card.appendChild(this._buildTransferForm());          break;
+      case 'external_handover': card.appendChild(this._buildExternalHandoverForm()); break;
     }
     container.appendChild(card);
   },
@@ -1342,6 +1344,135 @@ const DataEntryComponent = {
     return frag;
   },
 
+  // ═══════════════════════════════════════════════════════════
+  // 6. نموذج تسليم العهدة لطرف خارجي
+  // ═══════════════════════════════════════════════════════════
+  _buildExternalHandoverForm() {
+    const frag = document.createDocumentFragment();
+
+    const title = document.createElement('h3');
+    title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--warning);display:flex;align-items:center;gap:8px;';
+    title.innerHTML = '<span>📤</span><span>تسليم عهدة لطرف خارجي</span>';
+    frag.appendChild(title);
+
+    // اختيار الوجهة
+    const destField = this._field('eh-destination', 'الوجهة المحاسبية', true);
+    const destWrap  = document.createElement('div');
+    destWrap.style.cssText = 'display:flex;gap:8px;margin-bottom:4px;';
+
+    const makeDestBtn = (value, label, icon) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.value = value;
+      btn.style.cssText = 'flex:1;padding:10px 8px;border:2px solid var(--border-color);border-radius:12px;font-family:inherit;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.18s;background:transparent;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:6px;';
+      btn.innerHTML = `<span>${icon}</span><span>${label}</span>`;
+      return btn;
+    };
+
+    const btnSettle = makeDestBtn('debtor_settlement', 'تسوية العملاء', '🤝');
+    const btnFund   = makeDestBtn('general_fund',      'الصندوق الرئيسي', '🏛️');
+    let ehDestination = 'debtor_settlement';
+
+    const refreshDestBtns = () => {
+      [btnSettle, btnFund].forEach(b => {
+        const active = b.dataset.value === ehDestination;
+        b.style.borderColor = active ? 'var(--warning)' : 'var(--border-color)';
+        b.style.background  = active ? 'rgba(245,158,11,0.1)' : 'transparent';
+        b.style.color       = active ? 'var(--warning)' : 'var(--text-secondary)';
+      });
+    };
+
+    btnSettle.addEventListener('click', () => { ehDestination = 'debtor_settlement'; refreshDestBtns(); });
+    btnFund.addEventListener('click',   () => { ehDestination = 'general_fund';      refreshDestBtns(); });
+    destWrap.appendChild(btnSettle);
+    destWrap.appendChild(btnFund);
+    destField.appendChild(destWrap);
+    frag.appendChild(destField);
+    refreshDestBtns();
+
+    const hint = document.createElement('div');
+    hint.id = 'eh-hint';
+    hint.style.cssText = 'padding:9px 13px;border-radius:9px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.15);font-size:0.78rem;color:var(--warning);margin-bottom:16px;line-height:1.7;';
+    hint.textContent = 'ℹ️ تسليم عهدة: يُخلي رصيد المندوب ويُقيَّد في حساب التسوية أو الصندوق الرئيسي.';
+    frag.appendChild(hint);
+
+    // المبلغ
+    const amtField = this._field('eh-amount', 'المبلغ', true);
+    const amtInput = this._input('eh-amount', 'number', 'أدخل المبلغ بالريال', { min:'1', step:'1' });
+    amtField.appendChild(amtInput);
+    amtField.appendChild(this._errMsg('eh-amount-err'));
+    frag.appendChild(amtField);
+
+    // بيانات الطرف المُسلَّم إليه (إلزامي)
+    const partyField = this._field('eh-party', 'اسم الطرف / بيانات التسليم', true);
+    const partyInput = document.createElement('textarea');
+    partyInput.id = 'eh-party'; partyInput.className = 'form-control';
+    partyInput.rows = 2;
+    partyInput.placeholder = 'اكتب اسم الشخص أو الجهة المُسلَّم إليها وأي تفاصيل إضافية...';
+    partyField.appendChild(partyInput);
+    partyField.appendChild(this._errMsg('eh-party-err'));
+    frag.appendChild(partyField);
+
+    frag.appendChild(this._saveBtn('eh-save-btn', '📤 تسليم العهدة', async () => {
+      await this._saveExternalHandover({
+        destination : ehDestination,
+        amount      : amtInput.value,
+        party       : partyInput.value.trim(),
+      });
+    }));
+
+    return frag;
+  },
+
+  async _saveExternalHandover({ destination, amount, party }) {
+    if (!isValidAmount(amount)) { showToast('المبلغ يجب أن يكون رقماً موجباً', 'error'); return; }
+    if (!party) { showToast('بيانات الطرف المُسلَّم إليه مطلوبة', 'error'); return; }
+
+    const rounded  = roundAmount(amount);
+    const agentId  = AppStore.getState('selectedAgentId') || AuthService.getCurrentUserId();
+    if (!agentId)  { showToast('يجب تسجيل الدخول أولاً', 'error'); return; }
+
+    const agentUser = (AppStore.getState('users') || []).find(u => u.id === agentId);
+    const agentName = agentUser?.display_name || agentId;
+
+    const btn     = document.getElementById('eh-save-btn');
+    const restore = setButtonLoading(btn);
+
+    const result = await AccountingService.createTransactionWithEntries({
+      type                 : TRANSACTION_TYPES.EXTERNAL_HANDOVER,
+      amount               : rounded,
+      date                 : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+      agent_id             : agentId,
+      agent_name           : agentName,
+      handover_destination : destination,  // وقتي — للبناء الفوري فقط
+      expense_type         : destination,  // دائم — محفوظ في DB للتعديل اللاحق
+      details              : party,
+    });
+    restore();
+
+    if (isOk(result)) {
+      const pending     = result.data?.pending === true;
+      const destLabel   = destination === 'general_fund' ? 'الصندوق الرئيسي' : 'حساب تسوية العملاء';
+      showToast(
+        pending ? '💾 تم حفظ تسليم العهدة محلياً — سيظهر في التقارير بعد المزامنة' : '✅ تم تسجيل تسليم العهدة',
+        pending ? 'info' : 'success'
+      );
+      this._resetForm('eh');
+      const ehBalRes = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
+      await this._showResultModal({
+        title        : pending ? '💾 تم الحفظ — معلق المزامنة' : '✅ تم تسجيل تسليم عهدة',
+        type         : 'تسليم عهدة',
+        amount       : rounded,
+        notes        : `الوجهة: ${destLabel}\nالطرف: ${party}`,
+        agentId,
+        date         : AppStore.getState('selectedDate') || getCurrentSaudiDate(),
+        agentBalance : isOk(ehBalRes) ? ehBalRes.data : null,
+      });
+    } else {
+      showToast(`❌ ${result.error}`, 'error');
+    }
+  },
+
   _saveBtn(id, label, handler) {
     const btn = document.createElement('button');
     btn.id = id;
@@ -1708,6 +1839,10 @@ const DataEntryComponent = {
       if (hiddenRecipientId) hiddenRecipientId.value = '';
       const saveBeneficiaryCheck = document.getElementById('tr-save-beneficiary');
       if (saveBeneficiaryCheck) saveBeneficiaryCheck.checked = false;
+    }
+    if (prefix === 'eh') {
+      const partyInput = document.getElementById('eh-party');
+      if (partyInput) partyInput.value = '';
     }
   },
 
