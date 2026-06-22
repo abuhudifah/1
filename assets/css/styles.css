@@ -1846,7 +1846,7 @@ body.dark-mode input[type="time"]        {
 
 @media (max-width: 768px) {
   :root {
-    --header-height : 155px;
+    --header-height : 80px;
     --nav-height    : 48px;
   }
 

@@ -77,25 +77,25 @@ const DashboardComponent = {
         <div class="grid-2" style="margin-bottom:24px;">
           <div class="glass-card">
             <h3 style="font-size:0.88rem;font-weight:700;margin-bottom:12px;color:var(--text-secondary);">
-              📈 حركة آخر 7 أيام
+              <span aria-hidden="true">📈</span> حركة آخر 7 أيام
             </h3>
             <div style="position:relative;height:190px;">
-              <canvas id="chart-weekly"></canvas>
+              <canvas id="chart-weekly" role="img" aria-label="رسم بياني لحركة المبالغ خلال آخر 7 أيام"></canvas>
             </div>
           </div>
           <div class="glass-card">
             <h3 style="font-size:0.88rem;font-weight:700;margin-bottom:12px;color:var(--text-secondary);">
-              🥧 توزيع العمليات
+              <span aria-hidden="true">🥧</span> توزيع العمليات
             </h3>
             <div style="position:relative;height:190px;">
-              <canvas id="chart-pie"></canvas>
+              <canvas id="chart-pie" role="img" aria-label="رسم بياني دائري لتوزيع أنواع العمليات"></canvas>
             </div>
           </div>
         </div>
 
         <div class="glass-card" style="margin-bottom:24px;">
           <h3 style="font-size:0.88rem;font-weight:700;margin-bottom:16px;color:var(--text-secondary);">
-            🏦 الحسابات البنكية — السقف اليومي
+            <span aria-hidden="true">🏦</span> الحسابات البنكية — السقف اليومي
           </h3>
           <div id="bank-progress-list">
             ${[1,2].map(() => `<div class="skeleton" style="height:56px;border-radius:12px;margin-bottom:10px;"></div>`).join('')}
@@ -104,7 +104,7 @@ const DashboardComponent = {
 
         <div class="glass-card" style="margin-bottom:24px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-            <h3 style="font-size:0.88rem;font-weight:700;color:var(--text-secondary);">👤 صناديق المناديب</h3>
+            <h3 style="font-size:0.88rem;font-weight:700;color:var(--text-secondary);"><span aria-hidden="true">👤</span> صناديق المناديب</h3>
             <span id="agents-date-label" style="font-size:0.78rem;color:var(--text-muted);"></span>
           </div>
           <div id="agents-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">
