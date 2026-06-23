@@ -654,7 +654,7 @@ const FailedDepositsComponent = {
       [S.BANK_PROCESSING]: [S.PARTIAL_REFUND, S.REFUNDED, S.REJECTED],
       [S.PARTIAL_REFUND] : [S.CLAIMED],
       [S.REFUNDED]       : [],
-      [S.REJECTED]       : [],
+      [S.REJECTED]       : [S.CLAIMED],
     };
 
     const available = transitions[fd.status] || [];
@@ -792,6 +792,11 @@ const FailedDepositsComponent = {
     const updateData = { status: newStatus };
     if (bankResp)     updateData.bank_response_text = bankResp;
     if (rejectReason) updateData.rejection_reason   = rejectReason;
+
+    if (newStatus === S.CLAIMED && fd.status === S.REJECTED) {
+      updateData.rejection_reason   = null;
+      updateData.bank_response_text = null;
+    }
 
     /* القيد المحاسبي عند الاسترداد الجزئي أو الكلي */
     if (newStatus === S.PARTIAL_REFUND || newStatus === S.REFUNDED) {
