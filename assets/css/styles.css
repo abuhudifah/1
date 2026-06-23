@@ -4486,22 +4486,25 @@ body.dark-mode .glass-card:hover   { border-color: rgba(59,130,246,0.20) !import
   padding     : 16px;
 }
 
-/* ── KPI Cards ── */
-.kpi-header {
+/* ── KPI Cards (Dashboard) — scoped to #dash-root to avoid overriding global .kpi-* ── */
+#dash-root .kpi-header {
   display         : flex;
   align-items     : center;
   justify-content : space-between;
   margin-bottom   : 10px;
 }
-.kpi-icon {
+#dash-root .kpi-icon {
   font-size : 1.5rem;
+  position  : static;
+  opacity   : 1;
 }
-.kpi-label {
+#dash-root .kpi-label {
   font-size   : 0.72rem;
   color       : var(--text-muted);
   font-weight : 600;
+  margin-bottom: 0;
 }
-.kpi-value {
+#dash-root .kpi-value {
   font-size   : 1.45rem;
   font-weight : 800;
   direction   : ltr;
