@@ -604,13 +604,13 @@ const AllOperationsComponent = {
     const cards = [
       {
         key  : 'collection',
-        icon : 'hand-coins',
+        icon : 'inbox',
         label: 'إجمالي العهد المستلمة',
         cls  : 'ao-total-card--collection',
       },
       {
         key  : 'delivery',
-        icon : 'arrow-up-right',
+        icon : 'upload',
         label: 'إجمالي العهد المُخلاة',
         cls  : 'ao-total-card--delivery',
       },
@@ -622,7 +622,7 @@ const AllOperationsComponent = {
       },
       {
         key  : 'expense',
-        icon : 'receipt',
+        icon : 'trending-down',
         label: 'إجمالي المصروفات',
         cls  : 'ao-total-card--expense',
       },
