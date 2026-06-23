@@ -89,7 +89,7 @@ const ProfileSettingsComponent = {
         && SessionVault.has(user.id, SessionVault.SECRET.EQUATION))
       || !!user.quick_equation_hash;
 
-    const card = this._card('<i data-lucide="id-card" style="width:15px;height:15px;"></i> بيانات الحساب');
+    const card = this._card('<i data-lucide="credit-card" style="width:15px;height:15px;"></i> بيانات الحساب');
 
     card.innerHTML += `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
