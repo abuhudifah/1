@@ -33,8 +33,9 @@ const DashboardComponent = {
 
     if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
       container.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">🔒</div>
+        <div class="empty-state-icon"><i data-lucide="lock" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">لوحة المعلومات للمدير فقط</div></div>`;
+      if (window.lucide) lucide.createIcons();
       return;
     }
 
@@ -73,7 +74,7 @@ const DashboardComponent = {
         <div class="grid-2 dash-section">
           <div class="glass-card">
             <h3 class="dash-section-title">
-              <span aria-hidden="true">📈</span> حركة آخر 7 أيام
+              <i data-lucide="trending-up" style="width:16px;height:16px;vertical-align:middle;stroke:var(--primary,#2563eb);"></i> حركة آخر 7 أيام
             </h3>
             <div class="dash-chart-wrap">
               <canvas id="chart-weekly" role="img" aria-label="رسم بياني لحركة المبالغ خلال آخر 7 أيام"></canvas>
@@ -81,7 +82,7 @@ const DashboardComponent = {
           </div>
           <div class="glass-card">
             <h3 class="dash-section-title">
-              <span aria-hidden="true">🥧</span> توزيع العمليات
+              <i data-lucide="pie-chart" style="width:16px;height:16px;vertical-align:middle;stroke:var(--primary,#2563eb);"></i> توزيع العمليات
             </h3>
             <div class="dash-chart-wrap">
               <canvas id="chart-pie" role="img" aria-label="رسم بياني دائري لتوزيع أنواع العمليات"></canvas>
@@ -91,7 +92,7 @@ const DashboardComponent = {
 
         <div class="glass-card dash-section">
           <h3 class="dash-section-title">
-            <span aria-hidden="true">🏦</span> الحسابات البنكية — السقف اليومي
+            <i data-lucide="landmark" style="width:16px;height:16px;vertical-align:middle;stroke:var(--primary,#2563eb);"></i> الحسابات البنكية — السقف اليومي
           </h3>
           <div id="bank-progress-list">
             ${[1,2].map(() => `<div class="skeleton" style="height:56px;border-radius:12px;margin-bottom:10px;"></div>`).join('')}
@@ -100,7 +101,7 @@ const DashboardComponent = {
 
         <div class="glass-card dash-section">
           <div class="dash-section-header">
-            <h3 class="dash-section-title"><span aria-hidden="true">👤</span> صناديق المناديب</h3>
+            <h3 class="dash-section-title"><i data-lucide="users" style="width:16px;height:16px;vertical-align:middle;stroke:var(--primary,#2563eb);"></i> صناديق المناديب</h3>
             <span id="agents-date-label" class="dash-date-label"></span>
           </div>
           <div id="agents-grid" class="dash-agents-grid">
@@ -110,7 +111,7 @@ const DashboardComponent = {
 
         <div class="glass-card">
           <div class="dash-section-header" style="margin-bottom:14px;">
-            <h3 class="dash-section-title">⏱ أحدث العمليات</h3>
+            <h3 class="dash-section-title"><i data-lucide="clock" style="width:16px;height:16px;vertical-align:middle;stroke:var(--primary,#2563eb);"></i> أحدث العمليات</h3>
             <button id="dash-view-all-btn" class="dash-view-all-btn">
               عرض الكل ←
             </button>
@@ -238,11 +239,15 @@ const DashboardComponent = {
               ? totals._ledger_net
               : txNet;
 
+    const _kSz = 'width:20px;height:20px;vertical-align:middle;';
     const kpis = [
-      { label:'التحصيلات', value: totals.total_collections || 0, icon:'💰', color:'var(--success)', bg:'rgba(5,150,105,0.10)'  },
-      { label:'الإيداعات', value: totals.total_deposits    || 0, icon:'🏦', color:'var(--info)',    bg:'rgba(2,132,199,0.10)'  },
-      { label:'المصروفات', value: totals.total_expenses    || 0, icon:'💸', color:'var(--danger)',  bg:'rgba(220,38,38,0.10)'  },
-      { label:'صافي الفترة', value: net,                         icon:'📊',
+      { label:'التحصيلات', value: totals.total_collections || 0, icon:`<i data-lucide="banknote"      style="${_kSz}stroke:var(--success);"></i>`, color:'var(--success)', bg:'rgba(5,150,105,0.10)'  },
+      { label:'الإيداعات', value: totals.total_deposits    || 0, icon:`<i data-lucide="landmark"      style="${_kSz}stroke:var(--info);"></i>`,    color:'var(--info)',    bg:'rgba(2,132,199,0.10)'  },
+      { label:'المصروفات', value: totals.total_expenses    || 0, icon:`<i data-lucide="trending-down" style="${_kSz}stroke:var(--danger);"></i>`,  color:'var(--danger)',  bg:'rgba(220,38,38,0.10)'  },
+      { label:'صافي الفترة', value: net,
+        icon: net >= 0
+          ? `<i data-lucide="bar-chart-2" style="${_kSz}stroke:var(--success);"></i>`
+          : `<i data-lucide="bar-chart-2" style="${_kSz}stroke:var(--danger);"></i>`,
         color: net >= 0 ? 'var(--success)' : 'var(--danger)',
         bg:    net >= 0 ? 'rgba(5,150,105,0.10)' : 'rgba(220,38,38,0.10)' },
     ];
@@ -261,6 +266,7 @@ const DashboardComponent = {
         </div>
         <div class="kpi-count">${totals.total_tx_count || 0} عملية</div>
       </div>`).join('');
+    if (window.lucide) lucide.createIcons();
   },
 
   async _loadKPI(from, to) {
@@ -416,12 +422,13 @@ const DashboardComponent = {
       return `
         <div class="bank-item">
           <div class="bank-item-header">
-            <span class="bank-name">🏦 ${escapeHtml(b.name||'—')}</span>
+            <span class="bank-name"><i data-lucide="landmark" style="width:14px;height:14px;vertical-align:middle;"></i> ${escapeHtml(b.name||'—')}</span>
             <span class="bank-stats">${used.toLocaleString('en-US')} / ${ceil.toLocaleString('en-US')} ر.س (${pct}%)</span>
           </div>
           <div class="progress-bar"><div class="progress-fill ${cls}" style="width:${pct}%;"></div></div>
         </div>`;
     }).join('');
+    if (window.lucide) lucide.createIcons();
   },
 
   async _loadBankProgress(from, to) {
@@ -546,10 +553,21 @@ const DashboardComponent = {
       el.innerHTML = `<div class="dash-empty">لا توجد عمليات في هذه الفترة</div>`;
       return;
     }
-    const typeIcons = { collection:'💰', deposit:'🏦', bank_withdrawal:'💳', expense:'💸', receipt:'📥', delivery:'📤', refund_settlement:'↩️', failed_deposit_refund:'🔃', journal_entry:'📒' };
+    const _tiSz = 'width:16px;height:16px;vertical-align:middle;';
+    const typeIcons = {
+      collection          : `<i data-lucide="banknote"      style="${_tiSz}stroke:var(--success);"></i>`,
+      deposit             : `<i data-lucide="landmark"      style="${_tiSz}stroke:var(--info);"></i>`,
+      bank_withdrawal     : `<i data-lucide="credit-card"   style="${_tiSz}stroke:var(--warning);"></i>`,
+      expense             : `<i data-lucide="trending-down" style="${_tiSz}stroke:var(--danger);"></i>`,
+      receipt             : `<i data-lucide="inbox"         style="${_tiSz}stroke:var(--accent,#8b5cf6);"></i>`,
+      delivery            : `<i data-lucide="send"          style="${_tiSz}stroke:var(--info);"></i>`,
+      refund_settlement   : `<i data-lucide="rotate-ccw"    style="${_tiSz}stroke:var(--warning);"></i>`,
+      failed_deposit_refund:`<i data-lucide="repeat"        style="${_tiSz}stroke:var(--warning);"></i>`,
+      journal_entry       : `<i data-lucide="book-open"     style="${_tiSz}stroke:var(--text-secondary,#64748b);"></i>`,
+    };
     el.innerHTML = recent.map(tx => {
       const amt   = Math.round(parseFloat(tx.amount)||0);
-      const icon  = typeIcons[tx.type]||'📋';
+      const icon  = typeIcons[tx.type] || `<i data-lucide="file-text" style="${_tiSz}"></i>`;
       const color = getTransactionColor ? getTransactionColor(tx.type) : 'var(--text-primary)';
       const label = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
       const secondary = tx.customer_name||tx.bank_name||tx.company_name||tx.details||'';
@@ -574,6 +592,7 @@ const DashboardComponent = {
           </div>
         </div>`;
     }).join('');
+    if (window.lucide) lucide.createIcons();
   },
 
   async _loadRecentTx(from, to) {

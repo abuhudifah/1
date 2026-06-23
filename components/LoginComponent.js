@@ -81,6 +81,7 @@ const LoginComponent = {
     this._injectStyles();
     container.innerHTML = '';
     container.appendChild(this._buildPage());
+    if (window.lucide) lucide.createIcons();
     // إخفاء الشعار في عرض الآلة الحاسبة + تفعيل زر البصمة بعد إضافة الصفحة للـ DOM
     const brandEl2 = document.getElementById('lp-brand-el');
     if (brandEl2 && this._state.view === 'calc') brandEl2.style.display = 'none';
@@ -143,6 +144,7 @@ const LoginComponent = {
     } else {
       scene.appendChild(this._buildLoginCard());
     }
+    if (window.lucide) lucide.createIcons();
   },
 
   // ─────────────────────────────────────────────────────────
@@ -177,10 +179,11 @@ const LoginComponent = {
     const menu = document.createElement('div');
     menu.className = 'lp-menu-drop';
 
+    const _miSz = 'width:15px;height:15px;vertical-align:middle;stroke:currentColor;';
     const items = [
-      { icon: '🔑', label: 'تسجيل الدخول التقليدي', fn: () => this._switchToLogin() },
-      { icon: '🌙', label: 'تبديل الوضع المظلم',     fn: () => this._toggleDark() },
-      { icon: 'ℹ️', label: 'حول التطبيق',            fn: () => this._showAbout() },
+      { icon: `<i data-lucide="key"  style="${_miSz}"></i>`, label: 'تسجيل الدخول التقليدي', fn: () => this._switchToLogin() },
+      { icon: `<i data-lucide="moon" style="${_miSz}"></i>`, label: 'تبديل الوضع المظلم',     fn: () => this._toggleDark() },
+      { icon: `<i data-lucide="info" style="${_miSz}"></i>`, label: 'حول التطبيق',            fn: () => this._showAbout() },
     ];
 
     items.forEach(item => {
@@ -412,7 +415,7 @@ const LoginComponent = {
     if (this._state.quickEnabled) {
       const backBtn = document.createElement('button');
       backBtn.className = 'lp-back-ql';
-      backBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>⚡ الدخول السريع (هذا الجهاز)</span>`;
+      backBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span><i data-lucide="zap" style="width:12px;height:12px;vertical-align:middle;"></i> الدخول السريع (هذا الجهاز)</span>`;
       backBtn.addEventListener('click', () => this._switchToCalc());
       card.appendChild(backBtn);
     }
@@ -420,7 +423,7 @@ const LoginComponent = {
     // زر الدخول بدون إنترنت
     const offlineBtn = document.createElement('button');
     offlineBtn.className = 'lp-offline-btn';
-    offlineBtn.innerHTML = '🔌 الدخول بدون إنترنت';
+    offlineBtn.innerHTML = '<i data-lucide="wifi-off" style="width:14px;height:14px;vertical-align:middle;margin-left:4px;"></i> الدخول بدون إنترنت';
     offlineBtn.addEventListener('click', () => this._offlineLogin());
     card.appendChild(offlineBtn);
 
@@ -902,7 +905,7 @@ const LoginComponent = {
     this._state.offlineUser = null;
 
     if (!q) {
-      errEl.innerHTML = '<span>⚠️</span><span>أدخل اسم المستخدم أو رقم الحساب</span>';
+      errEl.innerHTML = '<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:middle;stroke:var(--warning,#f59e0b);"></i><span>أدخل اسم المستخدم أو رقم الحساب</span>';
       searchInput.focus();
       return;
     }
@@ -913,7 +916,7 @@ const LoginComponent = {
 
     // ✅ guard للـ db
     if (typeof db === 'undefined' || !db.isOpen()) {
-      errEl.innerHTML = '<span>❌</span><span>قاعدة البيانات المحلية غير متاحة</span>';
+      errEl.innerHTML = '<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:middle;stroke:var(--danger,#ef4444);"></i><span>قاعدة البيانات المحلية غير متاحة</span>';
       if (searchBtn) { searchBtn.disabled = false; searchBtn.querySelector('span').textContent = 'بحث'; }
       return;
     }
@@ -927,18 +930,18 @@ const LoginComponent = {
         (u.account_number && u.account_number.toLowerCase() === qLow)
       ).first();
     } catch (e) {
-      errEl.innerHTML = `<span>❌</span><span>خطأ في البحث: ${escapeHtml(e.message)}</span>`;
+      errEl.innerHTML = `<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:middle;stroke:var(--danger,#ef4444);"></i><span>خطأ في البحث: ${escapeHtml(e.message)}</span>`;
     } finally {
       if (searchBtn) { searchBtn.disabled = false; searchBtn.querySelector('span').textContent = 'بحث'; }
     }
 
     if (!user) {
-      errEl.innerHTML = '<span>⚠️</span><span>لم يُعثر على هذا المستخدم محلياً. سجّل الدخول بالإنترنت أولاً.</span>';
+      errEl.innerHTML = '<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:middle;stroke:var(--warning,#f59e0b);"></i><span>لم يُعثر على هذا المستخدم محلياً. سجّل الدخول بالإنترنت أولاً.</span>';
       return;
     }
 
     if (!user.is_active) {
-      errEl.innerHTML = '<span>🚫</span><span>تم تعطيل هذا الحساب. راجع المدير.</span>';
+      errEl.innerHTML = '<i data-lucide="ban" style="width:14px;height:14px;vertical-align:middle;stroke:var(--danger,#ef4444);"></i><span>تم تعطيل هذا الحساب. راجع المدير.</span>';
       return;
     }
 
@@ -946,7 +949,7 @@ const LoginComponent = {
     this._state.offlineUser = user;
     // ✅ guard للـ OfflineAuthService
     if (typeof OfflineAuthService === 'undefined') {
-      errEl.innerHTML = '<span>❌</span><span>خدمة Offline غير محمَّلة</span>';
+      errEl.innerHTML = '<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:middle;stroke:var(--danger,#ef4444);"></i><span>خدمة Offline غير محمَّلة</span>';
       return;
     }
     const hasPin   = !!OfflineAuthService.getOfflineSession(user.id)?.hasPin;
@@ -959,12 +962,13 @@ const LoginComponent = {
           <div class="offline-user-name">${escapeHtml(user.display_name || user.username)}</div>
           <div class="offline-user-meta">${escapeHtml(user.account_number || user.username || '')}</div>
         </div>
-        <span class="offline-user-badge">${hasPin ? '🔐 PIN محفوظ' : '🆕 جديد'}</span>
+        <span class="offline-user-badge">${hasPin ? '<i data-lucide="lock" style="width:12px;height:12px;vertical-align:middle;"></i> PIN محفوظ' : '<i data-lucide="plus-circle" style="width:12px;height:12px;vertical-align:middle;"></i> جديد'}</span>
       </div>`;
 
     proceedBtn.style.display = 'flex';
     proceedBtn.disabled = false;
     proceedBtn.querySelector('span').textContent = hasPin ? 'دخول بـ PIN' : 'إعداد PIN والدخول';
+    if (window.lucide) lucide.createIcons();
   },
 
   // ─────────────────────────────────────────────────────────
@@ -981,7 +985,7 @@ const LoginComponent = {
     if (!session?.hasPin) {
       // أول مرة: إنشاء PIN
       if (isOfflineMode() || !isOnline()) {
-        errEl.innerHTML = '<span>⚠️</span><span>تفعيل الدخول بدون إنترنت يتطلب اتصالاً للمرة الأولى</span>';
+        errEl.innerHTML = '<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:middle;stroke:var(--warning,#f59e0b);"></i><span>تفعيل الدخول بدون إنترنت يتطلب اتصالاً للمرة الأولى</span>';
         return;
       }
 
@@ -990,7 +994,7 @@ const LoginComponent = {
 
       const createResult = await OfflineAuthService.createOfflineSession(user.id, pin);
       if (!isOk(createResult)) {
-        errEl.innerHTML = `<span>❌</span><span>${escapeHtml(createResult.error)}</span>`;
+        errEl.innerHTML = `<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:middle;stroke:var(--danger,#ef4444);"></i><span>${escapeHtml(createResult.error)}</span>`;
         return;
       }
       showToast('تم تفعيل الدخول بدون إنترنت بنجاح', 'success');
@@ -1352,7 +1356,7 @@ const LoginComponent = {
     const sheet = document.createElement('div');
     sheet.className = 'ql-setup-sheet';
     sheet.innerHTML = `
-      <div style="text-align:center;font-size:2rem;margin-bottom:10px;">📱</div>
+      <div style="text-align:center;margin-bottom:10px;"><i data-lucide="smartphone" style="width:2rem;height:2rem;stroke:var(--primary,#2563eb);"></i></div>
       <div class="ql-setup-title">هل تريد البقاء مسجلاً الدخول؟</div>
       <div class="ql-setup-desc">
         اختر طريقة حفظ جلستك على هذا الجهاز.<br>
@@ -1364,7 +1368,7 @@ const LoginComponent = {
           background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;
           font-size:.94rem;font-weight:700;cursor:pointer;font-family:inherit;
           display:flex;align-items:center;gap:10px;box-shadow:0 4px 14px rgba(37,99,235,.35);">
-          <span style="font-size:1.4rem;">✅</span>
+          <i data-lucide="check-circle" style="width:1.4rem;height:1.4rem;flex-shrink:0;stroke:#fff;"></i>
           <div style="text-align:right;">
             <div>نعم — ابقَ مسجلاً الدخول</div>
             <div style="font-size:.75rem;opacity:.8;font-weight:400;">الجلسة تبقى حتى بعد إغلاق المتصفح (8 ساعات)</div>
@@ -1376,7 +1380,7 @@ const LoginComponent = {
           color:var(--text-secondary,#475569);
           font-size:.94rem;font-weight:600;cursor:pointer;font-family:inherit;
           display:flex;align-items:center;gap:10px;">
-          <span style="font-size:1.4rem;">🔒</span>
+          <i data-lucide="lock" style="width:1.4rem;height:1.4rem;flex-shrink:0;stroke:var(--text-secondary,#475569);"></i>
           <div style="text-align:right;">
             <div>لا — جلسة مؤقتة فقط</div>
             <div style="font-size:.75rem;opacity:.7;font-weight:400;">تُحذف الجلسة عند إغلاق المتصفح</div>
@@ -1386,6 +1390,7 @@ const LoginComponent = {
 
     overlay.appendChild(sheet);
     document.body.appendChild(overlay);
+    if (window.lucide) lucide.createIcons();
 
     const uid = profile.id;
 
