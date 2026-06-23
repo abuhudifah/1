@@ -33,9 +33,9 @@ const AccountManagementComponent = {
 
   // شجرة الحسابات الافتراضية
   DEFAULT_CHART : [
-    { category:'treasury', name:'الصندوق العام',      id:'GENERAL_FUND',  icon:'🏛️', desc:'الخزينة الرئيسية للنظام' },
-    { category:'treasury', name:'الخزينة النقدية',     id:'CASH_GENERAL',  icon:'💵', desc:'النقد المتوفر يدوياً'    },
-    { category:'treasury', name:'حساب الشركات العام',  id:'COMP_GENERAL',  icon:'🏢', desc:'حساب تسوية الشركات'     },
+    { category:'treasury', name:'الصندوق العام',      id:'GENERAL_FUND',  icon:'landmark', desc:'الخزينة الرئيسية للنظام' },
+    { category:'treasury', name:'الخزينة النقدية',     id:'CASH_GENERAL',  icon:'banknotes', desc:'النقد المتوفر يدوياً'    },
+    { category:'treasury', name:'حساب الشركات العام',  id:'COMP_GENERAL',  icon:'building-2', desc:'حساب تسوية الشركات'     },
   ],
 
   // ─────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ const AccountManagementComponent = {
   async render(container) {
     if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
       container.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">🔒</div>
+        <div class="empty-state-icon"><i data-lucide="lock" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">إدارة الحسابات للمدير والمساعد الإداري فقط</div></div>`;
       return;
     }
@@ -141,7 +141,7 @@ const AccountManagementComponent = {
       <div class="glass-card" style="margin-bottom:16px;" id="acct-stmt-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
           <div>
-            <h3 style="font-size:1rem;font-weight:700;color:var(--text-primary);" id="stmt-account-title">📄 كشف الحساب</h3>
+            <h3 style="font-size:1rem;font-weight:700;color:var(--text-primary);" id="stmt-account-title"><i data-lucide="file-text" style="width:15px;height:15px;vertical-align:middle;margin-left:5px;"></i>كشف الحساب</h3>
             <p style="display:none;" id="stmt-account-id"></p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -427,7 +427,7 @@ const AccountManagementComponent = {
                     data-company-id="${escapeHtml(cb.company_id)}"
                     data-company-name="${escapeHtml(cb.company_name)}"
                     style="font-size:0.72rem;">
-                    📄 كشف حساب
+                    <i data-lucide="file-text" style="width:12px;height:12px;pointer-events:none;"></i> كشف حساب
                   </button>
                 </td>
               </tr>
@@ -495,7 +495,7 @@ const AccountManagementComponent = {
     modal.innerHTML = `
       <div class="modal-box" style="max-width:700px;">
         <div class="modal-header">
-          <h3 class="modal-title">📊 كشف حساب الشركة: ${escapeHtml(companyName)}</h3>
+          <h3 class="modal-title"><i data-lucide="bar-chart-2" style="width:17px;height:17px;vertical-align:middle;margin-left:5px;"></i>كشف حساب الشركة: ${escapeHtml(companyName)}</h3>
           <button class="modal-close" id="company-modal-close">✕</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
@@ -671,16 +671,17 @@ const AccountManagementComponent = {
 
   // ✅ _renderChart محدثة لعرض رقم الحساب مع زر نسخ
   _renderChart(el, chartData) {
+    const _catIconSvg = (name, color) => `<i data-lucide="${name}" style="width:18px;height:18px;stroke:${color};"></i>`;
     const categoryMeta = {
-      agents: { icon: '👤', label: 'حسابات المستخدمين', color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
-      debtors: { icon: '👥', label: 'حسابات العملاء المديونين', color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
-      companies: { icon: '🏢', label: 'حسابات الشركات', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
-      settlements: { icon: '🧾', label: 'تسويات العملاء المديونين', color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
-      banks: { icon: '🏦', label: 'الحسابات البنكية', color: '#059669', bg: 'rgba(5,150,105,0.08)' },
-      expenses: { icon: '💸', label: 'حسابات المصروفات', color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
-      treasury: { icon: '🏛️', label: 'الخزينة والحسابات العامة', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
-      revenue: { icon: '💰', label: 'حسابات الإيرادات', color: '#059669', bg: 'rgba(5,150,105,0.08)' },
-      suspense: { icon: '⏳', label: 'الحسابات المعلقة', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
+      agents     : { icon: _catIconSvg('user',          '#2563eb'), label: 'حسابات المستخدمين',           color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
+      debtors    : { icon: _catIconSvg('users',          '#0284c7'), label: 'حسابات العملاء المديونين',    color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+      companies  : { icon: _catIconSvg('building-2',     '#7c3aed'), label: 'حسابات الشركات',              color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+      settlements: { icon: _catIconSvg('file-check',     '#0284c7'), label: 'تسويات العملاء المديونين',   color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+      banks      : { icon: _catIconSvg('landmark',       '#059669'), label: 'الحسابات البنكية',           color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+      expenses   : { icon: _catIconSvg('receipt',        '#dc2626'), label: 'حسابات المصروفات',           color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
+      treasury   : { icon: _catIconSvg('vault',          '#d97706'), label: 'الخزينة والحسابات العامة',   color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
+      revenue    : { icon: _catIconSvg('banknote',       '#059669'), label: 'حسابات الإيرادات',           color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+      suspense   : { icon: _catIconSvg('clock',          '#d97706'), label: 'الحسابات المعلقة',           color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
     };
     
     // شريط KPI
@@ -729,16 +730,16 @@ const AccountManagementComponent = {
               <tbody>`;
         for (const acc of accounts) {
           const bal = Math.round(parseFloat(acc.balance || 0));
-          const parentBadge = acc.parent_name ? `<span class="acct-parent-badge">🏢 ${escapeHtml(acc.parent_name)}</span>` : '';
+          const parentBadge = acc.parent_name ? `<span class="acct-parent-badge"><i data-lucide="building-2" style="width:11px;height:11px;vertical-align:middle;"></i> ${escapeHtml(acc.parent_name)}</span>` : '';
           tableHtml += `
               <tr class="acct-row" data-name="${escapeHtml((acc.name || acc.account_id).toLowerCase())}">
                 <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
                 <td style="font-weight:700;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ر.س</td>
                 <td>
                   <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                    <button class="view-stmt-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">📄 كشف</button>
-                    <button class="quick-entry-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">✏️ قيد</button>
-                    <button class="delete-account-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">🗑️ حذف</button>
+                    <button class="view-stmt-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}"><i data-lucide="file-text" style="width:13px;height:13px;pointer-events:none;"></i> كشف</button>
+                    <button class="quick-entry-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}"><i data-lucide="pen-line" style="width:13px;height:13px;pointer-events:none;"></i> قيد</button>
+                    <button class="delete-account-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}"><i data-lucide="trash-2" style="width:13px;height:13px;pointer-events:none;"></i> حذف</button>
                   </div>
                 </td>
               </tr>`;
@@ -877,20 +878,20 @@ const AccountManagementComponent = {
   _renderEmptyChart() {
     return `
       <div class="glass-card" style="text-align:center;padding:40px 20px;">
-        <div style="font-size:3rem;margin-bottom:16px;opacity:0.5;">📊</div>
+        <div style="margin-bottom:16px;opacity:0.5;"><i data-lucide="bar-chart-2" style="width:3rem;height:3rem;"></i></div>
         <h3 style="font-weight:700;margin-bottom:8px;">لا توجد حسابات بعد</h3>
         <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:20px;">
           انقر على "إضافة حساب" لإنشاء حسابك الأول،<br>أو أضف شجرة الحسابات الافتراضية دفعةً واحدة
         </p>
         <button id="add-default-chart-btn" class="btn btn-primary">
-          🌳 إضافة شجرة الحسابات الافتراضية
+          <i data-lucide="git-branch" style="width:14px;height:14px;pointer-events:none;"></i> إضافة شجرة الحسابات الافتراضية
         </button>
       </div>`;
   },
 
   async _addDefaultChart() {
     const btn = document.getElementById('add-default-chart-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الإضافة...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;"></i> جاري الإضافة...'; }
 
     try {
       let added = 0;
@@ -927,7 +928,7 @@ const AccountManagementComponent = {
       await this._loadChart();
     } catch (e) {
       showToast(`فشل إضافة الحسابات الافتراضية: ${e.message}`, 'error');
-      if (btn) { btn.disabled = false; btn.textContent = '🌳 إضافة شجرة الحسابات الافتراضية'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="git-branch" style="width:14px;height:14px;"></i> إضافة شجرة الحسابات الافتراضية'; }
     }
   },
 
@@ -1220,7 +1221,7 @@ const AccountManagementComponent = {
       entriesEl.innerHTML = html;
       if (window.lucide) lucide.createIcons();
     } catch (e) {
-      entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">خطأ في جلب البيانات: ${escapeHtml(e.message)}</div></div>`;
+      entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon"><i data-lucide="alert-triangle" style="width:3rem;height:3rem;opacity:0.45;"></i></div><div class="empty-state-text">خطأ في جلب البيانات: ${escapeHtml(e.message)}</div></div>`;
     }
   },
 
@@ -1618,7 +1619,7 @@ const AccountManagementComponent = {
               <td style="font-weight:600;">${escapeHtml(b.name || b.id)}</td>
               <td style="color:var(--text-secondary);">${escapeHtml(compName || '—')}</td>
               <td>
-                <button class="view-bank-stmt-btn btn-statement" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف</button>
+                <button class="view-bank-stmt-btn btn-statement" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}"><i data-lucide="file-text" style="width:13px;height:13px;pointer-events:none;"></i> كشف</button>
               </td>
             </tr>`;
             }).join('')}
@@ -1905,13 +1906,13 @@ const AccountManagementComponent = {
 
     box.innerHTML = `
       <div class="modal-header">
-        <h3 class="modal-title">📝 قيد محاسبي</h3>
+        <h3 class="modal-title"><i data-lucide="book-open" style="width:17px;height:17px;vertical-align:middle;margin-left:5px;"></i>قيد محاسبي</h3>
         <button class="modal-close" id="journal-close">✕</button>
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:16px;">
-        <button id="jtype-simple" class="btn btn-primary btn-sm" style="flex:1;">🔀 قيد بسيط (حسابان)</button>
-        <button id="jtype-double" class="btn btn-secondary btn-sm" style="flex:1;">⚖️ قيد مزدوج (متعدد)</button>
+        <button id="jtype-simple" class="btn btn-primary btn-sm" style="flex:1;"><i data-lucide="git-merge" style="width:13px;height:13px;pointer-events:none;"></i> قيد بسيط (حسابان)</button>
+        <button id="jtype-double" class="btn btn-secondary btn-sm" style="flex:1;"><i data-lucide="git-branch" style="width:13px;height:13px;pointer-events:none;"></i> قيد مزدوج (متعدد)</button>
       </div>
 
       <div id="journal-simple-form">
@@ -1966,7 +1967,7 @@ const AccountManagementComponent = {
 
       <div id="journal-error" class="form-error" style="margin-top:8px;"></div>
       <div style="display:flex;gap:10px;margin-top:16px;">
-        <button id="journal-save-btn" class="btn btn-primary" style="flex:2;">✅ ترحيل القيد</button>
+        <button id="journal-save-btn" class="btn btn-primary" style="flex:2;"><i data-lucide="check-circle" style="width:14px;height:14px;pointer-events:none;"></i> ترحيل القيد</button>
         <button id="journal-cancel-btn" class="btn btn-secondary" style="flex:1;">إلغاء</button>
       </div>`;
 
@@ -2235,9 +2236,9 @@ const AccountManagementComponent = {
       <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">اختر نوع الحساب:</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:16px;" id="acct-type-grid">
         ${[
-          { type:'company', icon:'🏢', label:'حساب شركة',     desc:'شركة شريكة' },
-          { type:'expense', icon:'💸', label:'نوع مصروف',      desc:'فئة مصاريف' },
-          { type:'custom',  icon:'📋', label:'حساب مخصص',      desc:'رصيد يدوي' },
+          { type:'company', icon:'building-2', label:'حساب شركة',     desc:'شركة شريكة' },
+          { type:'expense', icon:'receipt', label:'نوع مصروف',      desc:'فئة مصاريف' },
+          { type:'custom',  icon:'clipboard-list', label:'حساب مخصص',      desc:'رصيد يدوي' },
         ].map(t => `
           <button class="acct-type-btn btn btn-secondary" data-type="${t.type}"
             style="flex-direction:column;padding:12px 8px;gap:4px;height:auto;text-align:center;">

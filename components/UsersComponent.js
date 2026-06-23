@@ -41,9 +41,10 @@ const UsersComponent = {
     if (!AuthService.isAdmin()) {
       container.innerHTML = `
         <div class="empty-state">
-          <div class="empty-state-icon">🔒</div>
+          <div class="empty-state-icon"><i data-lucide="lock" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
           <div class="empty-state-text">إدارة المستخدمين للمدير فقط</div>
         </div>`;
+      if (window.lucide) lucide.createIcons();
       return;
     }
 
@@ -173,17 +174,18 @@ const UsersComponent = {
     if (!this._filtered.length) {
       wrap.innerHTML = `
         <div class="empty-state" style="padding:40px 0;">
-          <div class="empty-state-icon">${this._searchQuery ? '🔍' : '👤'}</div>
+          <div class="empty-state-icon"><i data-lucide="${this._searchQuery ? 'search-x' : 'users'}" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
           <div class="empty-state-text">${this._searchQuery ? 'لا توجد نتائج' : 'لا يوجد مستخدمون'}</div>
         </div>`;
+      if (window.lucide) lucide.createIcons();
       return;
     }
 
     const me = AuthService.getCurrentUserId();
     const roleStyle = {
-      admin           : { bg: '#dcfce7', color: '#16a34a', icon: '👑' },
-      admin_assistant : { bg: '#dbeafe', color: '#1d4ed8', icon: '🛡️' },
-      agent           : { bg: '#f3f4f6', color: '#374151', icon: '👤' },
+      admin           : { bg: '#dcfce7', color: '#16a34a', icon: `<i data-lucide="crown" style="width:12px;height:12px;stroke:#16a34a;"></i>` },
+      admin_assistant : { bg: '#dbeafe', color: '#1d4ed8', icon: `<i data-lucide="shield-check" style="width:12px;height:12px;stroke:#1d4ed8;"></i>` },
+      agent           : { bg: '#f3f4f6', color: '#374151', icon: `<i data-lucide="user" style="width:12px;height:12px;stroke:#374151;"></i>` },
     };
 
     const arrow = col => this._sortCol !== col
@@ -408,7 +410,7 @@ const UsersComponent = {
 
       <div style="display:flex;gap:10px;margin-top:4px;">
         <button id="uc-save-btn" class="btn btn-primary" style="flex:2;">
-          <span id="uc-save-label">💾 حفظ</span>
+          <span id="uc-save-label"><i data-lucide="save" style="width:14px;height:14px;vertical-align:middle;"></i> حفظ</span>
         </button>
         <button id="uc-cancel-btn" class="btn btn-secondary" style="flex:1;">إلغاء</button>
       </div>`;
@@ -477,7 +479,10 @@ const UsersComponent = {
     if (openingBalInput) openingBalInput.value = '';
 
     const lbl = box.querySelector('#uc-save-label');
-    if (lbl) lbl.textContent = isEdit ? '💾 تحديث' : '💾 إنشاء المستخدم';
+    if (lbl) lbl.innerHTML = isEdit
+      ? '<i data-lucide="save" style="width:14px;height:14px;vertical-align:middle;"></i> تحديث'
+      : '<i data-lucide="save" style="width:14px;height:14px;vertical-align:middle;"></i> إنشاء المستخدم';
+    if (window.lucide) lucide.createIcons();
 
     this._setErr('');
     overlay.style.display = 'flex';
@@ -518,9 +523,10 @@ const UsersComponent = {
 
     const saveBtn = box.querySelector('#uc-save-btn');
     const saveLabel = box.querySelector('#uc-save-label');
-    const origLabel = saveLabel?.textContent || '💾 حفظ';
+    const origLabel = saveLabel?.innerHTML || '<i data-lucide="save" style="width:14px;height:14px;vertical-align:middle;"></i> حفظ';
     saveBtn.disabled = true;
-    if (saveLabel) saveLabel.textContent = '⏳ جارٍ الحفظ...';
+    if (saveLabel) saveLabel.innerHTML = '<i data-lucide="loader-2" style="width:14px;height:14px;vertical-align:middle;"></i> جارٍ الحفظ...';
+    if (window.lucide) lucide.createIcons();
     this._setErr('');
 
     try {
@@ -535,7 +541,7 @@ const UsersComponent = {
       this._setErr(`خطأ غير متوقع: ${e.message}`);
     } finally {
       saveBtn.disabled = false;
-      if (saveLabel) saveLabel.textContent = origLabel;
+      if (saveLabel) { saveLabel.innerHTML = origLabel; if (window.lucide) lucide.createIcons(); }
     }
   },
 

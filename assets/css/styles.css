@@ -1894,6 +1894,57 @@ body.dark-mode input[type="time"]        {
   font-size : 2.8rem;
   opacity   : 0.45;
 }
+/* أيقونات Lucide في حالات الفراغ */
+.empty-state-icon svg {
+  width   : 3rem;
+  height  : 3rem;
+  stroke  : currentColor;
+  opacity : 0.45;
+}
+/* أيقونات Lucide داخل بطاقات KPI */
+.kpi-card .kpi-lucide-icon svg {
+  width        : 22px;
+  height       : 22px;
+  stroke       : currentColor;
+  stroke-width : 2;
+  flex-shrink  : 0;
+}
+/* أيقونات الأدوار في جداول المستخدمين */
+.role-badge svg {
+  width  : 12px;
+  height : 12px;
+  stroke : currentColor;
+  vertical-align: middle;
+}
+/* أيقونات صف المعاملات في القائمة اليومية */
+.tx-type-icon svg {
+  width  : 18px;
+  height : 18px;
+  stroke : currentColor;
+}
+/* أيقونات أزرار الأكشن في الجداول */
+.ao-action-btn svg,
+.btn-icon-only svg {
+  width  : 14px;
+  height : 14px;
+  stroke : currentColor;
+  pointer-events: none;
+}
+/* أيقونات عناوين المودالات */
+.modal-title svg {
+  width         : 18px;
+  height        : 18px;
+  stroke        : currentColor;
+  vertical-align: middle;
+  margin-left   : 4px;
+}
+/* أيقونات أنواع الحسابات */
+.acct-type-icon svg {
+  width  : 16px;
+  height : 16px;
+  stroke : currentColor;
+  vertical-align: middle;
+}
 
 .empty-state-text {
   font-size  : 0.92rem;

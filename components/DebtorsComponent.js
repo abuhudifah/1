@@ -131,9 +131,10 @@ const DebtorsComponent = {
 
       if (debtors.length === 0) {
         listEl.innerHTML = `<div class="empty-state">
-          <div class="empty-state-icon">👥</div>
+          <div class="empty-state-icon"><i data-lucide="users" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
           <div class="empty-state-text">${isAgent ? 'لا يوجد عملاء مُعيَّنون لك' : 'لا يوجد عملاء مديونون'}</div>
         </div>`;
+        if (window.lucide) lucide.createIcons();
         if (isAdmin) this._renderStats([], null);
         return;
       }
@@ -153,10 +154,13 @@ const DebtorsComponent = {
 
     } catch (e) {
       const listEl2 = document.getElementById('debtors-list');
-      if (listEl2) listEl2.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">⚠️</div>
-        <div class="empty-state-text">خطأ: ${escapeHtml(e.message)}</div>
-      </div>`;
+      if (listEl2) {
+        listEl2.innerHTML = `<div class="empty-state">
+          <div class="empty-state-icon"><i data-lucide="alert-triangle" style="width:3rem;height:3rem;opacity:0.45;stroke:var(--warning);"></i></div>
+          <div class="empty-state-text">خطأ: ${escapeHtml(e.message)}</div>
+        </div>`;
+        if (window.lucide) lucide.createIcons();
+      }
     }
   },
 
@@ -246,9 +250,10 @@ const DebtorsComponent = {
 
     if (debtors.length === 0) {
       listEl.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">🔍</div>
+        <div class="empty-state-icon"><i data-lucide="search-x" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">لا يوجد عملاء في منطقة "${escapeHtml(this._regionFilter)}"</div>
       </div>`;
+      if (window.lucide) lucide.createIcons();
       return;
     }
 
@@ -285,7 +290,7 @@ const DebtorsComponent = {
             return `<tr>
               <td>
                 <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(d.name)}</div>
-                ${d.phone ? `<div style="font-size:0.75rem;color:var(--text-muted);">📞 ${escapeHtml(d.phone)}</div>` : ''}
+                ${d.phone ? `<div style="font-size:0.75rem;color:var(--text-muted);display:flex;align-items:center;gap:3px;"><i data-lucide="phone" style="width:11px;height:11px;"></i> ${escapeHtml(d.phone)}</div>` : ''}
               </td>
               <td style="font-weight:700;color:${parseFloat(d.debt_amount||0) > 0 ? 'var(--danger)' : 'var(--success)'};">
                 ${formatCurrency(d.debt_amount || 0)}
@@ -340,9 +345,10 @@ const DebtorsComponent = {
     listEl.innerHTML = '';
     if (debtors.length === 0) {
       listEl.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">🔍</div>
+        <div class="empty-state-icon"><i data-lucide="search-x" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">${this._regionFilter ? `لا يوجد عملاء في منطقة "${escapeHtml(this._regionFilter)}"` : 'لا يوجد عملاء مطابقين'}</div>
       </div>`;
+      if (window.lucide) lucide.createIcons();
       return;
     }
     const grid = document.createElement('div');
@@ -358,7 +364,7 @@ const DebtorsComponent = {
       card.innerHTML = `
         <div style="margin-bottom:12px;">
           <div style="font-weight:700;font-size:1rem;color:var(--text-primary);margin-bottom:4px;">${escapeHtml(d.name)}</div>
-          ${d.region ? `<div style="font-size:0.78rem;color:var(--text-muted);">📍 ${escapeHtml(d.region)}</div>` : ''}
+          ${d.region ? `<div style="font-size:0.78rem;color:var(--text-muted);display:flex;align-items:center;gap:3px;"><i data-lucide="map-pin" style="width:12px;height:12px;"></i> ${escapeHtml(d.region)}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
           <span style="font-size:0.82rem;color:var(--text-secondary);">الرصيد المستحق</span>
@@ -367,18 +373,18 @@ const DebtorsComponent = {
         <div style="display:flex;gap:8px;">
           ${d.phone ? `<a href="tel:${escapeHtml(d.phone)}" onclick="event.stopPropagation()"
               class="btn btn-secondary btn-sm" style="flex:1;text-align:center;" title="اتصال">
-              📞
+              <i data-lucide="phone" style="width:14px;height:14px;pointer-events:none;"></i>
             </a>` : ''}
           ${d.whatsapp ? `<a href="https://wa.me/${escapeHtml(d.whatsapp.replace(/\D/g,''))}" target="_blank" onclick="event.stopPropagation()"
               class="btn btn-secondary btn-sm" style="flex:1;text-align:center;" title="واتساب">
-              💬
+              <i data-lucide="message-circle" style="width:14px;height:14px;pointer-events:none;"></i>
             </a>` : ''}
           ${d.website ? `<a href="${escapeHtml(d.website)}" target="_blank" onclick="event.stopPropagation()"
               class="btn btn-secondary btn-sm" style="flex:1;text-align:center;" title="موقع">
-              🌐
+              <i data-lucide="globe" style="width:14px;height:14px;pointer-events:none;"></i>
             </a>` : ''}
           <button class="btn btn-primary btn-sm deb-col-btn" style="flex:2;">
-            💰 تحصيل
+            <i data-lucide="banknote" style="width:14px;height:14px;vertical-align:middle;pointer-events:none;"></i> تحصيل
           </button>
         </div>`;
 

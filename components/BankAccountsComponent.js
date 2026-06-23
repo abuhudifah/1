@@ -106,9 +106,11 @@ const BankAccountsComponent = {
 
       if (!bankAccounts.length) {
         el.innerHTML=`<div class="empty-state" style="grid-column:1/-1;">
-          <div class="empty-state-icon">🏦</div>
+          <div class="empty-state-icon"><i data-lucide="landmark" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
           <div class="empty-state-text">لا توجد حسابات بنكية مصرح بها</div>
-        </div>`; return;
+        </div>`;
+        if (window.lucide) lucide.createIcons();
+        return;
       }
 
       // جلب البنوك التي أودع فيها المندوب في التاريخ المحدد
@@ -134,9 +136,11 @@ const BankAccountsComponent = {
 
       if (!bankAccounts.length) {
         el.innerHTML=`<div class="empty-state" style="grid-column:1/-1;">
-          <div class="empty-state-icon">📭</div>
+          <div class="empty-state-icon"><i data-lucide="inbox" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
           <div class="empty-state-text">لا توجد إيداعات في هذا التاريخ</div>
-        </div>`; return;
+        </div>`;
+        if (window.lucide) lucide.createIcons();
+        return;
       }
     } else {
       bankAccounts = AppStore.getState('bankAccounts')||[];
@@ -148,9 +152,11 @@ const BankAccountsComponent = {
 
     if (!bankAccounts.length) {
       el.innerHTML=`<div class="empty-state" style="grid-column:1/-1;">
-        <div class="empty-state-icon">🏦</div>
+        <div class="empty-state-icon"><i data-lucide="landmark" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">لا توجد حسابات بنكية</div>
-      </div>`; return;
+      </div>`;
+      if (window.lucide) lucide.createIcons();
+      return;
     }
 
     /* جلب إجماليات وآخر نشاط لكل حساب (إيداع + سحب) */
@@ -236,7 +242,7 @@ const BankAccountsComponent = {
             flex-wrap:wrap;gap:6px;
             padding:10px 4px 4px;border-bottom:2px solid var(--border-color);margin-bottom:4px;`;
           groupHeader.innerHTML = `
-            <span style="font-weight:800;font-size:1rem;color:var(--text-primary);">🏢 ${escapeHtml(group.label)}</span>
+            <span style="font-weight:800;font-size:1rem;color:var(--text-primary);display:inline-flex;align-items:center;gap:5px;"><i data-lucide="building-2" style="width:16px;height:16px;"></i> ${escapeHtml(group.label)}</span>
             <span style="font-size:0.82rem;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap;">
               <span>إيداعات: <strong style="color:var(--success);direction:ltr;display:inline-block;">
                 ${group.depositTotal.toLocaleString('en-US')} ${APP_CONFIG.CURRENCY_SYMBOL}

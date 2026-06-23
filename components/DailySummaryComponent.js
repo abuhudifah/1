@@ -244,21 +244,21 @@ const DailySummaryComponent = {
 
     const kpis = [
       // البطاقة الأولى: الرصيد السابق (بداية اليوم)
-      { label:'الرصيد السابق',                value:opening,           icon:'🏦', cls:'kpi-accent',
+      { label:'الرصيد السابق',                value:opening,           icon:'landmark',          cls:'kpi-accent',
         subtitle: agentName || 'إجمالي المناديب', count:null, highlight:'var(--accent)' },
       // أنواع العمليات
-      { label:'تحصيلات',              value:s.collection,          icon:'💰', cls:'kpi-success',  count:cnt.collection },
-      { label:'إيداعات',              value:s.deposit,             icon:'🏧', cls:'kpi-info',     count:cnt.deposit },
-      { label:'سحب بنكي',            value:s.bank_withdrawal,     icon:'💳', cls:'kpi-info',     count:cnt.bank_withdrawal },
-      { label:'مصروفات',              value:s.expense,             icon:'💸', cls:'kpi-danger',   count:cnt.expense },
-      { label:'حوالات واردة',        value:s.receipt,             icon:'📥', cls:'kpi-success',  count:cnt.receipt },
-      { label:'حوالات صادرة',        value:s.delivery,            icon:'📤', cls:'kpi-warning',  count:cnt.delivery },
-      ...(cnt.refund_settlement     > 0 ? [{ label:'تسوية استرداد',       value:s.refund_settlement,    icon:'↩️', cls:'kpi-warning', count:cnt.refund_settlement }]    : []),
-      ...(cnt.failed_deposit_refund > 0 ? [{ label:'استرداد إيداع فاشل', value:s.failed_deposit_refund, icon:'🔃', cls:'kpi-warning', count:cnt.failed_deposit_refund }] : []),
-      ...(cnt.journal_entry         > 0 ? [{ label:'قيود محاسبية',         value:s.journal_entry,        icon:'📒', cls:'kpi-accent',  count:cnt.journal_entry }]         : []),
-      ...(cnt.external_handover    > 0 ? [{ label:'تسليم عهدة',           value:s.external_handover,    icon:'📤', cls:'kpi-warning', count:cnt.external_handover }]     : []),
+      { label:'تحصيلات',              value:s.collection,          icon:'banknote',           cls:'kpi-success',  count:cnt.collection },
+      { label:'إيداعات',              value:s.deposit,             icon:'building-2',         cls:'kpi-info',     count:cnt.deposit },
+      { label:'سحب بنكي',            value:s.bank_withdrawal,     icon:'credit-card',        cls:'kpi-info',     count:cnt.bank_withdrawal },
+      { label:'مصروفات',              value:s.expense,             icon:'receipt',            cls:'kpi-danger',   count:cnt.expense },
+      { label:'حوالات واردة',        value:s.receipt,             icon:'arrow-down-circle',  cls:'kpi-success',  count:cnt.receipt },
+      { label:'حوالات صادرة',        value:s.delivery,            icon:'arrow-up-circle',    cls:'kpi-warning',  count:cnt.delivery },
+      ...(cnt.refund_settlement     > 0 ? [{ label:'تسوية استرداد',       value:s.refund_settlement,    icon:'rotate-ccw',        cls:'kpi-warning', count:cnt.refund_settlement }]    : []),
+      ...(cnt.failed_deposit_refund > 0 ? [{ label:'استرداد إيداع فاشل', value:s.failed_deposit_refund, icon:'refresh-cw',         cls:'kpi-warning', count:cnt.failed_deposit_refund }] : []),
+      ...(cnt.journal_entry         > 0 ? [{ label:'قيود محاسبية',         value:s.journal_entry,        icon:'book-open',          cls:'kpi-accent',  count:cnt.journal_entry }]         : []),
+      ...(cnt.external_handover    > 0 ? [{ label:'تسليم عهدة',           value:s.external_handover,    icon:'arrow-up-circle',    cls:'kpi-warning', count:cnt.external_handover }]     : []),
       // البطاقة الأخيرة: الرصيد الفعلي
-      { label:'الرصيد الفعلي في الصندوق', value:closing, icon:'📊',
+      { label:'الرصيد الفعلي في الصندوق', value:closing, icon:'bar-chart-2',
         cls:closing >= 0 ? 'kpi-success' : 'kpi-danger', count:null,
         highlight: closing >= 0 ? 'var(--success)' : 'var(--danger)' },
     ];
@@ -267,7 +267,7 @@ const DailySummaryComponent = {
       <div class="kpi-card ${escapeHtml(k.cls)}"
            style="${k.highlight ? `border:2px solid ${k.highlight};` : ''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <span style="font-size:1.2rem;">${k.icon}</span>
+          <span class="kpi-lucide-icon"><i data-lucide="${k.icon}" style="width:22px;height:22px;"></i></span>
           <span class="kpi-label" style="font-size:0.76rem;">${escapeHtml(k.label)}</span>
         </div>
         ${k.subtitle ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;text-align:right;">${escapeHtml(k.subtitle)}</div>` : ''}
@@ -318,7 +318,7 @@ const DailySummaryComponent = {
 
     if (!paged.length) {
       listEl.innerHTML = `<div class="empty-state" style="padding:32px 0;">
-        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-icon"><i data-lucide="clipboard-x" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">لا توجد عمليات${this._typeFilter?' من هذا النوع':''} في هذا اليوم</div>
       </div>`;
       if (pagerEl) pagerEl.innerHTML = '';
@@ -376,7 +376,8 @@ const DailySummaryComponent = {
   _buildTxRow(tx, users) {
     const color    = getTransactionColor(tx.type);
     const label    = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
-    const typeIcon = {collection:'💰',deposit:'🏦',bank_withdrawal:'💳',expense:'💸',receipt:'📥',delivery:'📤',refund_settlement:'↩️',failed_deposit_refund:'🔃',journal_entry:'📒',external_handover:'📤'}[tx.type]||'📋';
+    const _txIconMap = {collection:'banknote',deposit:'building-2',bank_withdrawal:'credit-card',expense:'receipt',receipt:'arrow-down-circle',delivery:'arrow-up-circle',refund_settlement:'rotate-ccw',failed_deposit_refund:'refresh-cw',journal_entry:'book-open',external_handover:'arrow-up-circle'};
+    const typeIcon = `<i data-lucide="${_txIconMap[tx.type]||'circle'}" style="width:18px;height:18px;"></i>`;
     const isToday  = tx.date===getCurrentSaudiDate();
     const canEdit  = AuthService.isAdmin()||isToday;
     const canDelete = AuthService.isAdmin()||isToday;

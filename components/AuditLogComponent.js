@@ -16,7 +16,7 @@ const AuditLogComponent = {
   async render(container) {
     if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
       container.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">🔒</div>
+        <div class="empty-state-icon"><i data-lucide="lock" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">سجل التدقيق للمدير والمساعد الإداري فقط</div></div>`;
       return;
     }
@@ -167,7 +167,7 @@ const AuditLogComponent = {
 
     if (!logs.length) {
       listEl.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">📜</div>
+        <div class="empty-state-icon"><i data-lucide="scroll" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">لا توجد سجلات في هذه الفترة</div></div>`;
       if (pagerEl) pagerEl.innerHTML = '';
       return;
@@ -179,7 +179,8 @@ const AuditLogComponent = {
 
     const actionColors = { create:'success', update:'info', delete:'danger' };
     const actionLabels = { create:'إنشاء', update:'تعديل', delete:'حذف' };
-    const txTypeIcons  = { collection:'💰', deposit:'🏦', expense:'💸', receipt:'📥', delivery:'📤', refund_settlement:'🔄' };
+    const _auditIconMap = { collection:'banknote', deposit:'building-2', expense:'receipt', receipt:'arrow-down-circle', delivery:'arrow-up-circle', refund_settlement:'rotate-ccw', bank_withdrawal:'credit-card', journal_entry:'book-open' };
+    const txTypeIcons  = new Proxy(_auditIconMap, { get:(t,k)=>k in t?`<i data-lucide="${t[k]}" style="width:15px;height:15px;vertical-align:middle;"></i>`:`<i data-lucide="circle" style="width:15px;height:15px;vertical-align:middle;"></i>` });
     const txTypeLabels = TRANSACTION_TYPE_LABELS || {};
 
     const table = document.createElement('div');
@@ -213,7 +214,9 @@ const AuditLogComponent = {
                 <span class="badge badge-${clr}" style="font-size:0.75rem;">${escapeHtml(lbl)}</span>
               </td>
               <td style="font-size:0.82rem;">
-                ${log.record_type==='transaction'?'💳':'📋'}
+                ${log.record_type==='transaction'
+                  ?'<i data-lucide="credit-card" style="width:13px;height:13px;vertical-align:middle;"></i>'
+                  :'<i data-lucide="clipboard-list" style="width:13px;height:13px;vertical-align:middle;"></i>'}
                 ${escapeHtml(log.record_type||'—')}
               </td>
               <td style="font-size:0.82rem;">
