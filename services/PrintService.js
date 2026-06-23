@@ -42,12 +42,6 @@ const PrintService = (() => {
   function _injectStyles() {
     if (document.getElementById(_STYLE_ID)) return;
 
-    // خط IBM Plex Sans Arabic
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700;800&display=swap';
-    document.head.appendChild(link);
-
     const s = document.createElement('style');
     s.id = _STYLE_ID;
     s.textContent = `

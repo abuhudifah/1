@@ -50,7 +50,7 @@ const _VERIFY_TTL_MS = 5 * 60 * 1000;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🚀 App.js v3.0: بدء تهيئة النظام...');
+  console.log('🚀 App.js v4.0: بدء تهيئة النظام...');
 
   try {
     // 1. Dexie
@@ -441,61 +441,6 @@ function _themeIcon(isDark) {
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
        </svg>`;
 }
-
-/* بطاقة معلومات المستخدم المنسدلة */
-function _buildUserCard(user, accNum) {
-  const card = document.createElement('div');
-  card.className = 'user-card-dropdown';
-
-  const roleLabel = ROLE_LABELS[user?.role] || user?.role || '';
-  const initial   = (user?.display_name || '?').charAt(0).toUpperCase();
-
-  card.innerHTML = `
-    <div class="ucd-header">
-      <div class="ucd-avatar">${escapeHtml(initial)}</div>
-      <div>
-        <div class="ucd-name">${escapeHtml(user?.display_name || '')}</div>
-        <div class="ucd-role">${escapeHtml(roleLabel)}</div>
-      </div>
-    </div>
-    <div class="ucd-row">
-      <span class="ucd-label">رقم الحساب</span>
-      <span class="ucd-val" style="color:#60a5fa;font-size:0.72rem;">
-        ${accNum ? escapeHtml(accNum.slice(0,20)) : '—'}
-      </span>
-    </div>
-    <div class="ucd-row">
-      <span class="ucd-label">الرصيد الحالي</span>
-      <span class="ucd-val green" id="ucd-balance">—</span>
-    </div>
-    <div class="ucd-row">
-      <span class="ucd-label">حالة المزامنة</span>
-      <span class="ucd-val" id="ucd-sync-status">● متزامن</span>
-    </div>
-    <div class="ucd-row">
-      <span class="ucd-label">تاريخ اليوم</span>
-      <span class="ucd-val">${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
-    </div>`;
-
-  // تحميل الرصيد عند الفتح
-  card.addEventListener('transitionend', async () => {
-    if (!card.classList.contains('open')) return;
-    const balEl = card.querySelector('#ucd-balance');
-    if (!balEl || balEl.dataset.loaded) return;
-    balEl.dataset.loaded = '1';
-    const agentId = user?.id;
-    if (agentId && window.AccountingService) {
-      const r = await AccountingService.getAccountBalance('AGT_' + agentId);
-      if (window.isOk && isOk(r)) {
-        balEl.textContent = Math.round(r.data).toLocaleString('en-US') + ' ر.س';
-        balEl.style.color = r.data >= 0 ? '#10b981' : '#f87171';
-      }
-    }
-  });
-
-  return card;
-}
-
 
 // ============================================================
 // شريط التنقل
@@ -1589,4 +1534,4 @@ function _initSafeEnhancements() {
   }
 }
 
-console.log('✅ App.js v3.0 — هيدر محسَّن + QuickLoginBanner + last_login + Safe Enhancements v1.0');
+console.log('✅ App.js v4.0 — Tab Panel Manager + هيدر محسَّن + QuickLoginBanner + Bug Fixes');
