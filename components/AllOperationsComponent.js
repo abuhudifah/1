@@ -47,10 +47,13 @@ const AllOperationsComponent = {
     title.textContent = '📋 جميع العمليات';
     wrap.appendChild(title);
 
-    const users  = AppStore.getState('users') || [];
-    const agents = users.filter(u=>u.is_active).sort((a,b)=>{
-      if (a.role===b.role) return (a.display_name||'').localeCompare(b.display_name||'','ar');
-      return a.role==='agent' ? -1 : 1;
+    const users    = AppStore.getState('users') || [];
+    // جميع المستخدمين النشطين بجميع الأدوار (مناديب + مديرون + مساعدون)
+    const allUsers = users.filter(u => u.is_active).sort((a, b) => {
+      const order = { agent: 0, admin_assistant: 1, admin: 2 };
+      const oa = order[a.role] ?? 3, ob = order[b.role] ?? 3;
+      if (oa !== ob) return oa - ob;
+      return (a.display_name || '').localeCompare(b.display_name || '', 'ar');
     });
 
     // لوحة الفلاتر
@@ -71,7 +74,10 @@ const AllOperationsComponent = {
           <label class="form-label" style="font-size:0.78rem;">المستخدم</label>
           <select id="ao-agent" class="form-control" style="padding:7px;font-size:0.85rem;">
             <option value="">الجميع</option>
-            ${agents.map(u=>`<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name)}${u.role!=='agent'?' (مدير)':''}</option>`).join('')}
+            ${allUsers.map(u => {
+              const suffix = u.role === 'admin' ? ' (مدير)' : u.role === 'admin_assistant' ? ' (مساعد)' : '';
+              return `<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name)}${suffix}</option>`;
+            }).join('')}
           </select>
         </div>
         <div class="form-group" style="margin:0;">
@@ -112,6 +118,11 @@ const AllOperationsComponent = {
         <span id="ao-count-label" style="font-size:0.82rem;color:var(--text-muted);margin-right:auto;"></span>
       </div>`;
     wrap.appendChild(filterCard);
+
+    const totalsEl = document.createElement('div');
+    totalsEl.id = 'ao-totals';
+    totalsEl.innerHTML = `<div class="ao-totals-grid">${[1,2,3,4].map(()=>'<div class="skeleton" style="height:76px;border-radius:14px;"></div>').join('')}</div>`;
+    wrap.appendChild(totalsEl);
 
     const listEl = document.createElement('div');
     listEl.id = 'ao-list';
@@ -255,7 +266,16 @@ const AllOperationsComponent = {
 
     listEl.innerHTML = `<div class="skeleton" style="height:52px;border-radius:8px;margin-bottom:6px;"></div>`.repeat(5);
 
+    const totalsEl = document.getElementById('ao-totals');
+    if (totalsEl) {
+      totalsEl.innerHTML = `<div class="ao-totals-grid">${[1,2,3,4].map(()=>'<div class="skeleton" style="height:76px;border-radius:14px;"></div>').join('')}</div>`;
+    }
+
     const filters  = this._buildFilters();
+
+    // جلب الإجماليات بالتوازي مع بيانات الصفحة
+    this._fetchTotals(filters).then(t => this._renderTotals(t)).catch(() => {});
+
     const cursor   = this._cursors[this._cursorIdx]; // null = صفحة 1
     let   data     = [];
     let   useLocal = false;
@@ -527,6 +547,105 @@ const AllOperationsComponent = {
     }
   },
 
+  // ─── إجماليات العمليات حسب الفلتر ───────────────────────────
+  async _fetchTotals(filters) {
+    const totals = { collection: 0, delivery: 0, deposit: 0, expense: 0 };
+    try {
+      if (!isOfflineMode() && isOnline()) {
+        let q = supabaseClient
+          .from('transactions_detailed')
+          .select('type,amount')
+          .eq('is_reversed', false);
+
+        if (filters.type)     q = q.eq('type',     filters.type);
+        if (filters.agent_id) q = q.eq('agent_id', filters.agent_id);
+
+        if (filters.date) {
+          if (typeof filters.date === 'string') {
+            q = q.eq('date', filters.date);
+          } else if (filters.date.op === 'between') {
+            q = q.gte('date', filters.date.val[0]).lte('date', filters.date.val[1]);
+          } else if (filters.date.op === 'gte') {
+            q = q.gte('date', filters.date.val);
+          } else if (filters.date.op === 'lte') {
+            q = q.lte('date', filters.date.val);
+          }
+        }
+
+        const currentUser = AuthService.getCurrentUser();
+        if (currentUser?.role === ROLES.AGENT) {
+          q = q.eq('agent_id', currentUser.id);
+        }
+
+        const { data, error } = await q;
+        if (!error && data) {
+          data.forEach(row => {
+            if (row.type in totals) totals[row.type] += Math.round(parseFloat(row.amount) || 0);
+          });
+        }
+      } else {
+        const result = await repo.query(TABLES.TRANSACTIONS, filters, { pageSize: 5000 });
+        const rows   = isOk(result) ? (result.data.data || []) : [];
+        rows.filter(r => !r.is_reversed).forEach(row => {
+          if (row.type in totals) totals[row.type] += Math.round(parseFloat(row.amount) || 0);
+        });
+      }
+    } catch (e) {
+      console.warn('⚠️ AllOperations: totals fetch failed:', e.message);
+    }
+    return totals;
+  },
+
+  _renderTotals(totals) {
+    const el = document.getElementById('ao-totals');
+    if (!el) return;
+    const fmt = n => n.toLocaleString('en-US');
+    const cur = APP_CONFIG.CURRENCY_SYMBOL;
+    const cards = [
+      {
+        key  : 'collection',
+        icon : 'inbox',
+        label: 'إجمالي العهد المستلمة',
+        cls  : 'ao-total-card--collection',
+      },
+      {
+        key  : 'delivery',
+        icon : 'upload',
+        label: 'إجمالي العهد المُخلاة',
+        cls  : 'ao-total-card--delivery',
+      },
+      {
+        key  : 'deposit',
+        icon : 'landmark',
+        label: 'إجمالي الإيداعات',
+        cls  : 'ao-total-card--deposit',
+      },
+      {
+        key  : 'expense',
+        icon : 'trending-down',
+        label: 'إجمالي المصروفات',
+        cls  : 'ao-total-card--expense',
+      },
+    ];
+    el.innerHTML = `
+      <div class="ao-totals-grid">
+        ${cards.map(c => `
+          <div class="ao-total-card ${escapeHtml(c.cls)}">
+            <div class="ao-total-icon">
+              <i data-lucide="${escapeHtml(c.icon)}" style="width:22px;height:22px;stroke:currentColor;flex-shrink:0;"></i>
+            </div>
+            <div class="ao-total-body">
+              <div class="ao-total-label">${escapeHtml(c.label)}</div>
+              <div class="ao-total-value">
+                ${fmt(totals[c.key])}
+                <span class="ao-total-cur">${escapeHtml(cur)}</span>
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>`;
+    if (window.lucide) lucide.createIcons();
+  },
+
   _injectStyles() {
     if (document.getElementById('ao-action-btn-styles')) return;
     const style = document.createElement('style');
@@ -538,6 +657,26 @@ const AllOperationsComponent = {
       .ao-action-btn--delete{background:#ffebee;color:#d32f2f;}
       .ao-action-btn:hover{transform:scale(1.1);}
       .ao-action-btn:disabled{opacity:0.5;cursor:not-allowed;}
+
+      /* ── بطاقات الإجماليات ── */
+      .ao-totals-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-bottom:16px;}
+      .ao-total-card{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);box-shadow:0 1px 4px rgba(0,0,0,.06);transition:transform .15s,box-shadow .15s;}
+      .ao-total-card:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(0,0,0,.10);}
+      .ao-total-icon{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:12px;flex-shrink:0;}
+      .ao-total-body{flex:1;min-width:0;}
+      .ao-total-label{font-size:0.73rem;color:var(--text-muted,#64748b);margin-bottom:5px;font-weight:600;}
+      .ao-total-value{font-size:1.28rem;font-weight:800;direction:ltr;text-align:right;color:var(--text-primary,#0f172a);line-height:1.2;}
+      .ao-total-cur{font-size:0.68rem;font-weight:500;color:var(--text-muted,#64748b);margin-right:3px;}
+
+      .ao-total-card--collection .ao-total-icon{background:#dcfce7;color:#16a34a;}
+      .ao-total-card--delivery   .ao-total-icon{background:#dbeafe;color:#2563eb;}
+      .ao-total-card--deposit    .ao-total-icon{background:#ede9fe;color:#7c3aed;}
+      .ao-total-card--expense    .ao-total-icon{background:#fee2e2;color:#dc2626;}
+
+      body.dark-mode .ao-total-card--collection .ao-total-icon{background:rgba(22,163,74,.18);color:#4ade80;}
+      body.dark-mode .ao-total-card--delivery   .ao-total-icon{background:rgba(37,99,235,.18);color:#60a5fa;}
+      body.dark-mode .ao-total-card--deposit    .ao-total-icon{background:rgba(124,58,237,.18);color:#a78bfa;}
+      body.dark-mode .ao-total-card--expense    .ao-total-icon{background:rgba(220,38,38,.18);color:#f87171;}
     `;
     document.head.appendChild(style);
   },
