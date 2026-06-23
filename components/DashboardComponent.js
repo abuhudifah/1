@@ -40,32 +40,28 @@ const DashboardComponent = {
 
     container.innerHTML = `
       <div id="dash-root">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+        <div class="dash-header">
           <div>
-            <h2 style="font-size:1.2rem;font-weight:700;color:var(--text-primary);">لوحة المعلومات</h2>
-            <p style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;" id="dash-subtitle">
+            <h2 class="dash-title">لوحة المعلومات</h2>
+            <p class="dash-subtitle" id="dash-subtitle">
               جميع المستخدمين — ${formatDateArabic(getCurrentSaudiDate())}
             </p>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <div style="display:flex;background:var(--bg-input);border-radius:10px;padding:3px;gap:2px;">
-              <button id="dash-mode-day" class="btn btn-sm"
-                style="padding:5px 12px;border-radius:8px;font-size:0.78rem;background:var(--accent);color:#fff;">
+          <div class="dash-controls">
+            <div class="dash-mode-group">
+              <button id="dash-mode-day" class="btn btn-sm dash-mode-btn active">
                 يوم
               </button>
-              <button id="dash-mode-month" class="btn btn-sm"
-                style="padding:5px 12px;border-radius:8px;font-size:0.78rem;background:transparent;color:var(--text-secondary);">
+              <button id="dash-mode-month" class="btn btn-sm dash-mode-btn">
                 شهر
               </button>
             </div>
             <input id="dash-date-picker" type="date"
               value="${getCurrentSaudiDate()}"
               max="${getCurrentSaudiDate()}"
-              class="form-control"
-              style="padding:6px 10px;font-size:0.82rem;width:auto;min-width:140px;">
-            <button id="dash-refresh-btn" class="btn btn-secondary btn-sm"
-              style="display:flex;align-items:center;gap:4px;font-size:0.78rem;">
-              <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> تحديث
+              class="form-control dash-date">
+            <button id="dash-refresh-btn" class="btn btn-secondary btn-sm dash-refresh-btn">
+              <i data-lucide="refresh-cw" class="dash-icon-sm"></i> تحديث
             </button>
           </div>
         </div>
@@ -74,27 +70,27 @@ const DashboardComponent = {
           ${[1,2,3,4].map(() => `<div class="skeleton" style="height:95px;border-radius:16px;"></div>`).join('')}
         </div>
 
-        <div class="grid-2" style="margin-bottom:24px;">
+        <div class="grid-2 dash-section">
           <div class="glass-card">
-            <h3 style="font-size:0.88rem;font-weight:700;margin-bottom:12px;color:var(--text-secondary);">
+            <h3 class="dash-section-title">
               <span aria-hidden="true">📈</span> حركة آخر 7 أيام
             </h3>
-            <div style="position:relative;height:190px;">
+            <div class="dash-chart-wrap">
               <canvas id="chart-weekly" role="img" aria-label="رسم بياني لحركة المبالغ خلال آخر 7 أيام"></canvas>
             </div>
           </div>
           <div class="glass-card">
-            <h3 style="font-size:0.88rem;font-weight:700;margin-bottom:12px;color:var(--text-secondary);">
+            <h3 class="dash-section-title">
               <span aria-hidden="true">🥧</span> توزيع العمليات
             </h3>
-            <div style="position:relative;height:190px;">
+            <div class="dash-chart-wrap">
               <canvas id="chart-pie" role="img" aria-label="رسم بياني دائري لتوزيع أنواع العمليات"></canvas>
             </div>
           </div>
         </div>
 
-        <div class="glass-card" style="margin-bottom:24px;">
-          <h3 style="font-size:0.88rem;font-weight:700;margin-bottom:16px;color:var(--text-secondary);">
+        <div class="glass-card dash-section">
+          <h3 class="dash-section-title">
             <span aria-hidden="true">🏦</span> الحسابات البنكية — السقف اليومي
           </h3>
           <div id="bank-progress-list">
@@ -102,23 +98,20 @@ const DashboardComponent = {
           </div>
         </div>
 
-        <div class="glass-card" style="margin-bottom:24px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-            <h3 style="font-size:0.88rem;font-weight:700;color:var(--text-secondary);"><span aria-hidden="true">👤</span> صناديق المناديب</h3>
-            <span id="agents-date-label" style="font-size:0.78rem;color:var(--text-muted);"></span>
+        <div class="glass-card dash-section">
+          <div class="dash-section-header">
+            <h3 class="dash-section-title"><span aria-hidden="true">👤</span> صناديق المناديب</h3>
+            <span id="agents-date-label" class="dash-date-label"></span>
           </div>
-          <div id="agents-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">
+          <div id="agents-grid" class="dash-agents-grid">
             ${[1,2].map(() => `<div class="skeleton" style="height:180px;border-radius:14px;"></div>`).join('')}
           </div>
         </div>
 
         <div class="glass-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-            <h3 style="font-size:0.88rem;font-weight:700;color:var(--text-secondary);">⏱ أحدث العمليات</h3>
-            <button id="dash-view-all-btn"
-              style="font-size:0.78rem;color:var(--accent);background:none;border:none;cursor:pointer;
-                     display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:8px;
-                     transition:background var(--transition-fast);">
+          <div class="dash-section-header" style="margin-bottom:14px;">
+            <h3 class="dash-section-title">⏱ أحدث العمليات</h3>
+            <button id="dash-view-all-btn" class="dash-view-all-btn">
               عرض الكل ←
             </button>
           </div>
@@ -178,14 +171,8 @@ const DashboardComponent = {
   _applyModeStyle() {
     const btnDay   = document.getElementById('dash-mode-day');
     const btnMonth = document.getElementById('dash-mode-month');
-    if (btnDay) {
-      btnDay.style.background = this._viewMode === 'day' ? 'var(--accent)' : 'transparent';
-      btnDay.style.color      = this._viewMode === 'day' ? '#fff' : 'var(--text-secondary)';
-    }
-    if (btnMonth) {
-      btnMonth.style.background = this._viewMode === 'month' ? 'var(--accent)' : 'transparent';
-      btnMonth.style.color      = this._viewMode === 'month' ? '#fff' : 'var(--text-secondary)';
-    }
+    if (btnDay)   btnDay.classList.toggle('active', this._viewMode === 'day');
+    if (btnMonth) btnMonth.classList.toggle('active', this._viewMode === 'month');
   },
 
   _getDateRange() {
@@ -264,15 +251,15 @@ const DashboardComponent = {
     if (!grid) return;
     grid.innerHTML = kpis.map(k => `
       <div class="glass-card kpi-card" style="border-right:3px solid ${k.color};background:${k.bg};">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <span style="font-size:1.5rem;">${k.icon}</span>
-          <span style="font-size:0.72rem;color:var(--text-muted);font-weight:600;">${escapeHtml(k.label)}</span>
+        <div class="kpi-header">
+          <span class="kpi-icon">${k.icon}</span>
+          <span class="kpi-label">${escapeHtml(k.label)}</span>
         </div>
-        <div class="kpi-value" style="font-size:1.45rem;font-weight:800;color:${k.color};direction:ltr;text-align:right;">
+        <div class="kpi-value" style="color:${k.color};">
           ${k.value < 0 ? '−' : ''}${Math.abs(Math.round(k.value)).toLocaleString('en-US')}
-          <span style="font-size:0.65rem;font-weight:500;color:var(--text-muted);margin-right:2px;">${APP_CONFIG.CURRENCY_SYMBOL}</span>
+          <span class="kpi-currency">${APP_CONFIG.CURRENCY_SYMBOL}</span>
         </div>
-        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">${totals.total_tx_count || 0} عملية</div>
+        <div class="kpi-count">${totals.total_tx_count || 0} عملية</div>
       </div>`).join('');
   },
 
@@ -418,7 +405,7 @@ const DashboardComponent = {
     const el = document.getElementById('bank-progress-list');
     if (!el) return;
     if (!banks.length) {
-      el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:16px;">لا توجد إيداعات في هذه الفترة</div>`;
+      el.innerHTML = `<div class="dash-empty">لا توجد إيداعات في هذه الفترة</div>`;
       return;
     }
     el.innerHTML = banks.map(b => {
@@ -427,10 +414,10 @@ const DashboardComponent = {
       const pct  = ceil > 0 ? Math.min(100, Math.round(used / ceil * 100)) : 0;
       const cls  = pct >= 80 ? 'high' : pct >= 50 ? 'medium' : 'low';
       return `
-        <div style="margin-bottom:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-            <span style="font-size:0.85rem;font-weight:600;">🏦 ${escapeHtml(b.name||'—')}</span>
-            <span style="font-size:0.75rem;color:var(--text-muted);">${used.toLocaleString('en-US')} / ${ceil.toLocaleString('en-US')} ر.س (${pct}%)</span>
+        <div class="bank-item">
+          <div class="bank-item-header">
+            <span class="bank-name">🏦 ${escapeHtml(b.name||'—')}</span>
+            <span class="bank-stats">${used.toLocaleString('en-US')} / ${ceil.toLocaleString('en-US')} ر.س (${pct}%)</span>
           </div>
           <div class="progress-bar"><div class="progress-fill ${cls}" style="width:${pct}%;"></div></div>
         </div>`;
@@ -461,7 +448,7 @@ const DashboardComponent = {
         .filter(b => b.used_today > 0 || banks.length <= 5);
       this._renderBankProgress(banksWithData);
     } catch (e) {
-      el.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:16px;">فشل جلب بيانات البنوك</div>`;
+      el.innerHTML = `<div class="dash-empty">فشل جلب بيانات البنوك</div>`;
     }
   },
 
@@ -469,7 +456,7 @@ const DashboardComponent = {
     const el = document.getElementById('agents-grid');
     if (!el) return;
     if (!agents.length) {
-      el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;padding:16px;grid-column:1/-1;">لا يوجد مناديب نشطون</div>`;
+      el.innerHTML = `<div class="dash-empty" style="grid-column:1/-1;">لا يوجد مناديب نشطون</div>`;
       return;
     }
     const colors = ['#2563eb','#059669','#7c3aed','#d97706','#0284c7'];
@@ -482,34 +469,29 @@ const DashboardComponent = {
       const initial = (a.agent_name||'؟').charAt(0);
       const colIdx  = (a.agent_name||'').charCodeAt(0) % colors.length;
       return `
-        <div class="glass-card" style="padding:14px 16px;border-right:3px solid ${colors[colIdx]};
-          transition:transform var(--transition-spring),box-shadow var(--transition-normal);"
-          onmouseenter="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--shadow-md)'"
-          onmouseleave="this.style.transform='';this.style.boxShadow=''">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-            <div style="width:40px;height:40px;border-radius:50%;flex-shrink:0;
-              background:linear-gradient(135deg,${colors[colIdx]},${colors[(colIdx+1)%colors.length]});
-              display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1rem;">
+        <div class="glass-card agent-card" style="border-right:3px solid ${colors[colIdx]};">
+          <div class="agent-card-header">
+            <div class="agent-avatar" style="background:linear-gradient(135deg,${colors[colIdx]},${colors[(colIdx+1)%colors.length]});">
               ${escapeHtml(initial)}
             </div>
             <div>
-              <div style="font-weight:700;font-size:0.92rem;color:var(--text-primary);">${escapeHtml(a.agent_name||'—')}</div>
-              <div style="font-size:0.72rem;color:var(--text-muted);">${a.tx_count||0} عملية</div>
+              <div class="agent-name">${escapeHtml(a.agent_name||'—')}</div>
+              <div class="agent-tx-count">${a.tx_count||0} عملية</div>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:0.78rem;margin-bottom:12px;">
-            <div style="color:var(--text-muted);">رصيد الصندوق</div>
-            <div style="text-align:left;direction:ltr;font-weight:700;color:var(--info);">${balance>=0?'':'−'}${Math.abs(balance).toLocaleString('en-US')}</div>
-            ${col>0?`<div style="color:var(--text-muted);">تحصيل</div><div style="text-align:left;direction:ltr;color:var(--success);font-weight:600;">+${col.toLocaleString('en-US')}</div>`:''}
-            ${dep>0?`<div style="color:var(--text-muted);">إيداع</div><div style="text-align:left;direction:ltr;color:var(--info);font-weight:600;">−${dep.toLocaleString('en-US')}</div>`:''}
-            ${exp>0?`<div style="color:var(--text-muted);">مصروف</div><div style="text-align:left;direction:ltr;color:var(--danger);font-weight:600;">−${exp.toLocaleString('en-US')}</div>`:''}
-            ${rec>0?`<div style="color:var(--text-muted);">استلام</div><div style="text-align:left;direction:ltr;color:var(--warning);font-weight:600;">+${rec.toLocaleString('en-US')}</div>`:''}
+          <div class="agent-stats">
+            <div class="agent-stat-label">رصيد الصندوق</div>
+            <div class="agent-stat-value" style="font-weight:700;color:var(--info);">${balance>=0?'':'−'}${Math.abs(balance).toLocaleString('en-US')}</div>
+            ${col>0?`<div class="agent-stat-label">تحصيل</div><div class="agent-stat-value" style="color:var(--success);">+${col.toLocaleString('en-US')}</div>`:''}
+            ${dep>0?`<div class="agent-stat-label">إيداع</div><div class="agent-stat-value" style="color:var(--info);">−${dep.toLocaleString('en-US')}</div>`:''}
+            ${exp>0?`<div class="agent-stat-label">مصروف</div><div class="agent-stat-value" style="color:var(--danger);">−${exp.toLocaleString('en-US')}</div>`:''}
+            ${rec>0?`<div class="agent-stat-label">استلام</div><div class="agent-stat-value" style="color:var(--warning);">+${rec.toLocaleString('en-US')}</div>`:''}
           </div>
-          <div style="padding-top:10px;border-top:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600;">الرصيد الحالي</span>
-            <span style="font-size:1.05rem;font-weight:800;color:${balance>=0?'var(--success)':'var(--danger)'};direction:ltr;">
+          <div class="agent-balance-footer">
+            <span class="agent-balance-label">الرصيد الحالي</span>
+            <span class="agent-balance-value" style="color:${balance>=0?'var(--success)':'var(--danger)'};">
               ${balance>=0?'':'−'}${Math.abs(balance).toLocaleString('en-US')}
-              <span style="font-size:0.65rem;font-weight:500;margin-right:2px;">${APP_CONFIG.CURRENCY_SYMBOL}</span>
+              <span class="kpi-currency">${APP_CONFIG.CURRENCY_SYMBOL}</span>
             </span>
           </div>
         </div>`;
@@ -521,7 +503,7 @@ const DashboardComponent = {
     if (!el) return;
     const allUsers = AppStore.getState('users');
     const agents   = allUsers.filter(u => u.role === 'agent' && u.is_active);
-    if (!agents.length) { el.innerHTML = `<div style="color:var(--text-muted);padding:16px;">لا يوجد مناديب</div>`; return; }
+    if (!agents.length) { el.innerHTML = `<div class="dash-empty">لا يوجد مناديب</div>`; return; }
 
     let txs = [], balances = {};
     const agentAccountIds = agents.map(a => `AGT_${a.id}`);
@@ -561,7 +543,7 @@ const DashboardComponent = {
     const el = document.getElementById('recent-tx-list');
     if (!el) return;
     if (!recent.length) {
-      el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:16px;">لا توجد عمليات في هذه الفترة</div>`;
+      el.innerHTML = `<div class="dash-empty">لا توجد عمليات في هذه الفترة</div>`;
       return;
     }
     const typeIcons = { collection:'💰', deposit:'🏦', bank_withdrawal:'💳', expense:'💸', receipt:'📥', delivery:'📤', refund_settlement:'↩️', failed_deposit_refund:'🔃', journal_entry:'📒' };
@@ -572,27 +554,23 @@ const DashboardComponent = {
       const label = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
       const secondary = tx.customer_name||tx.bank_name||tx.company_name||tx.details||'';
       return `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
-          transition:background var(--transition-fast);"
-          onmouseenter="this.style.background='var(--bg-hover)'"
-          onmouseleave="this.style.background=''">
-          <div style="width:36px;height:36px;border-radius:10px;flex-shrink:0;
-            background:${color}18;display:flex;align-items:center;justify-content:center;font-size:1.1rem;">
+        <div class="tx-item">
+          <div class="tx-icon-wrap" style="background:${color}18;">
             ${icon}
           </div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:0.84rem;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
+          <div class="tx-details">
+            <div class="tx-label-row">
               ${escapeHtml(label)}
-              ${secondary?`<span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">— ${escapeHtml(secondary)}</span>`:''}
+              ${secondary?`<span class="tx-secondary">— ${escapeHtml(secondary)}</span>`:''}
             </div>
-            <div style="font-size:0.72rem;color:var(--text-muted);">
+            <div class="tx-meta">
               ${escapeHtml(tx.agent_name||'—')}
               ${tx.time?`· ${String(tx.time).substring(0,5)}`:''}
             </div>
           </div>
-          <div style="font-size:0.90rem;font-weight:800;color:${color};direction:ltr;flex-shrink:0;">
+          <div class="tx-amount" style="color:${color};">
             ${amt.toLocaleString('en-US')}
-            <span style="font-size:0.65rem;font-weight:500;color:var(--text-muted);">${APP_CONFIG.CURRENCY_SYMBOL}</span>
+            <span class="kpi-currency">${APP_CONFIG.CURRENCY_SYMBOL}</span>
           </div>
         </div>`;
     }).join('');
@@ -618,7 +596,7 @@ const DashboardComponent = {
     } catch { txs = []; }
 
     if (!txs.length) {
-      el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:16px;">لا توجد عمليات</div>`;
+      el.innerHTML = `<div class="dash-empty">لا توجد عمليات</div>`;
       return;
     }
     const users        = AppStore.getState('users');
