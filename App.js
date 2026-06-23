@@ -281,7 +281,8 @@ function _buildHeader() {
   brandText.className = 'header-brand-text';
   brandText.innerHTML = `
     <div class="header-brand-name">${escapeHtml(APP_CONFIG?.NAME || 'أبو حذيفة')}</div>
-    <div class="header-brand-sub">للصرافة والتحويلات</div>`;
+    <div class="header-brand-sub">للصرافة والتحويلات</div>
+    <div id="header-date" class="header-date"></div>`;
   brand.appendChild(brandText);
   header.appendChild(brand);
 
