@@ -44,6 +44,16 @@ const DataEntryComponent = {
   _refreshCompanyBeneficiaries: null, // callback لتحديث قائمة شركات المستفيدين
   _refreshBankBeneficiaries: null,    // callback لتحديث قائمة بنوك المستفيدين
 
+  hasUnsavedData() {
+    const area = document.getElementById('data-entry-form-area');
+    if (!area) return false;
+    const inputs = area.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]), textarea');
+    for (const el of inputs) {
+      if (el.value && el.value.trim()) return true;
+    }
+    return false;
+  },
+
   async render(container) {
     this._container = container;
     // إلغاء مستمعي الإغلاق القديمة عند كل render لتفادي التراكم
@@ -200,6 +210,8 @@ const DataEntryComponent = {
 
     const formArea = document.createElement('div');
     formArea.id = 'data-entry-form-area';
+    formArea.setAttribute('role', 'tabpanel');
+    formArea.setAttribute('aria-labelledby', `form-tab-${this._activeForm}`);
     wrap.appendChild(formArea);
 
     this._renderForm(this._activeForm, formArea);
@@ -274,6 +286,8 @@ const DataEntryComponent = {
 
   _buildFormTabs() {
     const wrap = document.createElement('div');
+    wrap.setAttribute('role', 'tablist');
+    wrap.setAttribute('aria-label', 'نوع العملية');
     wrap.style.cssText = `
       display:flex;gap:8px;margin-bottom:20px;
       padding:6px;background:var(--bg-input);
@@ -291,6 +305,9 @@ const DataEntryComponent = {
     forms.forEach(f => {
       const btn = document.createElement('button');
       btn.id = `form-tab-${f.id}`;
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-selected', String(this._activeForm === f.id));
+      btn.setAttribute('aria-controls', 'data-entry-form-area');
       btn.style.cssText = `
         flex:1;min-width:90px;padding:10px 8px;border:none;border-radius:12px;
         background:${this._activeForm === f.id ? 'var(--accent)' : 'transparent'};
@@ -298,13 +315,14 @@ const DataEntryComponent = {
         font-family:inherit;font-size:0.85rem;font-weight:600;
         cursor:pointer;transition:all 0.18s;white-space:nowrap;
         display:flex;align-items:center;justify-content:center;gap:6px;`;
-      btn.innerHTML = `<span>${f.icon}</span><span>${escapeHtml(f.label)}</span>`;
+      btn.innerHTML = `<span aria-hidden="true">${f.icon}</span><span>${escapeHtml(f.label)}</span>`;
       btn.addEventListener('click', () => {
         this._activeForm = f.id;
-        wrap.querySelectorAll('button').forEach(b => {
+        wrap.querySelectorAll('[role="tab"]').forEach(b => {
           const active = b.id === `form-tab-${f.id}`;
           b.style.background = active ? 'var(--accent)' : 'transparent';
           b.style.color      = active ? '#fff' : 'var(--text-secondary)';
+          b.setAttribute('aria-selected', String(active));
         });
         const area = document.getElementById('data-entry-form-area');
         if (area) this._renderForm(f.id, area);
@@ -316,6 +334,7 @@ const DataEntryComponent = {
 
   _renderForm(formId, container) {
     container.innerHTML = '';
+    container.setAttribute('aria-labelledby', `form-tab-${formId}`);
     const card = document.createElement('div');
     card.className = 'glass-card animate-fade-in';
     switch (formId) {

@@ -272,6 +272,8 @@ function _getToastContainer() {
   if (!_toastContainer) {
     _toastContainer = document.createElement('div');
     _toastContainer.id = 'toast-container';
+    _toastContainer.setAttribute('aria-live', 'assertive');
+    _toastContainer.setAttribute('aria-atomic', 'false');
     _toastContainer.style.cssText = [
       'position: fixed',
       'top: 50%',
@@ -314,6 +316,7 @@ function showToast(message, type = 'info', duration = APP_CONFIG.DEFAULT_TOAST_M
 
   const toast = document.createElement('div');
   toast.className = 'toast-item';
+  toast.setAttribute('role', 'alert');
   toast.style.cssText = [
     'display: flex',
     'align-items: center',
