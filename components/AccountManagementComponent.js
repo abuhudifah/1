@@ -1129,11 +1129,12 @@ const AccountManagementComponent = {
       const finalBalance = openingBalance + net;
 
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
-        <thead><tr><th>التاريخ</th><th>الوقت</th><th>نوع العملية</th><th>لكم</th><th>عليكم</th><th>التفاصيل</th></tr></thead><tbody>`;
+        <thead><tr><th>#</th><th>التاريخ</th><th>الوقت</th><th>نوع العملية</th><th>لكم</th><th>عليكم</th><th>التفاصيل</th></tr></thead><tbody>`;
 
       // إضافة صف الرصيد السابق إذا كان موجوداً
       if (openingEntries.length > 0) {
         html += `<tr style="background:rgba(59,130,246,0.08);font-weight:700;">
+          <td>—</td>
           <td style="white-space:nowrap;">رصيد سابق</td>
           <td></td>
           <td style="font-weight:600;">رصيد مرحّل</td>
@@ -1143,8 +1144,10 @@ const AccountManagementComponent = {
         </tr>`;
       }
 
+      let rowNum = 1;
       for (const r of rows) {
         html += `<tr>
+          <td style="color:var(--text-muted);font-size:0.8rem;">${rowNum}</td>
           <td style="white-space:nowrap;">${formatDateArabic(r.date)}</td>
           <td style="white-space:nowrap;">${escapeHtml(r.time)}</td>
           <td style="font-weight:600;">${escapeHtml(r.label)}</td>
@@ -1152,6 +1155,7 @@ const AccountManagementComponent = {
           <td style="color:var(--danger);direction:ltr;">${r.debit > 0 ? fmt(r.debit) : '0'}</td>
           <td style="color:var(--text-secondary);">${escapeHtml(r.details || '—')}</td>
         </tr>`;
+        rowNum++;
       }
 
       if (!rows.length && !openingEntries.length) {
@@ -1162,16 +1166,16 @@ const AccountManagementComponent = {
       html += `</tbody><tfoot>`;
       if (isExpense) {
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
-          <td colspan="3" style="text-align:left;">إجمالي المصروفات</td>
+          <td></td><td colspan="3" style="text-align:left;">إجمالي المصروفات</td>
           <td>0</td><td style="direction:ltr;color:var(--danger);">${fmt(totalAlaykum)}</td><td></td></tr>`;
       } else {
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
-          <td colspan="3" style="text-align:left;">الإجماليات (الفترة)</td>
+          <td></td><td colspan="3" style="text-align:left;">الإجماليات (الفترة)</td>
           <td style="direction:ltr;color:var(--success);">${fmt(totalLakum)}</td>
           <td style="direction:ltr;color:var(--danger);">${fmt(totalAlaykum)}</td>
           <td style="direction:ltr;">${netLabelWord}: ${fmt(Math.abs(net))} ${netNature}</td></tr>`;
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.06);color:var(--text-primary);">
-          <td colspan="3" style="text-align:left;">الرصيد النهائي</td>
+          <td></td><td colspan="3" style="text-align:left;">الرصيد النهائي</td>
           <td colspan="3" style="direction:ltr;color:${finalBalance >= 0 ? 'var(--success)' : 'var(--danger)'};font-size:1.05rem;">${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'}</td></tr>`;
       }
       html += `</tfoot></table></div>`;
@@ -1192,12 +1196,13 @@ const AccountManagementComponent = {
       }
 
       // تخزين بيانات الكشف للطباعة الاحترافية
-      // FIX: عنوان محدد للحساب والفترة لاسم ملف PDF دلالي
+      let pRowNum = 1;
       const printRows = (openingEntries.length > 0 ? [[
-        'رصيد سابق', '', 'رصيد مرحّل',
+        '—', 'رصيد سابق', '', 'رصيد مرحّل',
         openingCredit > 0 ? fmt(openingCredit) : '0',
         openingDebit > 0 ? fmt(openingDebit) : '0', '—'
-      ]] : []).concat(rows.map(r => [formatDateArabic(r.date), r.time, r.label,
+      ]] : []).concat(rows.map(r => [
+        pRowNum++, formatDateArabic(r.date), r.time, r.label,
         r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']));
 
       this._lastStatement = {
@@ -1205,7 +1210,7 @@ const AccountManagementComponent = {
         title: `كشف_${this._selectedAccountName || acc}`,
         accountId: acc,
         periodText: this._buildPeriodText(from, to),
-        columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
+        columns: ['#', 'التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
         rows: printRows,
         totalsLine: isExpense
           ? `<span>إجمالي المصروفات: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`

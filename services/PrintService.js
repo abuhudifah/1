@@ -205,6 +205,46 @@ const PrintService = (() => {
   .ps-tb-sep{display:none;}
 }
 
+/* ══ صفحات PDF متعددة ══ */
+.ps-multipage-wrap{
+  display:flex;flex-direction:column;
+  align-items:center;gap:20px;padding:20px 16px;
+}
+.pdf-page{
+  width:210mm;min-height:297mm;
+  background:#fff;
+  box-shadow:0 6px 30px rgba(0,0,0,.22);
+  box-sizing:border-box;
+  padding:14mm 15mm 10mm;
+  position:relative;
+  display:flex;flex-direction:column;
+  font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;
+  color:#0f172a;direction:rtl;
+  page-break-after:always;
+}
+.pdf-page:last-child{page-break-after:auto;}
+.pdf-page>.ps-watermark{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:60%;max-width:380px;
+  opacity:0.05;z-index:0;pointer-events:none;
+}
+.pdf-page-header{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  border-bottom:3px solid #0f172a;padding-bottom:10px;margin-bottom:14px;
+  position:relative;z-index:1;
+}
+.pdf-page-meta{text-align:left;}
+.pdf-page-num{font-size:9.5px;color:#64748b;margin-top:4px;font-weight:600;}
+.pdf-page-body{flex:1;position:relative;z-index:1;}
+.pdf-page-footer{
+  margin-top:10px;border-top:1px solid #e2e8f0;padding-top:8px;
+  display:flex;justify-content:space-between;
+  font-size:9px;color:#94a3b8;
+  position:relative;z-index:1;
+}
+.pdf-page-footer b{color:#64748b;}
+
 /* ══ طباعة ══ */
 @media print{
   body.ps-printing > *:not(#ps-overlay){display:none !important;}
@@ -218,6 +258,11 @@ const PrintService = (() => {
   body.ps-printing .ps-page{
     box-shadow:none !important;margin:0 !important;
     width:auto !important;min-height:auto !important;padding:0 !important;
+  }
+  body.ps-printing .ps-multipage-wrap{gap:0 !important;padding:0 !important;}
+  body.ps-printing .pdf-page{
+    box-shadow:none !important;margin:0 !important;
+    width:100% !important;padding:12mm 10mm !important;
   }
   body.ps-printing .ps-report table{page-break-inside:auto;}
   body.ps-printing .ps-report tr{page-break-inside:avoid;page-break-after:auto;}
@@ -239,6 +284,7 @@ const PrintService = (() => {
   function _buildModal(reportEl, config) {
     const {
       title = 'كشف', logo = '', shareText = '', periodText = '',
+      multiPage = false,
     } = config || {};
 
     _injectStyles();
@@ -250,6 +296,12 @@ const PrintService = (() => {
     /* إنشاء المودال */
     const overlay = document.createElement('div');
     overlay.id = _MODAL_ID;
+    const scrollInner = multiPage
+      ? `<div class="ps-multipage-wrap" id="ps-a4-page"></div>`
+      : `<div class="ps-page" id="ps-a4-page">
+           ${logo ? `<img class="ps-watermark" src="${logo}" alt="">` : ''}
+           <div class="ps-report" id="ps-report-content"></div>
+         </div>`;
     overlay.innerHTML = `
       <div class="ps-toolbar">
         <button class="ps-btn-close" id="ps-btn-close">✕ إغلاق</button>
@@ -272,18 +324,17 @@ const PrintService = (() => {
         </span>
         <span class="ps-spin" id="ps-spin"></span>
       </div>
-      <div class="ps-scroll">
-        <div class="ps-page" id="ps-a4-page">
-          ${logo ? `<img class="ps-watermark" src="${logo}" alt="">` : ''}
-          <div class="ps-report" id="ps-report-content"></div>
-        </div>
-      </div>`;
+      <div class="ps-scroll">${scrollInner}</div>`;
 
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
 
     /* أدخل محتوى التقرير */
-    document.getElementById('ps-report-content').appendChild(reportEl);
+    if (multiPage) {
+      document.getElementById('ps-a4-page').appendChild(reportEl);
+    } else {
+      document.getElementById('ps-report-content').appendChild(reportEl);
+    }
 
     const contentEl = document.getElementById('ps-report-content');
     const spinEl    = document.getElementById('ps-spin');
@@ -303,13 +354,15 @@ const PrintService = (() => {
     /* بناء إعدادات html2pdf */
     const _pdfOpts = () => {
       const orient = document.getElementById('ps-orient').value;
-      return {
+      const base = {
         margin      : 0,
         filename,
         image       : { type: 'jpeg', quality: 0.97 },
         html2canvas : { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
         jsPDF       : { unit: 'mm', format: 'a4', orientation: orient },
       };
+      if (multiPage) base.pagebreak = { mode: 'css', before: '.pdf-page' };
+      return base;
     };
 
     /* توليد PDF من عنصر الصفحة: ينقله مؤقتاً خارج الـ overlay لتجنب تأثيرات position:fixed */
@@ -425,11 +478,16 @@ const PrintService = (() => {
 
     /* تحديث حجم A4 عند تغيير الاتجاه */
     document.getElementById('ps-orient').addEventListener('change', (e) => {
-      const page = document.getElementById('ps-a4-page');
-      if (e.target.value === 'landscape') {
-        page.style.width = '297mm'; page.style.minHeight = '210mm';
+      const isLandscape = e.target.value === 'landscape';
+      if (multiPage) {
+        document.querySelectorAll('.pdf-page').forEach(pg => {
+          pg.style.width     = isLandscape ? '297mm' : '210mm';
+          pg.style.minHeight = isLandscape ? '210mm' : '297mm';
+        });
       } else {
-        page.style.width = '210mm'; page.style.minHeight = '297mm';
+        const page = document.getElementById('ps-a4-page');
+        page.style.width     = isLandscape ? '297mm' : '210mm';
+        page.style.minHeight = isLandscape ? '210mm' : '297mm';
       }
     });
   }
@@ -449,7 +507,6 @@ const PrintService = (() => {
       hour: '2-digit', minute: '2-digit',
     });
 
-    /* كشف أعمدة لكم / عليكم لتلوينها */
     const lakumIdx   = columns.findIndex(c => String(c).includes('لكم') && !String(c).includes('عليكم'));
     const alaykumIdx = columns.findIndex(c => String(c).includes('عليكم'));
 
@@ -466,57 +523,68 @@ const PrintService = (() => {
 
     const theadHTML = `<tr>${columns.map(h => `<th>${h}</th>`).join('')}</tr>`;
 
-    // تقسيم الصفوف لصفحات متعددة (حوالي 22 صف لكل صفحة A4)
-    const rowsPerPage = 22;
-    const rowChunks = [];
-    for (let i = 0; i < rows.length; i += rowsPerPage) {
-      rowChunks.push(rows.slice(i, i + rowsPerPage));
-    }
+    // تقسيم الصفوف (20 صف لكل صفحة — أقل من 22 لمنح مساحة للترويسة والتذييل)
+    const rowsPerPage = 20;
+    const totalPages  = Math.max(1, Math.ceil(rows.length / rowsPerPage));
 
-    // بناء جداول متعددة — كل صفحة لها رأسها الخاص لضمان تكرار الهيدر
-    let tablesHTML = '';
-    rowChunks.forEach((chunk, pageIdx) => {
-      const tbodyHTML = chunk.map((r, ri) => {
-        const absoluteIdx = pageIdx * rowsPerPage + ri;
-        return `<tr class="${absoluteIdx % 2 === 1 ? 'ps-even' : ''}">${r.map((c, ci) =>
-          `<td${getCellAttr(ci, c)}>${c ?? '—'}</td>`
-        ).join('')}</tr>`;
-      }).join('');
+    // الشعار/العلامة المائية
+    const watermarkHTML = logo ? `<img class="ps-watermark" src="${logo}" alt="">` : '';
 
-      tablesHTML += `<div class="table-wrap${pageIdx > 0 ? '-page' : ''}">
-        <table>
-          <thead>${theadHTML}</thead>
-          <tbody>${tbodyHTML}</tbody>
-        </table>`;
-
-      // إضافة الإجماليات فقط في الجدول الأخير
-      if (pageIdx === rowChunks.length - 1 && totalsLine) {
-        tablesHTML += `<div class="totals">${totalsLine}</div>`;
-      }
-      tablesHTML += `</div>`;
-    });
-
-    const reportEl = document.createElement('div');
-    reportEl.innerHTML = `
-      <div class="doc-header">
+    // ترويسة الصفحة المدمجة
+    const pageHeaderHTML = (pageNum) => `
+      <div class="pdf-page-header">
         <div>
-          <div class="doc-title">${title}</div>
+          <div class="doc-title" style="font-size:17px;">${title}</div>
           ${subtitle  ? `<div class="doc-sub">${subtitle}</div>`   : ''}
           ${accountId ? `<div class="doc-acct">معرف الحساب: ${accountId}</div>` : ''}
         </div>
-        <div class="doc-meta">
-          ${logo       ? `<img class="doc-logo" src="${logo}" alt="شعار">` : ''}
-          ${periodText ? `<div class="doc-period">${periodText}</div>`      : ''}
-          ${userName   ? `<div class="doc-user">${userName}</div>`          : ''}
+        <div class="pdf-page-meta">
+          ${logo ? `<img class="doc-logo" src="${logo}" alt="شعار" style="height:50px;margin-bottom:4px;">` : ''}
+          ${periodText ? `<div class="doc-period" style="font-size:11px;">${periodText}</div>` : ''}
+          ${userName   ? `<div class="doc-user">${userName}</div>` : ''}
+          <div class="pdf-page-num">صفحة ${pageNum} من ${totalPages}</div>
         </div>
-      </div>
-      ${tablesHTML}
-      <div class="doc-footer">
-        <span><b>نظام أبو حذيفة للصرافة والتحويلات</b></span>
-        <span>طُبع: ${ts}</span>
       </div>`;
 
-    _buildModal(reportEl, { title, logo, shareText, periodText });
+    // تذييل الصفحة الثابت
+    const pageFooterHTML = (pageNum) => `
+      <div class="pdf-page-footer">
+        <span><b>نظام أبو حذيفة للصرافة والتحويلات</b></span>
+        <span>صفحة ${pageNum} / ${totalPages} · طُبع: ${ts}</span>
+      </div>`;
+
+    // بناء الصفحات
+    let pagesHTML = '';
+    for (let p = 0; p < totalPages; p++) {
+      const chunk      = rows.slice(p * rowsPerPage, (p + 1) * rowsPerPage);
+      const isLastPage = p === totalPages - 1;
+      const tbodyHTML  = chunk.map((r, ri) => {
+        const absIdx = p * rowsPerPage + ri;
+        return `<tr class="${absIdx % 2 === 1 ? 'ps-even' : ''}">${
+          r.map((c, ci) => `<td${getCellAttr(ci, c)}>${c ?? '—'}</td>`).join('')
+        }</tr>`;
+      }).join('');
+
+      pagesHTML += `<div class="pdf-page">
+        ${watermarkHTML}
+        ${pageHeaderHTML(p + 1)}
+        <div class="pdf-page-body">
+          <div class="table-wrap">
+            <table>
+              <thead>${theadHTML}</thead>
+              <tbody>${tbodyHTML}</tbody>
+            </table>
+            ${isLastPage && totalsLine ? `<div class="totals">${totalsLine}</div>` : ''}
+          </div>
+        </div>
+        ${pageFooterHTML(p + 1)}
+      </div>`;
+    }
+
+    const wrapEl = document.createElement('div');
+    wrapEl.innerHTML = pagesHTML;
+
+    _buildModal(wrapEl, { title, logo, shareText, periodText, multiPage: true });
   }
 
   /* ══════════════════════════════════════════════════════
