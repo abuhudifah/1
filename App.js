@@ -828,46 +828,6 @@ function _updateNavHighlight(activeTabId) {
   });
 }
 
-function _showContentLoader() {
-  if (!_contentEl) return;
-  _contentEl.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:center;
-      min-height:200px;flex-direction:column;gap:12px;">
-      <div class="spinner spinner-dark"></div>
-      <p style="color:var(--text-muted);font-size:0.82rem;">جاري التحميل...</p>
-    </div>`;
-}
-
-// ============================================================
-// تنظيف المكوّن النشط
-// ============================================================
-function _destroyActiveComponent() {
-  if (!_activeComponentId) return;
-
-  const componentMap = {
-    [TABS.DASHBOARD]           : 'DashboardComponent',
-    [TABS.DATA_ENTRY]          : 'DataEntryComponent',
-    [TABS.DAILY_SUMMARY]       : 'DailySummaryComponent',
-    [TABS.BANK_ACCOUNTS]       : 'BankAccountsComponent',
-    [TABS.DEBTORS]             : 'DebtorsComponent',
-    [TABS.FAILED_DEPOSITS]     : 'FailedDepositsComponent',
-    [TABS.NOTIFICATIONS]       : 'NotificationsComponent',
-    [TABS.ALL_OPERATIONS]      : 'AllOperationsComponent',
-    [TABS.AUDIT_LOG]           : 'AuditLogComponent',
-    [TABS.USERS]               : 'UsersComponent',
-    [TABS.ACCOUNT_MANAGEMENT]  : 'AccountManagementComponent',
-    [TABS.SETTINGS]            : 'SettingsComponent',
-  };
-
-  const name = componentMap[_activeComponentId];
-  if (name && window[name]?.destroy) {
-    try { window[name].destroy(); } catch (e) {
-      console.warn(`⚠️ destroy() لـ ${name}:`, e.message);
-    }
-  }
-  _activeComponentId = null;
-}
-
 // ============================================================
 // ربط أحداث AppStore
 // ============================================================

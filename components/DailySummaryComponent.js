@@ -279,28 +279,6 @@ const DailySummaryComponent = {
       </div>`).join('');
   },
 
-  async _renderOpeningBalance(date, agentId) {
-    const el = document.getElementById('summary-opening');
-    if (!el) return;
-    let opening = 0;
-    if (agentId) {
-      const bal = await AccountingService.getAccountBalance(AccountingService.AccountId.agent(agentId));
-      if (isOk(bal)) opening = bal.data;
-    }
-    const previous = current - todayNet;
-
-    const agentName = AppStore.getState('users').find(u => u.id === agentId)?.display_name || '';
-    const fmtBal = (v) => `${Math.abs(v).toLocaleString('en-US')} ${v >= 0 ? 'عليه' : 'له'}`;
-
-    el.innerHTML = `
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
-        <span style="font-size:0.8rem;color:var(--text-secondary);">صندوق ${escapeHtml(agentName)}</span>
-        <span style="font-size:0.82rem;">الرصيد السابق: <b style="color:var(--text-secondary);direction:ltr;">${fmtBal(previous)}</b></span>
-        <span style="font-size:0.82rem;">حركة اليوم: <b style="color:${todayNet >= 0 ? 'var(--success)' : 'var(--danger)'};direction:ltr;">${todayNet >= 0 ? '+' : '−'}${Math.abs(todayNet).toLocaleString('en-US')}</b></span>
-        <span style="font-size:0.92rem;">الرصيد الحالي: <b style="color:${current >= 0 ? 'var(--success)' : 'var(--danger)'};direction:ltr;">${fmtBal(current)}</b></span>
-      </div>`;
-  },
-
   _renderTransactionsList() {
     const listEl  = document.getElementById('summary-tx-list');
     const countEl = document.getElementById('summary-count');
