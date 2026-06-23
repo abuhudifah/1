@@ -267,16 +267,11 @@ async function logout(clearLocalData = false, _skipOfflineSync = false) {
     if (hasSession) {
       // 1) أبطل جلسات الأجهزة الأخرى
       try { await supabaseClient.auth.signOut({ scope: 'others' }); } catch { /* تجاهل */ }
-      // 2) نظّف الحالة المحلية لـ GoTrue (لا يُبطل التوكن على الخادم)
+      // 2) نظّف الحالة المحلية بإزالة مفاتيح Supabase من localStorage مباشرةً
       try {
-        if (typeof supabaseClient.auth._removeSession === 'function') {
-          await supabaseClient.auth._removeSession();
-        } else {
-          // احتياط: أزل مفاتيح Supabase يدوياً
-          Object.keys(localStorage)
-            .filter(k => /^sb-.+-auth-token/.test(k))
-            .forEach(k => { try { localStorage.removeItem(k); } catch { /* تجاهل */ } });
-        }
+        Object.keys(localStorage)
+          .filter(k => /^sb-.+-auth-token/.test(k))
+          .forEach(k => { try { localStorage.removeItem(k); } catch { /* تجاهل */ } });
       } catch { /* تجاهل */ }
     }
 
@@ -1536,7 +1531,7 @@ async function _ensureUserAccountNumber(userId, profile = null) {
     }
     
     let newNumber;
-    const entityType = profile?.role === ROLES.AGENT ? 'user' : 'user'; // RPC تدعم 'user'
+    const entityType = 'user'; // RPC تدعم 'user' فقط
     const { data: rpcNumber, error: genError } = await supabaseClient.rpc('generate_account_number', {
       entity_type: entityType
     });
@@ -1710,7 +1705,7 @@ async function _fetchUserProfile(userId) {
     try {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)
-        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors, account_number, allowed_companies, allowed_banks, allowed_users')
+        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors, account_number, allowed_companies, allowed_banks, allowed_users, quick_login_enabled')
         .eq('id', userId).single();
       if (!error && data) return ok(data);
       console.warn('⚠️ _fetchUserProfile Supabase فشل:', error?.message);

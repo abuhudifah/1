@@ -48,7 +48,10 @@ const AllOperationsComponent = {
     wrap.appendChild(title);
 
     const users  = AppStore.getState('users') || [];
-    const agents = users.filter(u=>u.role==='agent'&&u.is_active);
+    const agents = users.filter(u=>u.is_active).sort((a,b)=>{
+      if (a.role===b.role) return (a.display_name||'').localeCompare(b.display_name||'','ar');
+      return a.role==='agent' ? -1 : 1;
+    });
 
     // لوحة الفلاتر
     const filterCard = document.createElement('div');
@@ -65,10 +68,10 @@ const AllOperationsComponent = {
           </select>
         </div>
         <div class="form-group" style="margin:0;">
-          <label class="form-label" style="font-size:0.78rem;">المندوب</label>
+          <label class="form-label" style="font-size:0.78rem;">المستخدم</label>
           <select id="ao-agent" class="form-control" style="padding:7px;font-size:0.85rem;">
             <option value="">الجميع</option>
-            ${agents.map(u=>`<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name)}</option>`).join('')}
+            ${agents.map(u=>`<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name)}${u.role!=='agent'?' (مدير)':''}</option>`).join('')}
           </select>
         </div>
         <div class="form-group" style="margin:0;">

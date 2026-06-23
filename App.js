@@ -50,7 +50,7 @@ const _VERIFY_TTL_MS = 5 * 60 * 1000;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🚀 App.js v3.0: بدء تهيئة النظام...');
+  console.log('🚀 App.js v4.0: بدء تهيئة النظام...');
 
   try {
     // 1. Dexie
@@ -281,7 +281,8 @@ function _buildHeader() {
   brandText.className = 'header-brand-text';
   brandText.innerHTML = `
     <div class="header-brand-name">${escapeHtml(APP_CONFIG?.NAME || 'أبو حذيفة')}</div>
-    <div class="header-brand-sub">للصرافة والتحويلات</div>`;
+    <div class="header-brand-sub">للصرافة والتحويلات</div>
+    <div id="header-date" class="header-date"></div>`;
   brand.appendChild(brandText);
   header.appendChild(brand);
 
@@ -441,61 +442,6 @@ function _themeIcon(isDark) {
        </svg>`;
 }
 
-/* بطاقة معلومات المستخدم المنسدلة */
-function _buildUserCard(user, accNum) {
-  const card = document.createElement('div');
-  card.className = 'user-card-dropdown';
-
-  const roleLabel = ROLE_LABELS[user?.role] || user?.role || '';
-  const initial   = (user?.display_name || '?').charAt(0).toUpperCase();
-
-  card.innerHTML = `
-    <div class="ucd-header">
-      <div class="ucd-avatar">${escapeHtml(initial)}</div>
-      <div>
-        <div class="ucd-name">${escapeHtml(user?.display_name || '')}</div>
-        <div class="ucd-role">${escapeHtml(roleLabel)}</div>
-      </div>
-    </div>
-    <div class="ucd-row">
-      <span class="ucd-label">رقم الحساب</span>
-      <span class="ucd-val" style="color:#60a5fa;font-size:0.72rem;">
-        ${accNum ? escapeHtml(accNum.slice(0,20)) : '—'}
-      </span>
-    </div>
-    <div class="ucd-row">
-      <span class="ucd-label">الرصيد الحالي</span>
-      <span class="ucd-val green" id="ucd-balance">—</span>
-    </div>
-    <div class="ucd-row">
-      <span class="ucd-label">حالة المزامنة</span>
-      <span class="ucd-val" id="ucd-sync-status">● متزامن</span>
-    </div>
-    <div class="ucd-row">
-      <span class="ucd-label">تاريخ اليوم</span>
-      <span class="ucd-val">${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
-    </div>`;
-
-  // تحميل الرصيد عند الفتح
-  card.addEventListener('transitionend', async () => {
-    if (!card.classList.contains('open')) return;
-    const balEl = card.querySelector('#ucd-balance');
-    if (!balEl || balEl.dataset.loaded) return;
-    balEl.dataset.loaded = '1';
-    const agentId = user?.id;
-    if (agentId && window.AccountingService) {
-      const r = await AccountingService.getAccountBalance('AGT_' + agentId);
-      if (window.isOk && isOk(r)) {
-        balEl.textContent = Math.round(r.data).toLocaleString('en-US') + ' ر.س';
-        balEl.style.color = r.data >= 0 ? '#10b981' : '#f87171';
-      }
-    }
-  });
-
-  return card;
-}
-
-
 // ============================================================
 // شريط التنقل
 // ============================================================
@@ -517,7 +463,7 @@ function _buildNav() {
     notifications       : 'bell',
     'all-operations'    : 'list',
     'audit-log'         : 'shield-check',
-    users               : 'user-cog',
+    users               : 'users',
     'account-management': 'book-open',
     settings            : 'settings',
   };
@@ -826,46 +772,6 @@ function _updateNavHighlight(activeTabId) {
       btn.removeAttribute('aria-current');
     }
   });
-}
-
-function _showContentLoader() {
-  if (!_contentEl) return;
-  _contentEl.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:center;
-      min-height:200px;flex-direction:column;gap:12px;">
-      <div class="spinner spinner-dark"></div>
-      <p style="color:var(--text-muted);font-size:0.82rem;">جاري التحميل...</p>
-    </div>`;
-}
-
-// ============================================================
-// تنظيف المكوّن النشط
-// ============================================================
-function _destroyActiveComponent() {
-  if (!_activeComponentId) return;
-
-  const componentMap = {
-    [TABS.DASHBOARD]           : 'DashboardComponent',
-    [TABS.DATA_ENTRY]          : 'DataEntryComponent',
-    [TABS.DAILY_SUMMARY]       : 'DailySummaryComponent',
-    [TABS.BANK_ACCOUNTS]       : 'BankAccountsComponent',
-    [TABS.DEBTORS]             : 'DebtorsComponent',
-    [TABS.FAILED_DEPOSITS]     : 'FailedDepositsComponent',
-    [TABS.NOTIFICATIONS]       : 'NotificationsComponent',
-    [TABS.ALL_OPERATIONS]      : 'AllOperationsComponent',
-    [TABS.AUDIT_LOG]           : 'AuditLogComponent',
-    [TABS.USERS]               : 'UsersComponent',
-    [TABS.ACCOUNT_MANAGEMENT]  : 'AccountManagementComponent',
-    [TABS.SETTINGS]            : 'SettingsComponent',
-  };
-
-  const name = componentMap[_activeComponentId];
-  if (name && window[name]?.destroy) {
-    try { window[name].destroy(); } catch (e) {
-      console.warn(`⚠️ destroy() لـ ${name}:`, e.message);
-    }
-  }
-  _activeComponentId = null;
 }
 
 // ============================================================
@@ -1628,4 +1534,4 @@ function _initSafeEnhancements() {
   }
 }
 
-console.log('✅ App.js v3.0 — هيدر محسَّن + QuickLoginBanner + last_login + Safe Enhancements v1.0');
+console.log('✅ App.js v4.0 — Tab Panel Manager + هيدر محسَّن + QuickLoginBanner + Bug Fixes');

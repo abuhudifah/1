@@ -346,7 +346,7 @@ async function cleanStaleQueueItems() {
     const stale = await db.sync_queue
       .where('created_at')
       .below(cutoff)
-      .and(item => item.sync_status === SYNC_STATUS.CONFLICT || item.attempts >= SYNC_CONFIG.MAX_RETRIES)
+      .and(item => item.sync_status === SYNC_STATUS.CONFLICT || item.retries >= SYNC_CONFIG.MAX_RETRIES)
       .limit(BATCH_SIZE)
       .toArray();
 
@@ -682,7 +682,7 @@ window.closeDexie               = closeDexie;
 window.runStartupCleanup        = runStartupCleanup;
 window.isCacheValid             = isCacheValid;
 window.setCacheMeta             = setCacheMeta;
-window.invalidateCache          = invalidateCache;
+window.invalidateDexieCache     = invalidateCache;
 window.invalidateCacheByPrefix  = invalidateCacheByPrefix;
 window.getLocalUsers            = getLocalUsers;
 window.getLocalUser             = getLocalUser;

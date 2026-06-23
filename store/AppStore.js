@@ -295,7 +295,9 @@ function _swrRevalidate(tableName, supabaseQuery, stateKey, eventName, transform
  * @param {Function} [transformer] دالة تحويل للبيانات قبل setState (للإعدادات مثلاً)
  */
 async function _fetchOnline(tableName, supabaseQuery, stateKey = null, eventName = 'store:stateChanged', transformer = null) {
-  const hasData = stateKey && Array.isArray(_state[stateKey]) && _state[stateKey].length > 0;
+  const _cached = stateKey ? _state[stateKey] : null;
+  const hasData = _cached instanceof Map ? _cached.size > 0 :
+                  Array.isArray(_cached) ? _cached.length > 0 : false;
   const age     = Date.now() - (_cacheTs[tableName] || 0);
   const isFresh = age < _CACHE_TTL_MS;
 
@@ -422,7 +424,7 @@ async function _loadDebtors() {
 async function _loadUsers() {
   try {
     const data = isOfflineMode()
-      ? await _fetchOffline(() => db.users.where('is_active').equals(1).toArray().catch(() => []))
+      ? await _fetchOffline(() => db.users.where('is_active').equals(true).toArray().catch(() => []))
       : await _fetchOnline(
           TABLES.USERS,
           () => supabaseClient.from(TABLES.USERS)
