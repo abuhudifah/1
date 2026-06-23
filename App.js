@@ -517,7 +517,7 @@ function _buildNav() {
     notifications       : 'bell',
     'all-operations'    : 'list',
     'audit-log'         : 'shield-check',
-    users               : 'user-cog',
+    users               : 'users',
     'account-management': 'book-open',
     settings            : 'settings',
   };

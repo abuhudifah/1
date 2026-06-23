@@ -1710,7 +1710,7 @@ async function _fetchUserProfile(userId) {
     try {
       const { data, error } = await supabaseClient
         .from(TABLES.USERS)
-        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors, account_number, allowed_companies, allowed_banks, allowed_users')
+        .select('id, username, display_name, role, is_active, allowed_tabs, quick_equation_hash, last_login, created_at, assigned_debtors, account_number, allowed_companies, allowed_banks, allowed_users, quick_login_enabled')
         .eq('id', userId).single();
       if (!error && data) return ok(data);
       console.warn('⚠️ _fetchUserProfile Supabase فشل:', error?.message);

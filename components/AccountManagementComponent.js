@@ -34,7 +34,7 @@ const AccountManagementComponent = {
   // شجرة الحسابات الافتراضية
   DEFAULT_CHART : [
     { category:'treasury', name:'الصندوق العام',      id:'GENERAL_FUND',  icon:'landmark', desc:'الخزينة الرئيسية للنظام' },
-    { category:'treasury', name:'الخزينة النقدية',     id:'CASH_GENERAL',  icon:'banknotes', desc:'النقد المتوفر يدوياً'    },
+    { category:'treasury', name:'الخزينة النقدية',     id:'CASH_GENERAL',  icon:'banknote', desc:'النقد المتوفر يدوياً'    },
     { category:'treasury', name:'حساب الشركات العام',  id:'COMP_GENERAL',  icon:'building-2', desc:'حساب تسوية الشركات'     },
   ],
 

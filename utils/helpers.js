@@ -683,8 +683,18 @@ async function copyAccountNumberWithShare(accountNumber, entityName = '') {
   box.querySelector('#acc-share-send').addEventListener('click', async () => {
     const userId = box.querySelector('#acc-share-user').value;
     if (!userId) { close(); return; }
-    if (typeof NotificationService === 'undefined') { showToast('خدمة الإشعارات غير متوفرة', 'error'); close(); return; }
-    const res = await NotificationService.shareAccountNumber(userId, entityName, accountNumber);
+    const _msgText = `يمكنك التحويل إلى حساب ${entityName || accountNumber} عبر هذا الرقم (${accountNumber}) وإضافته كمستفيد مستقبلي`;
+    const res = await repo.create(TABLES.NOTIFICATIONS, {
+      title    : '📤 مشاركة رقم حساب',
+      body     : _msgText,
+      message  : _msgText,
+      type     : 'account_share',
+      data     : JSON.stringify({ account_number: accountNumber, entity_name: entityName }),
+      target   : JSON.stringify([userId]),
+      sender_id: (typeof AuthService !== 'undefined' && AuthService.getCurrentUserId) ? AuthService.getCurrentUserId() : null,
+      read_by  : '[]',
+      hidden_by: '[]',
+    });
     if (isOk(res)) showToast('تم إرسال رقم الحساب كإشعار ✓', 'success');
     else showToast(`تعذّر الإرسال: ${res.error || ''}`, 'error');
     close();

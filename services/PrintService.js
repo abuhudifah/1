@@ -18,6 +18,11 @@ const PrintService = (() => {
     'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js',
   ];
 
+  function _esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
   function _loadScript(url) {
     return new Promise((resolve, reject) => {
       const existing = document.querySelector(`script[src="${url}"]`);
@@ -534,14 +539,14 @@ const PrintService = (() => {
     const pageHeaderHTML = (pageNum) => `
       <div class="pdf-page-header">
         <div>
-          <div class="doc-title" style="font-size:17px;">${title}</div>
-          ${subtitle  ? `<div class="doc-sub">${subtitle}</div>`   : ''}
-          ${accountId ? `<div class="doc-acct">معرف الحساب: ${accountId}</div>` : ''}
+          <div class="doc-title" style="font-size:17px;">${_esc(title)}</div>
+          ${subtitle  ? `<div class="doc-sub">${_esc(subtitle)}</div>`   : ''}
+          ${accountId ? `<div class="doc-acct">معرف الحساب: ${_esc(accountId)}</div>` : ''}
         </div>
         <div class="pdf-page-meta">
           ${logo ? `<img class="doc-logo" src="${logo}" alt="شعار" style="height:50px;margin-bottom:4px;">` : ''}
-          ${periodText ? `<div class="doc-period" style="font-size:11px;">${periodText}</div>` : ''}
-          ${userName   ? `<div class="doc-user">${userName}</div>` : ''}
+          ${periodText ? `<div class="doc-period" style="font-size:11px;">${_esc(periodText)}</div>` : ''}
+          ${userName   ? `<div class="doc-user">${_esc(userName)}</div>` : ''}
           <div class="pdf-page-num">صفحة ${pageNum} من ${totalPages}</div>
         </div>
       </div>`;
@@ -828,13 +833,13 @@ const PrintService = (() => {
     el.innerHTML = `
       <div class="doc-header">
         <div>
-          <div class="doc-title">${title}</div>
-          ${subtitle ? `<div class="doc-sub">${subtitle}</div>` : ''}
+          <div class="doc-title">${_esc(title)}</div>
+          ${subtitle ? `<div class="doc-sub">${_esc(subtitle)}</div>` : ''}
         </div>
         <div class="doc-meta">
           ${logo ? `<img class="doc-logo" src="${logo}" alt="شعار">` : ''}
-          ${date ? `<div class="doc-period">${date}</div>` : ''}
-          ${userName ? `<div class="doc-user">${userName}</div>` : ''}
+          ${date ? `<div class="doc-period">${_esc(date)}</div>` : ''}
+          ${userName ? `<div class="doc-user">${_esc(userName)}</div>` : ''}
         </div>
       </div>
       ${statsHTML}
