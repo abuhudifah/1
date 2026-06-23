@@ -1056,10 +1056,12 @@ const AccountManagementComponent = {
 
     try {
       let entries = [];
+      let openingEntries = [];
       let useLocal = isOfflineMode() || !isOnline();
 
       if (!isOfflineMode() && isOnline()) {
         try {
+          // جلب القيود ضمن الفترة المحددة
           const { data, error } = await supabaseClient
             .from('account_ledger').select('*')
             .eq('account_id', acc).gte('date', from).lte('date', to)
@@ -1067,6 +1069,13 @@ const AccountManagementComponent = {
             .limit(QUERY_LIMITS.LEDGER_ENTRIES);
           if (error) throw error;
           entries = data || [];
+
+          // جلب القيود قبل تاريخ البداية لحساب الرصيد السابق
+          const { data: beforeData, error: beforeError } = await supabaseClient
+            .from('account_ledger').select('*')
+            .eq('account_id', acc).lt('date', from)
+            .limit(50000);
+          if (!beforeError) openingEntries = beforeData || [];
         } catch (e) {
           console.warn('فشل جلب الكشف من السحابة، سيتم استخدام المحلي', e);
           useLocal = true;
@@ -1078,9 +1087,15 @@ const AccountManagementComponent = {
         entries = all
           .filter(e => e.date >= from && e.date <= to)
           .sort((a, b) => (a.date + (a.created_at || '')) > (b.date + (b.created_at || '')) ? 1 : -1);
+        openingEntries = all.filter(e => e.date < from);
       } else if (useLocal) {
         throw new Error('قاعدة البيانات المحلية غير متوفرة ولا يوجد اتصال');
       }
+
+      // حساب الرصيد السابق من القيود قبل تاريخ البداية
+      const openingDebit = (openingEntries || []).reduce((s, e) => s + (parseFloat(e.debit) || 0), 0);
+      const openingCredit = (openingEntries || []).reduce((s, e) => s + (parseFloat(e.credit) || 0), 0);
+      const openingBalance = openingDebit - openingCredit;
 
       // إثراء القيود ببيانات المعاملة المرتبطة (الوقت، النوع، الأسماء، التفاصيل)
       const txMap = await this._enrichEntries(entries);
@@ -1100,11 +1115,6 @@ const AccountManagementComponent = {
       });
       rows.sort((a, b) => (a.date + String(a.timeRaw || '')) > (b.date + String(b.timeRaw || '')) ? 1 : -1);
 
-      if (!rows.length) {
-        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات في هذه الفترة</div></div>`;
-        return;
-      }
-
       // تحويل العرض: مدين(debit) → عليكم ، دائن(credit) → لكم
       const totalLakum  = rows.reduce((s, r) => s + r.credit, 0); // إجمالي لكم = Σ دائن
       const totalAlaykum = rows.reduce((s, r) => s + r.debit, 0); // إجمالي عليكم = Σ مدين
@@ -1114,8 +1124,24 @@ const AccountManagementComponent = {
       const netLabelWord = acc.startsWith('COMP_') ? 'صافي الرصيد' : 'صافي الحركة';
       const fmt = (n) => Math.round(n).toLocaleString('en-US');
 
+      // حساب الرصيد النهائي = الرصيد السابق + صافي الحركة
+      const finalBalance = openingBalance + net;
+
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
         <thead><tr><th>التاريخ</th><th>الوقت</th><th>نوع العملية</th><th>لكم</th><th>عليكم</th><th>التفاصيل</th></tr></thead><tbody>`;
+
+      // إضافة صف الرصيد السابق إذا كان موجوداً
+      if (openingEntries.length > 0) {
+        html += `<tr style="background:rgba(59,130,246,0.08);font-weight:700;">
+          <td style="white-space:nowrap;">رصيد سابق</td>
+          <td></td>
+          <td style="font-weight:600;">رصيد مرحّل</td>
+          <td style="color:var(--success);direction:ltr;">${openingCredit > 0 ? fmt(openingCredit) : '0'}</td>
+          <td style="color:var(--danger);direction:ltr;">${openingDebit > 0 ? fmt(openingDebit) : '0'}</td>
+          <td style="color:var(--text-secondary);">—</td>
+        </tr>`;
+      }
+
       for (const r of rows) {
         html += `<tr>
           <td style="white-space:nowrap;">${formatDateArabic(r.date)}</td>
@@ -1126,6 +1152,12 @@ const AccountManagementComponent = {
           <td style="color:var(--text-secondary);">${escapeHtml(r.details || '—')}</td>
         </tr>`;
       }
+
+      if (!rows.length && !openingEntries.length) {
+        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات في هذه الفترة</div></div>`;
+        return;
+      }
+
       html += `</tbody><tfoot>`;
       if (isExpense) {
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
@@ -1133,10 +1165,13 @@ const AccountManagementComponent = {
           <td>0</td><td style="direction:ltr;color:var(--danger);">${fmt(totalAlaykum)}</td><td></td></tr>`;
       } else {
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
-          <td colspan="3" style="text-align:left;">الإجماليات</td>
+          <td colspan="3" style="text-align:left;">الإجماليات (الفترة)</td>
           <td style="direction:ltr;color:var(--success);">${fmt(totalLakum)}</td>
           <td style="direction:ltr;color:var(--danger);">${fmt(totalAlaykum)}</td>
           <td style="direction:ltr;">${netLabelWord}: ${fmt(Math.abs(net))} ${netNature}</td></tr>`;
+        html += `<tr style="font-weight:800;background:rgba(0,0,0,0.06);color:var(--text-primary);">
+          <td colspan="3" style="text-align:left;">الرصيد النهائي</td>
+          <td colspan="3" style="direction:ltr;color:${finalBalance >= 0 ? 'var(--success)' : 'var(--danger)'};font-size:1.05rem;">${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'}</td></tr>`;
       }
       html += `</tfoot></table></div>`;
 
@@ -1147,29 +1182,37 @@ const AccountManagementComponent = {
         totalsText = `إجمالي المصروفات: ${fmt(totalAlaykum)}`;
         html += totalsBox(`<span>إجمالي المصروفات: <b>${fmt(totalAlaykum)}</b></span>`);
       } else {
-        totalsText = `إجمالي لكم: ${fmt(totalLakum)} | إجمالي عليكم: ${fmt(totalAlaykum)} | ${netLabelWord}: ${fmt(Math.abs(net))} ${netNature}`;
+        totalsText = `الرصيد السابق: ${fmt(Math.abs(openingBalance))} ${openingBalance >= 0 ? 'لكم' : 'عليكم'} | إجمالي لكم: ${fmt(totalLakum)} | إجمالي عليكم: ${fmt(totalAlaykum)} | الرصيد النهائي: ${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'}`;
         html += totalsBox(`
+          <span>الرصيد السابق: <b>${fmt(Math.abs(openingBalance))} ${openingBalance >= 0 ? 'لكم' : 'عليكم'}</b></span>
           <span>إجمالي لكم: <b>${fmt(totalLakum)}</b></span>
           <span>إجمالي عليكم: <b>${fmt(totalAlaykum)}</b></span>
-          <span>${netLabelWord}: <b>${fmt(Math.abs(net))} ${netNature}</b></span>`);
+          <span>الرصيد النهائي: <b style="color:${finalBalance >= 0 ? '#059669' : '#dc2626'}">${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'}</b></span>`);
       }
 
       // تخزين بيانات الكشف للطباعة الاحترافية
       // FIX: عنوان محدد للحساب والفترة لاسم ملف PDF دلالي
+      const printRows = (openingEntries.length > 0 ? [[
+        'رصيد سابق', '', 'رصيد مرحّل',
+        openingCredit > 0 ? fmt(openingCredit) : '0',
+        openingDebit > 0 ? fmt(openingDebit) : '0', '—'
+      ]] : []).concat(rows.map(r => [formatDateArabic(r.date), r.time, r.label,
+        r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']));
+
       this._lastStatement = {
         kind: 'ledger',
         title: `كشف_${this._selectedAccountName || acc}`,
         accountId: acc,
         periodText: this._buildPeriodText(from, to),
         columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
-        rows: rows.map(r => [formatDateArabic(r.date), r.time, r.label,
-          r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']),
+        rows: printRows,
         totalsLine: isExpense
           ? `<span>إجمالي المصروفات: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`
           : [
+              `<span>الرصيد السابق: <b style="color:${openingBalance >= 0 ? '#059669' : '#dc2626'}">${fmt(Math.abs(openingBalance))} ${openingBalance >= 0 ? 'لكم' : 'عليكم'} ر.س</b></span>`,
               `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
               `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
-              `<span>${netLabelWord}: <b style="color:${net<=0?'#059669':'#dc2626'}">${fmt(Math.abs(net))} ${netNature} ر.س</b></span>`,
+              `<span>الرصيد النهائي: <b style="color:${finalBalance >= 0 ? '#059669' : '#dc2626'}">${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'} ر.س</b></span>`,
             ].join(''),
         totalsText,
       };
@@ -1197,10 +1240,12 @@ const AccountManagementComponent = {
 
     try {
       let txns = [];
+      let openingTxns = [];
       let useLocal = isOfflineMode() || !isOnline();
 
       if (!isOfflineMode() && isOnline()) {
         try {
+          // جلب المعاملات ضمن الفترة المحددة
           const { data, error } = await supabaseClient.from('transactions')
             .select('id,date,time,type,amount,details,created_at, agent:users!transactions_agent_id_fkey(display_name)')
             .eq('bank_account_id', bankId)
@@ -1210,6 +1255,15 @@ const AccountManagementComponent = {
             .order('date', { ascending: true }).order('time', { ascending: true });
           if (error) throw error;
           txns = (data || []).map(t => ({ ...t, agentName: t.agent?.display_name || '—' }));
+
+          // جلب المعاملات قبل تاريخ البداية لحساب الرصيد الافتتاحي
+          const { data: beforeData, error: beforeError } = await supabaseClient.from('transactions')
+            .select('type,amount,is_reversed')
+            .eq('bank_account_id', bankId)
+            .in('type', ['deposit', 'bank_withdrawal'])
+            .eq('is_reversed', false)
+            .lt('date', from);
+          if (!beforeError) openingTxns = beforeData || [];
         } catch (e) { console.warn('فشل كشف البنك من السحابة، fallback محلي', e); useLocal = true; }
       }
 
@@ -1220,50 +1274,82 @@ const AccountManagementComponent = {
           .filter(t => !t.is_reversed && ['deposit', 'bank_withdrawal'].includes(t.type) && t.date >= from && t.date <= to)
           .map(t => ({ ...t, agentName: maps.userById.get(t.agent_id)?.display_name || '—' }))
           .sort((a, b) => (a.date + String(a.time || '')) > (b.date + String(b.time || '')) ? 1 : -1);
+        openingTxns = all.filter(t => !t.is_reversed && ['deposit', 'bank_withdrawal'].includes(t.type) && t.date < from);
       } else if (useLocal) {
         throw new Error('قاعدة البيانات المحلية غير متوفرة ولا يوجد اتصال');
       }
 
-      if (!txns.length) {
-        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات بنكية في هذه الفترة</div></div>`;
-        return;
-      }
+      // حساب الرصيد الافتتاحي من المعاملات قبل تاريخ البداية
+      let openingDepTotal = 0, openingWdTotal = 0;
+      (openingTxns || []).forEach(t => {
+        const amt = parseFloat(t.amount) || 0;
+        if (t.type === 'deposit') openingDepTotal += amt; else openingWdTotal += amt;
+      });
+      const openingBalance = openingDepTotal - openingWdTotal;
 
       const fmt = (n) => Math.round(n).toLocaleString('en-US');
       let totalDep = 0, totalWd = 0;
       const printRows = [];
       this._stmtPrintRows = printRows;
+
+      // إضافة صف الرصيد الافتتاحي إذا كان موجوداً
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
         <thead><tr><th>#</th><th>الوقت</th><th>نوع العملية</th><th>المندوب</th><th>المبلغ</th></tr></thead><tbody>`;
-      txns.forEach((t, i) => {
+
+      if (openingTxns.length > 0) {
+        html += `<tr style="background:rgba(59,130,246,0.08);font-weight:700;">
+          <td></td>
+          <td></td>
+          <td style="font-weight:600;">رصيد افتتاحي</td>
+          <td></td>
+          <td style="direction:ltr;font-weight:700;color:${openingBalance >= 0 ? 'var(--success)' : 'var(--danger)'};"><strong>${fmt(Math.abs(openingBalance))} ر.س</strong></td>
+        </tr>`;
+        printRows.push(['', '', 'رصيد افتتاحي', '', fmt(Math.abs(openingBalance)) + ' ر.س']);
+      }
+
+      let rowNum = 1;
+      txns.forEach((t) => {
         const isDep = t.type === 'deposit';
         const amt = parseFloat(t.amount) || 0;
         if (isDep) totalDep += amt; else totalWd += amt;
         const time = this._formatTime12(t.time || t.created_at);
         const typeLbl = isDep ? 'إيداع نقدي' : 'سحب نقدي';
-        printRows.push([i + 1, time, typeLbl, t.agentName || '—', fmt(amt)]);
+        printRows.push([rowNum, time, typeLbl, t.agentName || '—', fmt(amt)]);
         html += `<tr>
-          <td>${i + 1}</td>
+          <td>${rowNum}</td>
           <td style="white-space:nowrap;">${escapeHtml(time)}</td>
           <td style="font-weight:600;color:${isDep ? 'var(--success)' : 'var(--warning)'};">${typeLbl}</td>
           <td>${escapeHtml(t.agentName || '—')}</td>
           <td style="direction:ltr;font-weight:700;">${fmt(amt)} ر.س</td>
         </tr>`;
+        rowNum++;
       });
+
+      if (!txns.length && !openingTxns.length) {
+        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات بنكية في هذه الفترة</div></div>`;
+        return;
+      }
+
       const net = totalDep - totalWd;
+      const closingBalance = openingBalance + net;
       const nature = net >= 0 ? 'مدين' : 'دائن';
-      const bankTotalsText = `إجمالي الإيداعات: ${fmt(totalDep)} | إجمالي السحوبات: ${fmt(totalWd)} | صافي الحركة: ${fmt(Math.abs(net))} ${nature}`;
+      const closingNature = closingBalance >= 0 ? 'مدين' : 'دائن';
+      const bankTotalsText = `الرصيد الافتتاحي: ${fmt(Math.abs(openingBalance))} | إجمالي الإيداعات: ${fmt(totalDep)} | إجمالي السحوبات: ${fmt(totalWd)} | صافي الحركة: ${fmt(Math.abs(net))} ${nature} | الرصيد الختامي: ${fmt(Math.abs(closingBalance))} ${closingNature}`;
       html += `</tbody></table></div>
         <div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px;padding:12px 14px;background:rgba(0,0,0,0.03);border-radius:10px;font-size:0.92rem;">
+          <span>الرصيد الافتتاحي: <b>${fmt(Math.abs(openingBalance))}</b></span>
           <span>إجمالي الإيداعات: <b>${fmt(totalDep)}</b></span>
           <span>إجمالي السحوبات: <b>${fmt(totalWd)}</b></span>
           <span>صافي الحركة: <b>${fmt(Math.abs(net))} ${nature}</b></span>
+          <span>الرصيد الختامي: <b style="color:${closingBalance >= 0 ? 'var(--success)' : 'var(--danger)'}">${fmt(Math.abs(closingBalance))} ${closingNature}</b></span>
         </div>`;
 
       const bankTotalsLine = [
+        `<span>الرصيد الافتتاحي: <b style="color:${openingBalance >= 0 ? '#059669' : '#dc2626'}">${fmt(Math.abs(openingBalance))} ر.س</b></span>`,
         `<span>إجمالي الإيداعات: <b style="color:#059669">${fmt(totalDep)} ر.س</b></span>`,
         `<span>إجمالي السحوبات: <b style="color:#dc2626">${fmt(totalWd)} ر.س</b></span>`,
         `<span>صافي الحركة: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(Math.abs(net))} ${nature} ر.س</b></span>`,
+        `<span>الرصيد الختامي: <b style="color:${closingBalance>=0?'#059669':'#dc2626'}">${fmt(Math.abs(closingBalance))} ${closingNature} ر.س</b></span>`,
       ].join('');
 
       this._lastStatement = {
