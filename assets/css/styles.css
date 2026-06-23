@@ -4722,7 +4722,7 @@ body.dark-mode .glass-card:hover   { border-color: rgba(59,130,246,0.20) !import
   display         : flex;
   align-items     : center;
   justify-content : center;
-  padding         : 80px 20px 40px;
+  padding         : 40px 20px;
   position        : relative;
   overflow        : hidden;
   background      : linear-gradient(135deg, #080e1f 0%, #0e2245 45%, #071628 75%, #080e1f 100%);
@@ -4819,7 +4819,7 @@ body.dark-mode .glass-card:hover   { border-color: rgba(59,130,246,0.20) !import
   max-width  : 368px;
   position   : relative;
   z-index    : 10;
-  margin-top : 16px;
+  margin-top : 0;
 }
 
 /* ── بطاقة Base ── */
@@ -5706,26 +5706,35 @@ body.dark-mode .offline-account-item:hover {
 .offline-account-name { font-weight: 600; font-size: 0.90rem; margin-bottom: 2px; }
 .offline-account-num  { font-size: 0.76rem; color: var(--text-muted, #64748b); }
 
-/* ── أزرار الدخول الثلاثة (أيقونات فقط) ── */
+/* ── أزرار الدخول (أيقون + تسمية) ── */
 .calc-auth-row {
   display         : flex;
-  gap             : 12px;
+  gap             : 10px;
   justify-content : center;
   margin-top      : 14px;
 }
 .calc-auth-btn {
-  width           : 56px;
-  height          : 56px;
+  min-width       : 76px;
   border-radius   : 14px;
   background      : rgba(255,255,255,0.10);
   border          : 1.5px solid rgba(255,255,255,0.18);
   color           : rgba(255,255,255,0.85);
   cursor          : pointer;
   display         : flex;
+  flex-direction  : column;
   align-items     : center;
   justify-content : center;
+  gap             : 5px;
+  padding         : 10px 14px;
   transition      : background 180ms, transform 120ms, box-shadow 180ms;
   flex-shrink     : 0;
+}
+.calc-auth-label {
+  font-size       : 0.62rem;
+  font-family     : var(--font-arabic, inherit);
+  line-height     : 1;
+  opacity         : 0.85;
+  white-space     : nowrap;
 }
 .calc-auth-btn:hover {
   background : rgba(255,255,255,0.20);
@@ -5743,6 +5752,28 @@ body.dark-mode .offline-account-item:hover {
   color        : #fdba74;
 }
 .calc-auth-btn--offline:hover { background: rgba(251,146,60,0.15); }
+
+/* ── صف أزرار الدخول البديل في بطاقة التسجيل ── */
+.lp-quick-btns-row {
+  display               : grid;
+  grid-template-columns : 1fr 1fr;
+  gap                   : 8px;
+  margin-top            : 12px;
+}
+.lp-quick-btns-row--single {
+  grid-template-columns : 1fr;
+}
+.lp-quick-btns-row .lp-back-ql,
+.lp-quick-btns-row .lp-offline-btn {
+  margin-top  : 0;
+  width       : 100%;
+  display     : flex;
+  align-items : center;
+  justify-content: center;
+  gap         : 6px;
+  min-height  : 42px;
+  font-size   : 0.80rem;
+}
 
 /* ── Animations ── */
 @keyframes lp-shake {
@@ -5764,6 +5795,98 @@ body.dark-mode .offline-account-item:hover {
   animation     : lp-spin 0.6s linear infinite;
   flex-shrink   : 0;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   آلة حاسبة — الوضع الفاتح (Light Mode)
+   ══════════════════════════════════════════════════════════════ */
+body:not(.dark-mode) .lp-wrap {
+  background: linear-gradient(135deg, #dbe8ff 0%, #c7d8ff 40%, #e8efff 70%, #dce8ff 100%);
+}
+body:not(.dark-mode) .lp-wrap::before {
+  background-image : radial-gradient(circle, rgba(37,99,235,0.10) 1px, transparent 1px);
+  opacity          : 0.7;
+}
+body:not(.dark-mode) .lp-bg-orb-1 {
+  background: radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 65%);
+}
+body:not(.dark-mode) .lp-bg-orb-2 {
+  background: radial-gradient(circle, rgba(16,185,129,0.10) 0%, transparent 65%);
+}
+body:not(.dark-mode) .lp-bg-orb-3 {
+  background: radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 65%);
+}
+
+/* بطاقة الآلة — فاتحة */
+body:not(.dark-mode) .calc-card {
+  background : #ffffff;
+  border     : 1px solid rgba(37,99,235,0.12);
+  box-shadow : 0 20px 60px rgba(37,99,235,0.14),
+               0 4px 16px rgba(37,99,235,0.08),
+               0 0 0 1px rgba(255,255,255,0.90) inset;
+}
+body:not(.dark-mode) .calc-display {
+  background     : linear-gradient(160deg,#f0f5ff 0%,#e8f0fe 100%);
+  border         : 1px solid rgba(37,99,235,0.10);
+  border-radius  : 16px;
+}
+body:not(.dark-mode) .calc-expr   { color: #94a3b8; }
+body:not(.dark-mode) .calc-result { color: #0f172a; }
+
+/* مؤشر Quick Login */
+body:not(.dark-mode) .calc-ql-badge {
+  background   : rgba(37,99,235,0.07);
+  border-color : rgba(37,99,235,0.20);
+  color        : #1d4ed8;
+}
+body:not(.dark-mode) .calc-ql-badge-dot { background: #2563eb; }
+body:not(.dark-mode) .calc-ql-status    { color: #1d4ed8; }
+
+/* أزرار الأرقام */
+body:not(.dark-mode) .calc-btn-num {
+  background : #e2e8f0;
+  color      : #1e293b;
+  box-shadow : 0 2px 4px rgba(0,0,0,0.10), 0 1px 0 rgba(255,255,255,0.95) inset;
+}
+body:not(.dark-mode) .calc-btn-num:hover { filter: brightness(0.96); }
+
+/* أزرار الوظائف (C، ⌫، %) */
+body:not(.dark-mode) .calc-btn-fn {
+  background : #cbd5e1;
+  color      : #334155;
+  box-shadow : 0 2px 4px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.90) inset;
+}
+body:not(.dark-mode) .calc-btn-fn:hover { filter: brightness(0.95); }
+
+/* أزرار المشغّلات والمساواة — تبقى زرقاء جميلة */
+body:not(.dark-mode) .calc-btn-op {
+  background : linear-gradient(145deg,#3b82f6,#2563eb);
+  box-shadow : 0 3px 10px rgba(37,99,235,0.35), 0 1px 0 rgba(255,255,255,0.20) inset;
+}
+body:not(.dark-mode) .calc-btn-eq {
+  background : linear-gradient(145deg,#2563eb,#1d4ed8);
+  box-shadow : 0 4px 14px rgba(37,99,235,0.45), 0 1px 0 rgba(255,255,255,0.18) inset;
+}
+
+/* أزرار الدخول الثلاثة */
+body:not(.dark-mode) .calc-auth-btn {
+  background   : rgba(255,255,255,0.70);
+  border-color : rgba(37,99,235,0.22);
+  color        : #1e40af;
+  box-shadow   : 0 2px 8px rgba(37,99,235,0.10);
+}
+body:not(.dark-mode) .calc-auth-btn:hover {
+  background : rgba(255,255,255,0.95);
+  box-shadow : 0 4px 14px rgba(37,99,235,0.18);
+}
+body:not(.dark-mode) .calc-auth-btn--webauthn {
+  border-color : rgba(99,102,241,0.35);
+  color        : #4338ca;
+}
+body:not(.dark-mode) .calc-auth-btn--offline {
+  border-color : rgba(234,88,12,0.30);
+  color        : #c2410c;
+}
+body:not(.dark-mode) .calc-auth-label { opacity: 0.80; }
 
 /* ══════════════════════════════════════════════════════════════
    نهاية التحول الفني v4.0

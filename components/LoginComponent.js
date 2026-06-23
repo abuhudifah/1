@@ -82,9 +82,6 @@ const LoginComponent = {
     container.innerHTML = '';
     container.appendChild(this._buildPage());
     if (window.lucide) lucide.createIcons();
-    // إخفاء الشعار في عرض الآلة الحاسبة + تفعيل زر البصمة بعد إضافة الصفحة للـ DOM
-    const brandEl2 = document.getElementById('lp-brand-el');
-    if (brandEl2 && this._state.view === 'calc') brandEl2.style.display = 'none';
     this._updateQuickWebAuthnBtnVisibility();
 
     // ربط keyboard بعد render
@@ -108,9 +105,6 @@ const LoginComponent = {
       <div class="lp-bg-orb lp-bg-orb-2" aria-hidden="true"></div>
       <div class="lp-bg-orb lp-bg-orb-3" aria-hidden="true"></div>`;
 
-    // الشعار
-    page.appendChild(this._buildBrand());
-
     // زر القائمة
     page.appendChild(this._buildMenuBtn());
 
@@ -129,9 +123,6 @@ const LoginComponent = {
     if (!scene) scene = document.getElementById('lp-scene');
     if (!scene) return;
     scene.innerHTML = '';
-    // إخفاء/إظهار الشعار حسب العرض الحالي
-    const brandEl = document.getElementById('lp-brand-el');
-    if (brandEl) brandEl.style.display = this._state.view === 'calc' ? 'none' : '';
     if (this._state.view === 'calc') {
       scene.appendChild(this._buildCalcCard());
       this._updateQuickWebAuthnBtnVisibility(); // ✅ بعد الإضافة للـ DOM
@@ -251,7 +242,7 @@ const LoginComponent = {
     btnTraditional.id        = 'btn-traditional-login';
     btnTraditional.className = 'calc-auth-btn';
     btnTraditional.title     = 'تسجيل الدخول بالبريد وكلمة المرور';
-    btnTraditional.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>`;
+    btnTraditional.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg><span class="calc-auth-label">دخول</span>`;
     btnTraditional.addEventListener('click', () => this._switchToLogin());
     authRow.appendChild(btnTraditional);
 
@@ -261,7 +252,7 @@ const LoginComponent = {
     btnWebAuthn.className    = 'calc-auth-btn calc-auth-btn--webauthn';
     btnWebAuthn.title        = 'الدخول السريع بالبصمة أو Face ID';
     btnWebAuthn.style.display = 'none';
-    btnWebAuthn.innerHTML    = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>`;
+    btnWebAuthn.innerHTML    = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg><span class="calc-auth-label">بصمة</span>`;
     btnWebAuthn.addEventListener('click', () => this._tryQuickWebAuthnLogin());
     authRow.appendChild(btnWebAuthn);
 
@@ -270,7 +261,7 @@ const LoginComponent = {
     btnOffline.id        = 'btn-offline-login';
     btnOffline.className = 'calc-auth-btn calc-auth-btn--offline';
     btnOffline.title     = 'الدخول بدون إنترنت';
-    btnOffline.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>`;
+    btnOffline.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg><span class="calc-auth-label">بدون نت</span>`;
     btnOffline.addEventListener('click', () => this._offlineLogin());
     authRow.appendChild(btnOffline);
 
@@ -341,7 +332,7 @@ const LoginComponent = {
       </div>
       <div class="lp-logo-text">
         <span class="lp-form-title">تسجيل الدخول</span>
-        <span class="lp-form-subtitle">${escapeHtml(APP_CONFIG?.NAME_SHORT || 'أبو حذيفة')} — نظام الصرافة</span>
+        <span class="lp-form-subtitle">تطبيق الالة الحاسبة</span>
       </div>`;
     card.appendChild(logoRow);
 
@@ -411,26 +402,29 @@ const LoginComponent = {
     );
     card.appendChild(submitBtn);
 
-    // إذا كان Quick Login مُفعَّلاً → زر الرجوع
+    // أزرار الدخول البديل في صف متوازٍ
+    const quickBtnsRow = document.createElement('div');
+    quickBtnsRow.className = 'lp-quick-btns-row' + (this._state.quickEnabled ? '' : ' lp-quick-btns-row--single');
+
     if (this._state.quickEnabled) {
       const backBtn = document.createElement('button');
       backBtn.className = 'lp-back-ql';
-      backBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span><i data-lucide="zap" style="width:12px;height:12px;vertical-align:middle;"></i> الدخول السريع (هذا الجهاز)</span>`;
+      backBtn.innerHTML = `<i data-lucide="zap" style="width:16px;height:16px;flex-shrink:0;stroke:currentColor;"></i><span>الدخول السريع</span>`;
       backBtn.addEventListener('click', () => this._switchToCalc());
-      card.appendChild(backBtn);
+      quickBtnsRow.appendChild(backBtn);
     }
 
-    // زر الدخول بدون إنترنت
     const offlineBtn = document.createElement('button');
     offlineBtn.className = 'lp-offline-btn';
-    offlineBtn.innerHTML = '<i data-lucide="wifi-off" style="width:14px;height:14px;vertical-align:middle;margin-left:4px;"></i> الدخول بدون إنترنت';
+    offlineBtn.innerHTML = '<i data-lucide="wifi-off" style="width:16px;height:16px;flex-shrink:0;stroke:currentColor;"></i><span>بدون إنترنت</span>';
     offlineBtn.addEventListener('click', () => this._offlineLogin());
-    card.appendChild(offlineBtn);
+    quickBtnsRow.appendChild(offlineBtn);
+    card.appendChild(quickBtnsRow);
 
     // تذييل بسيط
     const footer = document.createElement('div');
     footer.style.cssText = 'margin-top:18px;text-align:center;font-size:0.68rem;color:#94a3b8;';
-    footer.textContent = `v${APP_CONFIG?.VERSION || '1.0.0'} · نظام أبو حذيفة للصرافة والتحويلات`;
+    footer.textContent = `v${APP_CONFIG?.VERSION || '1.0.0'} · تطبيق الالة الحاسبة`;
     card.appendChild(footer);
 
     setTimeout(() => emailInput.focus(), 100);
@@ -1418,7 +1412,7 @@ const LoginComponent = {
 
   _showAbout() {
     const v = APP_CONFIG?.VERSION || '1.0.0';
-    if (window.showToast) showToast(`نظام أبو حذيفة v${v} — نظام مالي Offline-First`, 'info', 4000);
+    if (window.showToast) showToast(`تطبيق الالة الحاسبة v${v}`, 'info', 3000);
   },
 
   // ─────────────────────────────────────────────────────────
