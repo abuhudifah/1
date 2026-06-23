@@ -1126,6 +1126,7 @@ textarea.form-control {
   .header-user-center   { padding: 5px 10px 5px 8px; gap: 7px; }
   .header-user-greeting { font-size: 0.80rem; }
   .header-sync-pill .sync-label { display: none; }
+  .header-conn-pill .conn-label { display: none; }
 }
 
 /* صغير جداً (≤399px) */
@@ -5338,10 +5339,7 @@ body.dark-mode .lp-offline-btn:hover {
 
 /* ── أزرار القائمة ── */
 .lp-menu-btn {
-  position        : absolute;
-  top             : 20px;
-  right           : 20px;
-  z-index         : 100;
+  /* التموضع يعود للـ wrap الحاوي (position:absolute;top:20px;right:20px) */
   width           : 44px; height: 44px;
   border-radius   : 12px;
   background      : rgba(255,255,255,0.10);
