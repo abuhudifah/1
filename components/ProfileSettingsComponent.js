@@ -76,16 +76,20 @@ const ProfileSettingsComponent = {
   // ✅ بطاقة معلومات الحساب (معدلة)
   // ────────────────────────────────────────────────────────
   _buildInfoCard(user) {
-    const roleIcons  = { admin: '👑', admin_assistant: '🛡️', agent: '👤' };
     const roleColors = { admin: '#16a34a', admin_assistant: '#1d4ed8', agent: '#6366f1' };
+    const roleIcons  = {
+      admin           : `<i data-lucide="crown" style="width:12px;height:12px;stroke:#16a34a;"></i>`,
+      admin_assistant : `<i data-lucide="shield-check" style="width:12px;height:12px;stroke:#1d4ed8;"></i>`,
+      agent           : `<i data-lucide="user" style="width:12px;height:12px;stroke:#6366f1;"></i>`,
+    };
     const roleColor  = roleColors[user.role] || '#6366f1';
-    const roleIcon   = roleIcons[user.role]  || '👤';
+    const roleIcon   = roleIcons[user.role]  || `<i data-lucide="user" style="width:12px;height:12px;"></i>`;
     
     const hasQuick = (typeof SessionVault !== 'undefined'
         && SessionVault.has(user.id, SessionVault.SECRET.EQUATION))
       || !!user.quick_equation_hash;
 
-    const card = this._card('🪪 بيانات الحساب');
+    const card = this._card('<i data-lucide="credit-card" style="width:15px;height:15px;"></i> بيانات الحساب');
 
     card.innerHTML += `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -105,7 +109,7 @@ const ProfileSettingsComponent = {
   // بطاقة تعديل الاسم
   // ────────────────────────────────────────────────────────
   _buildNameCard(user) {
-    const card = this._card('✏️ تعديل الاسم');
+    const card = this._card('<i data-lucide="pencil" style="width:15px;height:15px;"></i> تعديل الاسم');
     card.innerHTML += `
       <p style="font-size:.84rem;color:var(--text-secondary);margin-bottom:14px;">
         الاسم الذي يظهر في النظام وعند تسجيل الدخول.
@@ -163,7 +167,7 @@ const ProfileSettingsComponent = {
         if (raw) { const d = JSON.parse(raw); hasQuickWebAuthn = d?.hasWebAuthn === true; }
       }
     } catch { /* تجاهل */ }
-    const card = this._card('⚡ الدخول السريع');
+    const card = this._card('<i data-lucide="zap" style="width:15px;height:15px;"></i> الدخول السريع');
     card.setAttribute('data-psc-quick-card', '');
 
     card.innerHTML += `
@@ -279,7 +283,7 @@ const ProfileSettingsComponent = {
   // بطاقة الأجهزة النشطة (جديدة — المرحلة 1)
   // ────────────────────────────────────────────────────────
   _buildActiveDevicesCard(user) {
-    const card = this._card('📱 الأجهزة النشطة');
+    const card = this._card('<i data-lucide="smartphone" style="width:15px;height:15px;"></i> الأجهزة النشطة');
     card.setAttribute('data-psc-devices-card', '');
 
     // استخراج معلومات الجهاز الحالي من userAgent
@@ -312,7 +316,7 @@ const ProfileSettingsComponent = {
         <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:rgba(99,102,241,.06);">
           <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);
             display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">
-            💻
+            <i data-lucide="monitor" style="width:20px;height:20px;stroke:#fff;"></i>
           </div>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;font-size:.88rem;color:var(--text-primary);">
@@ -720,7 +724,7 @@ const ProfileSettingsComponent = {
     const session = OfflineAuthService.getOfflineSession(user.id);
     const hasPin  = !!session?.hasPin;
 
-    const card = this._card('🔒 الدخول بدون إنترنت');
+    const card = this._card('<i data-lucide="lock" style="width:15px;height:15px;"></i> الدخول بدون إنترنت');
     card.setAttribute('data-psc-offline-card', '');
 
     card.innerHTML += `

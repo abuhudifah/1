@@ -33,9 +33,9 @@ const AccountManagementComponent = {
 
   // شجرة الحسابات الافتراضية
   DEFAULT_CHART : [
-    { category:'treasury', name:'الصندوق العام',      id:'GENERAL_FUND',  icon:'🏛️', desc:'الخزينة الرئيسية للنظام' },
-    { category:'treasury', name:'الخزينة النقدية',     id:'CASH_GENERAL',  icon:'💵', desc:'النقد المتوفر يدوياً'    },
-    { category:'treasury', name:'حساب الشركات العام',  id:'COMP_GENERAL',  icon:'🏢', desc:'حساب تسوية الشركات'     },
+    { category:'treasury', name:'الصندوق العام',      id:'GENERAL_FUND',  icon:'landmark', desc:'الخزينة الرئيسية للنظام' },
+    { category:'treasury', name:'الخزينة النقدية',     id:'CASH_GENERAL',  icon:'banknotes', desc:'النقد المتوفر يدوياً'    },
+    { category:'treasury', name:'حساب الشركات العام',  id:'COMP_GENERAL',  icon:'building-2', desc:'حساب تسوية الشركات'     },
   ],
 
   // ─────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ const AccountManagementComponent = {
   async render(container) {
     if (!AuthService.isAdmin() && !AuthService.isAdminAssistant()) {
       container.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">🔒</div>
+        <div class="empty-state-icon"><i data-lucide="lock" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">إدارة الحسابات للمدير والمساعد الإداري فقط</div></div>`;
       return;
     }
@@ -141,7 +141,7 @@ const AccountManagementComponent = {
       <div class="glass-card" style="margin-bottom:16px;" id="acct-stmt-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
           <div>
-            <h3 style="font-size:1rem;font-weight:700;color:var(--text-primary);" id="stmt-account-title">📄 كشف الحساب</h3>
+            <h3 style="font-size:1rem;font-weight:700;color:var(--text-primary);" id="stmt-account-title"><i data-lucide="file-text" style="width:15px;height:15px;vertical-align:middle;margin-left:5px;"></i>كشف الحساب</h3>
             <p style="display:none;" id="stmt-account-id"></p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -427,7 +427,7 @@ const AccountManagementComponent = {
                     data-company-id="${escapeHtml(cb.company_id)}"
                     data-company-name="${escapeHtml(cb.company_name)}"
                     style="font-size:0.72rem;">
-                    📄 كشف حساب
+                    <i data-lucide="file-text" style="width:12px;height:12px;pointer-events:none;"></i> كشف حساب
                   </button>
                 </td>
               </tr>
@@ -495,7 +495,7 @@ const AccountManagementComponent = {
     modal.innerHTML = `
       <div class="modal-box" style="max-width:700px;">
         <div class="modal-header">
-          <h3 class="modal-title">📊 كشف حساب الشركة: ${escapeHtml(companyName)}</h3>
+          <h3 class="modal-title"><i data-lucide="bar-chart-2" style="width:17px;height:17px;vertical-align:middle;margin-left:5px;"></i>كشف حساب الشركة: ${escapeHtml(companyName)}</h3>
           <button class="modal-close" id="company-modal-close">✕</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
@@ -671,16 +671,17 @@ const AccountManagementComponent = {
 
   // ✅ _renderChart محدثة لعرض رقم الحساب مع زر نسخ
   _renderChart(el, chartData) {
+    const _catIconSvg = (name, color) => `<i data-lucide="${name}" style="width:18px;height:18px;stroke:${color};"></i>`;
     const categoryMeta = {
-      agents: { icon: '👤', label: 'حسابات المستخدمين', color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
-      debtors: { icon: '👥', label: 'حسابات العملاء المديونين', color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
-      companies: { icon: '🏢', label: 'حسابات الشركات', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
-      settlements: { icon: '🧾', label: 'تسويات العملاء المديونين', color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
-      banks: { icon: '🏦', label: 'الحسابات البنكية', color: '#059669', bg: 'rgba(5,150,105,0.08)' },
-      expenses: { icon: '💸', label: 'حسابات المصروفات', color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
-      treasury: { icon: '🏛️', label: 'الخزينة والحسابات العامة', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
-      revenue: { icon: '💰', label: 'حسابات الإيرادات', color: '#059669', bg: 'rgba(5,150,105,0.08)' },
-      suspense: { icon: '⏳', label: 'الحسابات المعلقة', color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
+      agents     : { icon: _catIconSvg('user',          '#2563eb'), label: 'حسابات المستخدمين',           color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
+      debtors    : { icon: _catIconSvg('users',          '#0284c7'), label: 'حسابات العملاء المديونين',    color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+      companies  : { icon: _catIconSvg('building-2',     '#7c3aed'), label: 'حسابات الشركات',              color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+      settlements: { icon: _catIconSvg('file-check',     '#0284c7'), label: 'تسويات العملاء المديونين',   color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+      banks      : { icon: _catIconSvg('landmark',       '#059669'), label: 'الحسابات البنكية',           color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+      expenses   : { icon: _catIconSvg('receipt',        '#dc2626'), label: 'حسابات المصروفات',           color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
+      treasury   : { icon: _catIconSvg('vault',          '#d97706'), label: 'الخزينة والحسابات العامة',   color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
+      revenue    : { icon: _catIconSvg('banknote',       '#059669'), label: 'حسابات الإيرادات',           color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+      suspense   : { icon: _catIconSvg('clock',          '#d97706'), label: 'الحسابات المعلقة',           color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
     };
     
     // شريط KPI
@@ -729,16 +730,16 @@ const AccountManagementComponent = {
               <tbody>`;
         for (const acc of accounts) {
           const bal = Math.round(parseFloat(acc.balance || 0));
-          const parentBadge = acc.parent_name ? `<span class="acct-parent-badge">🏢 ${escapeHtml(acc.parent_name)}</span>` : '';
+          const parentBadge = acc.parent_name ? `<span class="acct-parent-badge"><i data-lucide="building-2" style="width:11px;height:11px;vertical-align:middle;"></i> ${escapeHtml(acc.parent_name)}</span>` : '';
           tableHtml += `
               <tr class="acct-row" data-name="${escapeHtml((acc.name || acc.account_id).toLowerCase())}">
                 <td style="font-weight:600;">${parentBadge}${escapeHtml(acc.name || acc.account_id)}</td>
                 <td style="font-weight:700;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">${bal >= 0 ? '' : '−'}${Math.abs(bal).toLocaleString('en-US')} ر.س</td>
                 <td>
                   <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                    <button class="view-stmt-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">📄 كشف</button>
-                    <button class="quick-entry-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">✏️ قيد</button>
-                    <button class="delete-account-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}">🗑️ حذف</button>
+                    <button class="view-stmt-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}"><i data-lucide="file-text" style="width:13px;height:13px;pointer-events:none;"></i> كشف</button>
+                    <button class="quick-entry-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}"><i data-lucide="pen-line" style="width:13px;height:13px;pointer-events:none;"></i> قيد</button>
+                    <button class="delete-account-btn btn btn-secondary btn-sm" data-account="${escapeHtml(acc.account_id)}" data-name="${escapeHtml(acc.name || acc.account_id)}"><i data-lucide="trash-2" style="width:13px;height:13px;pointer-events:none;"></i> حذف</button>
                   </div>
                 </td>
               </tr>`;
@@ -877,20 +878,20 @@ const AccountManagementComponent = {
   _renderEmptyChart() {
     return `
       <div class="glass-card" style="text-align:center;padding:40px 20px;">
-        <div style="font-size:3rem;margin-bottom:16px;opacity:0.5;">📊</div>
+        <div style="margin-bottom:16px;opacity:0.5;"><i data-lucide="bar-chart-2" style="width:3rem;height:3rem;"></i></div>
         <h3 style="font-weight:700;margin-bottom:8px;">لا توجد حسابات بعد</h3>
         <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:20px;">
           انقر على "إضافة حساب" لإنشاء حسابك الأول،<br>أو أضف شجرة الحسابات الافتراضية دفعةً واحدة
         </p>
         <button id="add-default-chart-btn" class="btn btn-primary">
-          🌳 إضافة شجرة الحسابات الافتراضية
+          <i data-lucide="git-branch" style="width:14px;height:14px;pointer-events:none;"></i> إضافة شجرة الحسابات الافتراضية
         </button>
       </div>`;
   },
 
   async _addDefaultChart() {
     const btn = document.getElementById('add-default-chart-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الإضافة...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;"></i> جاري الإضافة...'; }
 
     try {
       let added = 0;
@@ -927,7 +928,7 @@ const AccountManagementComponent = {
       await this._loadChart();
     } catch (e) {
       showToast(`فشل إضافة الحسابات الافتراضية: ${e.message}`, 'error');
-      if (btn) { btn.disabled = false; btn.textContent = '🌳 إضافة شجرة الحسابات الافتراضية'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="git-branch" style="width:14px;height:14px;"></i> إضافة شجرة الحسابات الافتراضية'; }
     }
   },
 
@@ -1056,10 +1057,12 @@ const AccountManagementComponent = {
 
     try {
       let entries = [];
+      let openingEntries = [];
       let useLocal = isOfflineMode() || !isOnline();
 
       if (!isOfflineMode() && isOnline()) {
         try {
+          // جلب القيود ضمن الفترة المحددة
           const { data, error } = await supabaseClient
             .from('account_ledger').select('*')
             .eq('account_id', acc).gte('date', from).lte('date', to)
@@ -1067,6 +1070,13 @@ const AccountManagementComponent = {
             .limit(QUERY_LIMITS.LEDGER_ENTRIES);
           if (error) throw error;
           entries = data || [];
+
+          // جلب القيود قبل تاريخ البداية لحساب الرصيد السابق
+          const { data: beforeData, error: beforeError } = await supabaseClient
+            .from('account_ledger').select('*')
+            .eq('account_id', acc).lt('date', from)
+            .limit(50000);
+          if (!beforeError) openingEntries = beforeData || [];
         } catch (e) {
           console.warn('فشل جلب الكشف من السحابة، سيتم استخدام المحلي', e);
           useLocal = true;
@@ -1078,9 +1088,15 @@ const AccountManagementComponent = {
         entries = all
           .filter(e => e.date >= from && e.date <= to)
           .sort((a, b) => (a.date + (a.created_at || '')) > (b.date + (b.created_at || '')) ? 1 : -1);
+        openingEntries = all.filter(e => e.date < from);
       } else if (useLocal) {
         throw new Error('قاعدة البيانات المحلية غير متوفرة ولا يوجد اتصال');
       }
+
+      // حساب الرصيد السابق من القيود قبل تاريخ البداية
+      const openingDebit = (openingEntries || []).reduce((s, e) => s + (parseFloat(e.debit) || 0), 0);
+      const openingCredit = (openingEntries || []).reduce((s, e) => s + (parseFloat(e.credit) || 0), 0);
+      const openingBalance = openingDebit - openingCredit;
 
       // إثراء القيود ببيانات المعاملة المرتبطة (الوقت، النوع، الأسماء، التفاصيل)
       const txMap = await this._enrichEntries(entries);
@@ -1100,11 +1116,6 @@ const AccountManagementComponent = {
       });
       rows.sort((a, b) => (a.date + String(a.timeRaw || '')) > (b.date + String(b.timeRaw || '')) ? 1 : -1);
 
-      if (!rows.length) {
-        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات في هذه الفترة</div></div>`;
-        return;
-      }
-
       // تحويل العرض: مدين(debit) → عليكم ، دائن(credit) → لكم
       const totalLakum  = rows.reduce((s, r) => s + r.credit, 0); // إجمالي لكم = Σ دائن
       const totalAlaykum = rows.reduce((s, r) => s + r.debit, 0); // إجمالي عليكم = Σ مدين
@@ -1114,8 +1125,24 @@ const AccountManagementComponent = {
       const netLabelWord = acc.startsWith('COMP_') ? 'صافي الرصيد' : 'صافي الحركة';
       const fmt = (n) => Math.round(n).toLocaleString('en-US');
 
+      // حساب الرصيد النهائي = الرصيد السابق + صافي الحركة
+      const finalBalance = openingBalance + net;
+
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
         <thead><tr><th>التاريخ</th><th>الوقت</th><th>نوع العملية</th><th>لكم</th><th>عليكم</th><th>التفاصيل</th></tr></thead><tbody>`;
+
+      // إضافة صف الرصيد السابق إذا كان موجوداً
+      if (openingEntries.length > 0) {
+        html += `<tr style="background:rgba(59,130,246,0.08);font-weight:700;">
+          <td style="white-space:nowrap;">رصيد سابق</td>
+          <td></td>
+          <td style="font-weight:600;">رصيد مرحّل</td>
+          <td style="color:var(--success);direction:ltr;">${openingCredit > 0 ? fmt(openingCredit) : '0'}</td>
+          <td style="color:var(--danger);direction:ltr;">${openingDebit > 0 ? fmt(openingDebit) : '0'}</td>
+          <td style="color:var(--text-secondary);">—</td>
+        </tr>`;
+      }
+
       for (const r of rows) {
         html += `<tr>
           <td style="white-space:nowrap;">${formatDateArabic(r.date)}</td>
@@ -1126,6 +1153,12 @@ const AccountManagementComponent = {
           <td style="color:var(--text-secondary);">${escapeHtml(r.details || '—')}</td>
         </tr>`;
       }
+
+      if (!rows.length && !openingEntries.length) {
+        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات في هذه الفترة</div></div>`;
+        return;
+      }
+
       html += `</tbody><tfoot>`;
       if (isExpense) {
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
@@ -1133,10 +1166,13 @@ const AccountManagementComponent = {
           <td>0</td><td style="direction:ltr;color:var(--danger);">${fmt(totalAlaykum)}</td><td></td></tr>`;
       } else {
         html += `<tr style="font-weight:800;background:rgba(0,0,0,0.04);">
-          <td colspan="3" style="text-align:left;">الإجماليات</td>
+          <td colspan="3" style="text-align:left;">الإجماليات (الفترة)</td>
           <td style="direction:ltr;color:var(--success);">${fmt(totalLakum)}</td>
           <td style="direction:ltr;color:var(--danger);">${fmt(totalAlaykum)}</td>
           <td style="direction:ltr;">${netLabelWord}: ${fmt(Math.abs(net))} ${netNature}</td></tr>`;
+        html += `<tr style="font-weight:800;background:rgba(0,0,0,0.06);color:var(--text-primary);">
+          <td colspan="3" style="text-align:left;">الرصيد النهائي</td>
+          <td colspan="3" style="direction:ltr;color:${finalBalance >= 0 ? 'var(--success)' : 'var(--danger)'};font-size:1.05rem;">${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'}</td></tr>`;
       }
       html += `</tfoot></table></div>`;
 
@@ -1147,29 +1183,37 @@ const AccountManagementComponent = {
         totalsText = `إجمالي المصروفات: ${fmt(totalAlaykum)}`;
         html += totalsBox(`<span>إجمالي المصروفات: <b>${fmt(totalAlaykum)}</b></span>`);
       } else {
-        totalsText = `إجمالي لكم: ${fmt(totalLakum)} | إجمالي عليكم: ${fmt(totalAlaykum)} | ${netLabelWord}: ${fmt(Math.abs(net))} ${netNature}`;
+        totalsText = `الرصيد السابق: ${fmt(Math.abs(openingBalance))} ${openingBalance >= 0 ? 'لكم' : 'عليكم'} | إجمالي لكم: ${fmt(totalLakum)} | إجمالي عليكم: ${fmt(totalAlaykum)} | الرصيد النهائي: ${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'}`;
         html += totalsBox(`
+          <span>الرصيد السابق: <b>${fmt(Math.abs(openingBalance))} ${openingBalance >= 0 ? 'لكم' : 'عليكم'}</b></span>
           <span>إجمالي لكم: <b>${fmt(totalLakum)}</b></span>
           <span>إجمالي عليكم: <b>${fmt(totalAlaykum)}</b></span>
-          <span>${netLabelWord}: <b>${fmt(Math.abs(net))} ${netNature}</b></span>`);
+          <span>الرصيد النهائي: <b style="color:${finalBalance >= 0 ? '#059669' : '#dc2626'}">${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'}</b></span>`);
       }
 
       // تخزين بيانات الكشف للطباعة الاحترافية
       // FIX: عنوان محدد للحساب والفترة لاسم ملف PDF دلالي
+      const printRows = (openingEntries.length > 0 ? [[
+        'رصيد سابق', '', 'رصيد مرحّل',
+        openingCredit > 0 ? fmt(openingCredit) : '0',
+        openingDebit > 0 ? fmt(openingDebit) : '0', '—'
+      ]] : []).concat(rows.map(r => [formatDateArabic(r.date), r.time, r.label,
+        r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']));
+
       this._lastStatement = {
         kind: 'ledger',
         title: `كشف_${this._selectedAccountName || acc}`,
         accountId: acc,
         periodText: this._buildPeriodText(from, to),
         columns: ['التاريخ', 'الوقت', 'نوع العملية', 'لكم', 'عليكم', 'التفاصيل'],
-        rows: rows.map(r => [formatDateArabic(r.date), r.time, r.label,
-          r.credit > 0 ? fmt(r.credit) : '0', r.debit > 0 ? fmt(r.debit) : '0', r.details || '—']),
+        rows: printRows,
         totalsLine: isExpense
           ? `<span>إجمالي المصروفات: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`
           : [
+              `<span>الرصيد السابق: <b style="color:${openingBalance >= 0 ? '#059669' : '#dc2626'}">${fmt(Math.abs(openingBalance))} ${openingBalance >= 0 ? 'لكم' : 'عليكم'} ر.س</b></span>`,
               `<span>إجمالي لكم: <b style="color:#059669">${fmt(totalLakum)} ر.س</b></span>`,
               `<span>إجمالي عليكم: <b style="color:#dc2626">${fmt(totalAlaykum)} ر.س</b></span>`,
-              `<span>${netLabelWord}: <b style="color:${net<=0?'#059669':'#dc2626'}">${fmt(Math.abs(net))} ${netNature} ر.س</b></span>`,
+              `<span>الرصيد النهائي: <b style="color:${finalBalance >= 0 ? '#059669' : '#dc2626'}">${fmt(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'لكم' : 'عليكم'} ر.س</b></span>`,
             ].join(''),
         totalsText,
       };
@@ -1177,7 +1221,7 @@ const AccountManagementComponent = {
       entriesEl.innerHTML = html;
       if (window.lucide) lucide.createIcons();
     } catch (e) {
-      entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">خطأ في جلب البيانات: ${escapeHtml(e.message)}</div></div>`;
+      entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon"><i data-lucide="alert-triangle" style="width:3rem;height:3rem;opacity:0.45;"></i></div><div class="empty-state-text">خطأ في جلب البيانات: ${escapeHtml(e.message)}</div></div>`;
     }
   },
 
@@ -1197,10 +1241,12 @@ const AccountManagementComponent = {
 
     try {
       let txns = [];
+      let openingTxns = [];
       let useLocal = isOfflineMode() || !isOnline();
 
       if (!isOfflineMode() && isOnline()) {
         try {
+          // جلب المعاملات ضمن الفترة المحددة
           const { data, error } = await supabaseClient.from('transactions')
             .select('id,date,time,type,amount,details,created_at, agent:users!transactions_agent_id_fkey(display_name)')
             .eq('bank_account_id', bankId)
@@ -1210,6 +1256,15 @@ const AccountManagementComponent = {
             .order('date', { ascending: true }).order('time', { ascending: true });
           if (error) throw error;
           txns = (data || []).map(t => ({ ...t, agentName: t.agent?.display_name || '—' }));
+
+          // جلب المعاملات قبل تاريخ البداية لحساب الرصيد الافتتاحي
+          const { data: beforeData, error: beforeError } = await supabaseClient.from('transactions')
+            .select('type,amount,is_reversed')
+            .eq('bank_account_id', bankId)
+            .in('type', ['deposit', 'bank_withdrawal'])
+            .eq('is_reversed', false)
+            .lt('date', from);
+          if (!beforeError) openingTxns = beforeData || [];
         } catch (e) { console.warn('فشل كشف البنك من السحابة، fallback محلي', e); useLocal = true; }
       }
 
@@ -1220,50 +1275,82 @@ const AccountManagementComponent = {
           .filter(t => !t.is_reversed && ['deposit', 'bank_withdrawal'].includes(t.type) && t.date >= from && t.date <= to)
           .map(t => ({ ...t, agentName: maps.userById.get(t.agent_id)?.display_name || '—' }))
           .sort((a, b) => (a.date + String(a.time || '')) > (b.date + String(b.time || '')) ? 1 : -1);
+        openingTxns = all.filter(t => !t.is_reversed && ['deposit', 'bank_withdrawal'].includes(t.type) && t.date < from);
       } else if (useLocal) {
         throw new Error('قاعدة البيانات المحلية غير متوفرة ولا يوجد اتصال');
       }
 
-      if (!txns.length) {
-        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات بنكية في هذه الفترة</div></div>`;
-        return;
-      }
+      // حساب الرصيد الافتتاحي من المعاملات قبل تاريخ البداية
+      let openingDepTotal = 0, openingWdTotal = 0;
+      (openingTxns || []).forEach(t => {
+        const amt = parseFloat(t.amount) || 0;
+        if (t.type === 'deposit') openingDepTotal += amt; else openingWdTotal += amt;
+      });
+      const openingBalance = openingDepTotal - openingWdTotal;
 
       const fmt = (n) => Math.round(n).toLocaleString('en-US');
       let totalDep = 0, totalWd = 0;
       const printRows = [];
       this._stmtPrintRows = printRows;
+
+      // إضافة صف الرصيد الافتتاحي إذا كان موجوداً
       let html = `<div class="table-wrapper"><table class="data-table" id="stmt-print-table">
         <thead><tr><th>#</th><th>الوقت</th><th>نوع العملية</th><th>المندوب</th><th>المبلغ</th></tr></thead><tbody>`;
-      txns.forEach((t, i) => {
+
+      if (openingTxns.length > 0) {
+        html += `<tr style="background:rgba(59,130,246,0.08);font-weight:700;">
+          <td></td>
+          <td></td>
+          <td style="font-weight:600;">رصيد افتتاحي</td>
+          <td></td>
+          <td style="direction:ltr;font-weight:700;color:${openingBalance >= 0 ? 'var(--success)' : 'var(--danger)'};"><strong>${fmt(Math.abs(openingBalance))} ر.س</strong></td>
+        </tr>`;
+        printRows.push(['', '', 'رصيد افتتاحي', '', fmt(Math.abs(openingBalance)) + ' ر.س']);
+      }
+
+      let rowNum = 1;
+      txns.forEach((t) => {
         const isDep = t.type === 'deposit';
         const amt = parseFloat(t.amount) || 0;
         if (isDep) totalDep += amt; else totalWd += amt;
         const time = this._formatTime12(t.time || t.created_at);
         const typeLbl = isDep ? 'إيداع نقدي' : 'سحب نقدي';
-        printRows.push([i + 1, time, typeLbl, t.agentName || '—', fmt(amt)]);
+        printRows.push([rowNum, time, typeLbl, t.agentName || '—', fmt(amt)]);
         html += `<tr>
-          <td>${i + 1}</td>
+          <td>${rowNum}</td>
           <td style="white-space:nowrap;">${escapeHtml(time)}</td>
           <td style="font-weight:600;color:${isDep ? 'var(--success)' : 'var(--warning)'};">${typeLbl}</td>
           <td>${escapeHtml(t.agentName || '—')}</td>
           <td style="direction:ltr;font-weight:700;">${fmt(amt)} ر.س</td>
         </tr>`;
+        rowNum++;
       });
+
+      if (!txns.length && !openingTxns.length) {
+        entriesEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">لا توجد حركات بنكية في هذه الفترة</div></div>`;
+        return;
+      }
+
       const net = totalDep - totalWd;
+      const closingBalance = openingBalance + net;
       const nature = net >= 0 ? 'مدين' : 'دائن';
-      const bankTotalsText = `إجمالي الإيداعات: ${fmt(totalDep)} | إجمالي السحوبات: ${fmt(totalWd)} | صافي الحركة: ${fmt(Math.abs(net))} ${nature}`;
+      const closingNature = closingBalance >= 0 ? 'مدين' : 'دائن';
+      const bankTotalsText = `الرصيد الافتتاحي: ${fmt(Math.abs(openingBalance))} | إجمالي الإيداعات: ${fmt(totalDep)} | إجمالي السحوبات: ${fmt(totalWd)} | صافي الحركة: ${fmt(Math.abs(net))} ${nature} | الرصيد الختامي: ${fmt(Math.abs(closingBalance))} ${closingNature}`;
       html += `</tbody></table></div>
         <div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px;padding:12px 14px;background:rgba(0,0,0,0.03);border-radius:10px;font-size:0.92rem;">
+          <span>الرصيد الافتتاحي: <b>${fmt(Math.abs(openingBalance))}</b></span>
           <span>إجمالي الإيداعات: <b>${fmt(totalDep)}</b></span>
           <span>إجمالي السحوبات: <b>${fmt(totalWd)}</b></span>
           <span>صافي الحركة: <b>${fmt(Math.abs(net))} ${nature}</b></span>
+          <span>الرصيد الختامي: <b style="color:${closingBalance >= 0 ? 'var(--success)' : 'var(--danger)'}">${fmt(Math.abs(closingBalance))} ${closingNature}</b></span>
         </div>`;
 
       const bankTotalsLine = [
+        `<span>الرصيد الافتتاحي: <b style="color:${openingBalance >= 0 ? '#059669' : '#dc2626'}">${fmt(Math.abs(openingBalance))} ر.س</b></span>`,
         `<span>إجمالي الإيداعات: <b style="color:#059669">${fmt(totalDep)} ر.س</b></span>`,
         `<span>إجمالي السحوبات: <b style="color:#dc2626">${fmt(totalWd)} ر.س</b></span>`,
         `<span>صافي الحركة: <b style="color:${net>=0?'#059669':'#dc2626'}">${fmt(Math.abs(net))} ${nature} ر.س</b></span>`,
+        `<span>الرصيد الختامي: <b style="color:${closingBalance>=0?'#059669':'#dc2626'}">${fmt(Math.abs(closingBalance))} ${closingNature} ر.س</b></span>`,
       ].join('');
 
       this._lastStatement = {
@@ -1532,7 +1619,7 @@ const AccountManagementComponent = {
               <td style="font-weight:600;">${escapeHtml(b.name || b.id)}</td>
               <td style="color:var(--text-secondary);">${escapeHtml(compName || '—')}</td>
               <td>
-                <button class="view-bank-stmt-btn btn-statement" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}">📄 كشف</button>
+                <button class="view-bank-stmt-btn btn-statement" data-bank-id="${escapeHtml(b.id)}" data-bank-name="${escapeHtml(b.name || b.id)}"><i data-lucide="file-text" style="width:13px;height:13px;pointer-events:none;"></i> كشف</button>
               </td>
             </tr>`;
             }).join('')}
@@ -1819,13 +1906,13 @@ const AccountManagementComponent = {
 
     box.innerHTML = `
       <div class="modal-header">
-        <h3 class="modal-title">📝 قيد محاسبي</h3>
+        <h3 class="modal-title"><i data-lucide="book-open" style="width:17px;height:17px;vertical-align:middle;margin-left:5px;"></i>قيد محاسبي</h3>
         <button class="modal-close" id="journal-close">✕</button>
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:16px;">
-        <button id="jtype-simple" class="btn btn-primary btn-sm" style="flex:1;">🔀 قيد بسيط (حسابان)</button>
-        <button id="jtype-double" class="btn btn-secondary btn-sm" style="flex:1;">⚖️ قيد مزدوج (متعدد)</button>
+        <button id="jtype-simple" class="btn btn-primary btn-sm" style="flex:1;"><i data-lucide="git-merge" style="width:13px;height:13px;pointer-events:none;"></i> قيد بسيط (حسابان)</button>
+        <button id="jtype-double" class="btn btn-secondary btn-sm" style="flex:1;"><i data-lucide="git-branch" style="width:13px;height:13px;pointer-events:none;"></i> قيد مزدوج (متعدد)</button>
       </div>
 
       <div id="journal-simple-form">
@@ -1880,7 +1967,7 @@ const AccountManagementComponent = {
 
       <div id="journal-error" class="form-error" style="margin-top:8px;"></div>
       <div style="display:flex;gap:10px;margin-top:16px;">
-        <button id="journal-save-btn" class="btn btn-primary" style="flex:2;">✅ ترحيل القيد</button>
+        <button id="journal-save-btn" class="btn btn-primary" style="flex:2;"><i data-lucide="check-circle" style="width:14px;height:14px;pointer-events:none;"></i> ترحيل القيد</button>
         <button id="journal-cancel-btn" class="btn btn-secondary" style="flex:1;">إلغاء</button>
       </div>`;
 
@@ -2149,9 +2236,9 @@ const AccountManagementComponent = {
       <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">اختر نوع الحساب:</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:16px;" id="acct-type-grid">
         ${[
-          { type:'company', icon:'🏢', label:'حساب شركة',     desc:'شركة شريكة' },
-          { type:'expense', icon:'💸', label:'نوع مصروف',      desc:'فئة مصاريف' },
-          { type:'custom',  icon:'📋', label:'حساب مخصص',      desc:'رصيد يدوي' },
+          { type:'company', icon:'building-2', label:'حساب شركة',     desc:'شركة شريكة' },
+          { type:'expense', icon:'receipt', label:'نوع مصروف',      desc:'فئة مصاريف' },
+          { type:'custom',  icon:'clipboard-list', label:'حساب مخصص',      desc:'رصيد يدوي' },
         ].map(t => `
           <button class="acct-type-btn btn btn-secondary" data-type="${t.type}"
             style="flex-direction:column;padding:12px 8px;gap:4px;height:auto;text-align:center;">

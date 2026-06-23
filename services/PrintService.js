@@ -119,8 +119,8 @@ const PrintService = (() => {
 .ps-report .doc-sub    {font-size:11.5px;color:#64748b;margin-top:3px;}
 .ps-report .doc-acct   {font-size:10.5px;color:#94a3b8;margin-top:2px;}
 .ps-report .doc-meta   {text-align:left;}
-.ps-report .doc-logo   {height:52px;object-fit:contain;display:block;
-  margin-bottom:6px;margin-inline-start:auto;}
+.ps-report .doc-logo   {height:80px;object-fit:contain;display:block;
+  margin-bottom:8px;margin-inline-start:auto;}
 .ps-report .doc-period {font-size:13px;font-weight:700;color:#0f172a;}
 .ps-report .doc-user   {font-size:11px;color:#64748b;margin-top:3px;}
 .ps-report .doc-footer {
@@ -159,7 +159,10 @@ const PrintService = (() => {
 .ps-report .cd{color:#dc2626;font-weight:700;}
 .ps-report .table-wrap{
   border:1.5px solid #94a3b8;border-radius:6px;
-  overflow:hidden;margin-bottom:14px;
+  overflow:hidden;margin-bottom:14px;page-break-inside:avoid;
+}
+.ps-report .table-wrap-page{
+  page-break-inside:avoid;margin-bottom:12px;
 }
 .ps-report .totals{
   display:flex;flex-wrap:wrap;justify-content:flex-end;
@@ -462,11 +465,36 @@ const PrintService = (() => {
     };
 
     const theadHTML = `<tr>${columns.map(h => `<th>${h}</th>`).join('')}</tr>`;
-    const tbodyHTML = rows.map((r, ri) =>
-      `<tr class="${ri % 2 === 1 ? 'ps-even' : ''}">${r.map((c, ci) =>
-        `<td${getCellAttr(ci, c)}>${c ?? '—'}</td>`
-      ).join('')}</tr>`
-    ).join('');
+
+    // تقسيم الصفوف لصفحات متعددة (حوالي 22 صف لكل صفحة A4)
+    const rowsPerPage = 22;
+    const rowChunks = [];
+    for (let i = 0; i < rows.length; i += rowsPerPage) {
+      rowChunks.push(rows.slice(i, i + rowsPerPage));
+    }
+
+    // بناء جداول متعددة — كل صفحة لها رأسها الخاص لضمان تكرار الهيدر
+    let tablesHTML = '';
+    rowChunks.forEach((chunk, pageIdx) => {
+      const tbodyHTML = chunk.map((r, ri) => {
+        const absoluteIdx = pageIdx * rowsPerPage + ri;
+        return `<tr class="${absoluteIdx % 2 === 1 ? 'ps-even' : ''}">${r.map((c, ci) =>
+          `<td${getCellAttr(ci, c)}>${c ?? '—'}</td>`
+        ).join('')}</tr>`;
+      }).join('');
+
+      tablesHTML += `<div class="table-wrap${pageIdx > 0 ? '-page' : ''}">
+        <table>
+          <thead>${theadHTML}</thead>
+          <tbody>${tbodyHTML}</tbody>
+        </table>`;
+
+      // إضافة الإجماليات فقط في الجدول الأخير
+      if (pageIdx === rowChunks.length - 1 && totalsLine) {
+        tablesHTML += `<div class="totals">${totalsLine}</div>`;
+      }
+      tablesHTML += `</div>`;
+    });
 
     const reportEl = document.createElement('div');
     reportEl.innerHTML = `
@@ -482,13 +510,7 @@ const PrintService = (() => {
           ${userName   ? `<div class="doc-user">${userName}</div>`          : ''}
         </div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>${theadHTML}</thead>
-          <tbody>${tbodyHTML}</tbody>
-        </table>
-        ${totalsLine ? `<div class="totals">${totalsLine}</div>` : ''}
-      </div>
+      ${tablesHTML}
       <div class="doc-footer">
         <span><b>نظام أبو حذيفة للصرافة والتحويلات</b></span>
         <span>طُبع: ${ts}</span>

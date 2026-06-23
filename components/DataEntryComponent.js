@@ -236,7 +236,7 @@ const DataEntryComponent = {
 
     const selfOpt = document.createElement('option');
     selfOpt.value = '';
-    selfOpt.textContent = `👤 ${currentUser?.display_name || 'نفسي'} (أنا)`;
+    selfOpt.textContent = `${currentUser?.display_name || 'نفسي'} (أنا)`;
     select.appendChild(selfOpt);
 
     const allUsers = (AppStore.getState('users') || []).filter(u =>
@@ -293,13 +293,14 @@ const DataEntryComponent = {
       padding:6px;background:var(--bg-input);
       border-radius:16px;overflow-x:auto;`;
 
+    const _tabSz = 'width:14px;height:14px;vertical-align:middle;stroke:currentColor;';
     const forms = [
-      { id:'collection',      label:'تحصيل',       icon:'💰' },
-      { id:'deposit',         label:'إيداع بنكي',   icon:'🏦' },
-      { id:'bank_withdrawal', label:'سحب بنكي',     icon:'💳' },
-      { id:'expense',         label:'مصروف',        icon:'💸' },
-      { id:'transfer',          label:'تحويل / طلب أموال', icon:'🔄'},
-      { id:'external_handover', label:'تسليم عهدة',         icon:'📤'},
+      { id:'collection',      label:'تحصيل',              icon:`<i data-lucide="banknote"      style="${_tabSz}"></i>` },
+      { id:'deposit',         label:'إيداع بنكي',          icon:`<i data-lucide="landmark"      style="${_tabSz}"></i>` },
+      { id:'bank_withdrawal', label:'سحب بنكي',            icon:`<i data-lucide="credit-card"   style="${_tabSz}"></i>` },
+      { id:'expense',         label:'مصروف',               icon:`<i data-lucide="trending-down" style="${_tabSz}"></i>` },
+      { id:'transfer',          label:'تحويل / طلب أموال', icon:`<i data-lucide="send"          style="${_tabSz}"></i>` },
+      { id:'external_handover', label:'تسليم عهدة',        icon:`<i data-lucide="upload"        style="${_tabSz}"></i>` },
     ];
 
     forms.forEach(f => {
@@ -346,6 +347,7 @@ const DataEntryComponent = {
       case 'external_handover': card.appendChild(this._buildExternalHandoverForm()); break;
     }
     container.appendChild(card);
+    if (window.lucide) lucide.createIcons();
   },
 
   _field(id, label, required = false) {
@@ -428,7 +430,7 @@ const DataEntryComponent = {
           hiddenId.value = bank.id;
           resultDisplay.style.display = '';
           resultDisplay.style.background = 'rgba(99,102,241,0.08)';
-          resultDisplay.innerHTML = `🏦 ${escapeHtml(bank.name)}`;
+          resultDisplay.innerHTML = `<i data-lucide="landmark" style="width:13px;height:13px;vertical-align:middle;"></i> ${escapeHtml(bank.name)}`;
           dropdown.style.display = 'none';
           if (onSelect) onSelect(bank);
         });
@@ -510,7 +512,7 @@ const DataEntryComponent = {
           hiddenId.value = company.id;
           resultDisplay.style.display = '';
           resultDisplay.style.background = 'rgba(99,102,241,0.08)';
-          resultDisplay.innerHTML = `🏢 ${escapeHtml(company.name)}`;
+          resultDisplay.innerHTML = `<i data-lucide="building-2" style="width:13px;height:13px;vertical-align:middle;"></i> ${escapeHtml(company.name)}`;
           dropdown.style.display = 'none';
           if (onSelect) onSelect(company);
         });
@@ -628,7 +630,7 @@ const DataEntryComponent = {
 
     const title = document.createElement('h3');
     title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:16px;color:var(--success);display:flex;align-items:center;gap:8px;';
-    title.innerHTML = '<span>💰</span><span>تحصيل نقدي</span>';
+    title.innerHTML = '<i data-lucide="banknote" style="width:18px;height:18px;vertical-align:middle;stroke:var(--success);"></i><span>تحصيل نقدي</span>';
     frag.appendChild(title);
 
     const toggleWrap = document.createElement('div');
@@ -640,11 +642,11 @@ const DataEntryComponent = {
     const companySection  = document.createElement('div');
 
     const btnCust = document.createElement('button');
-    btnCust.type = 'button'; btnCust.textContent = '👤 عميل مدين';
+    btnCust.type = 'button'; btnCust.innerHTML = '<i data-lucide="user" style="width:13px;height:13px;vertical-align:middle;stroke:currentColor;"></i> عميل مدين';
     btnCust.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;font-family:inherit;font-size:0.88rem;font-weight:600;cursor:pointer;transition:all 0.18s;';
 
     const btnComp = document.createElement('button');
-    btnComp.type = 'button'; btnComp.textContent = '🏢 شركة';
+    btnComp.type = 'button'; btnComp.innerHTML = '<i data-lucide="building-2" style="width:13px;height:13px;vertical-align:middle;stroke:currentColor;"></i> شركة';
     btnComp.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;font-family:inherit;font-size:0.88rem;font-weight:600;cursor:pointer;transition:all 0.18s;';
 
     const refreshToggle = () => {
@@ -735,7 +737,7 @@ const DataEntryComponent = {
 
     refreshToggle();
 
-    frag.appendChild(this._saveBtn('col-save-btn', '💾 حفظ التحصيل', async () => {
+    frag.appendChild(this._saveBtn('col-save-btn', '<i data-lucide="save" style="width:15px;height:15px;vertical-align:middle;stroke:currentColor;"></i> حفظ التحصيل', async () => {
       if (colMode === 'company' && !notesInput.value.trim()) {
         notesInput.focus();
         showToast('يرجى إدخال اسم الطرف المسلَّم', 'error');
@@ -821,7 +823,7 @@ const DataEntryComponent = {
       if (trimQ && !matches.find(d => d.name?.toLowerCase() === trimQ)) {
         const newItem = document.createElement('div');
         newItem.style.cssText = 'padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-color);color:var(--accent);font-size:0.88rem;font-weight:600;';
-        newItem.innerHTML = `<span>➕</span><span>إضافة عميل جديد: <strong>${escapeHtml(q.trim())}</strong></span>`;
+        newItem.innerHTML = `<i data-lucide="plus-circle" style="width:14px;height:14px;vertical-align:middle;stroke:var(--accent);"></i><span>إضافة عميل جديد: <strong>${escapeHtml(q.trim())}</strong></span>`;
         newItem.addEventListener('click', async () => {
           const nameParts = q.trim().split(/\s+/).filter(Boolean);
           if (nameParts.length < 3) {
@@ -839,7 +841,7 @@ const DataEntryComponent = {
               custId.value = created?.id || '';
               debtInfo.style.display = '';
               debtInfo.style.background = 'rgba(5,150,105,0.08)';
-              debtInfo.innerHTML = `✅ تم إنشاء عميل جديد: <strong>${escapeHtml(q.trim())}</strong>`;
+              debtInfo.innerHTML = `<i data-lucide="check-circle" style="width:13px;height:13px;vertical-align:middle;stroke:var(--success);"></i> تم إنشاء عميل جديد: <strong>${escapeHtml(q.trim())}</strong>`;
               // تحديث AppStore حتى يظهر العميل الجديد فوراً في البحث
               const _cur = AppStore.getState('debtors') || [];
               AppStore.setState({ debtors: [..._cur, { ...newDebtor, id: created?.id }] }, 'store:debtorsLoaded');
@@ -869,7 +871,7 @@ const DataEntryComponent = {
           dd.style.display = 'none';
           debtInfo.style.display = '';
           debtInfo.style.background = 'rgba(220,38,38,0.08)';
-          debtInfo.innerHTML = `💳 المديونية: <strong style="color:var(--danger);">${formatCurrency(d.debt_amount || 0)}</strong>`;
+          debtInfo.innerHTML = `<i data-lucide="credit-card" style="width:13px;height:13px;vertical-align:middle;stroke:var(--danger);"></i> المديونية: <strong style="color:var(--danger);">${formatCurrency(d.debt_amount || 0)}</strong>`;
         });
         dd.appendChild(item);
       });
@@ -895,7 +897,7 @@ const DataEntryComponent = {
 
     const title = document.createElement('h3');
     title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--warning);display:flex;align-items:center;gap:8px;';
-    title.innerHTML = '<span>💳</span><span>سحب بنكي</span>';
+    title.innerHTML = '<i data-lucide="credit-card" style="width:18px;height:18px;vertical-align:middle;stroke:var(--warning);"></i><span>سحب بنكي</span>';
     frag.appendChild(title);
 
     // ✅ حقل بحث رقم الحساب البنكي
@@ -959,10 +961,10 @@ const DataEntryComponent = {
 
     const hint = document.createElement('div');
     hint.style.cssText = 'padding:9px 13px;border-radius:9px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.15);font-size:0.78rem;color:var(--warning);margin-bottom:14px;';
-    hint.textContent = 'ℹ️ السحب البنكي: يُدخل النقد في صندوق المندوب ويُخصم من رصيد الشركة (عبر القيد المحاسبي). الحساب البنكي يُستخدم لأغراض التقارير فقط.';
+    hint.innerHTML = '<i data-lucide="info" style="width:13px;height:13px;vertical-align:middle;stroke:var(--warning);"></i> السحب البنكي: يُدخل النقد في صندوق المندوب ويُخصم من رصيد الشركة (عبر القيد المحاسبي). الحساب البنكي يُستخدم لأغراض التقارير فقط.';
     frag.appendChild(hint);
 
-    frag.appendChild(this._saveBtn('wd-save-btn', '💾 حفظ السحب البنكي', async () => {
+    frag.appendChild(this._saveBtn('wd-save-btn', '<i data-lucide="save" style="width:15px;height:15px;vertical-align:middle;stroke:currentColor;"></i> حفظ السحب البنكي', async () => {
       const bankId = document.getElementById('wd-bank-search-id')?.value;
       const saveBeneficiary = document.getElementById('wd-save-beneficiary')?.checked;
       if (saveBeneficiary && bankId && selectedBank) {
@@ -1010,7 +1012,7 @@ const DataEntryComponent = {
 
     const title = document.createElement('h3');
     title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--accent);display:flex;align-items:center;gap:8px;';
-    title.innerHTML = '<span>🏦</span><span>إيداع بنكي</span>';
+    title.innerHTML = '<i data-lucide="landmark" style="width:18px;height:18px;vertical-align:middle;stroke:var(--accent);"></i><span>إيداع بنكي</span>';
     frag.appendChild(title);
 
     // ✅ حقل بحث رقم الحساب البنكي
@@ -1074,10 +1076,10 @@ const DataEntryComponent = {
 
     const hint = document.createElement('div');
     hint.style.cssText = 'padding:10px 14px;border-radius:10px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.15);font-size:0.78rem;color:var(--accent);margin-bottom:16px;line-height:1.7;';
-    hint.textContent = 'ℹ️ سيتم تسجيل قيد محاسبي واحد: إخلاء عهدة المندوب (دائن) واستلام الشركة (مدين). الحساب البنكي يُستخدم لأغراض التقارير فقط.';
+    hint.innerHTML = '<i data-lucide="info" style="width:13px;height:13px;vertical-align:middle;stroke:var(--accent);"></i> سيتم تسجيل قيد محاسبي واحد: إخلاء عهدة المندوب (دائن) واستلام الشركة (مدين). الحساب البنكي يُستخدم لأغراض التقارير فقط.';
     frag.appendChild(hint);
 
-    frag.appendChild(this._saveBtn('dep-save-btn', '💾 حفظ الإيداع', async () => {
+    frag.appendChild(this._saveBtn('dep-save-btn', '<i data-lucide="save" style="width:15px;height:15px;vertical-align:middle;stroke:currentColor;"></i> حفظ الإيداع', async () => {
       const bankId = document.getElementById('dep-bank-search-id')?.value;
       const saveBeneficiary = document.getElementById('dep-save-beneficiary')?.checked;
       if (saveBeneficiary && bankId && selectedBank) {
@@ -1102,7 +1104,7 @@ const DataEntryComponent = {
 
     const title = document.createElement('h3');
     title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--danger);display:flex;align-items:center;gap:8px;';
-    title.innerHTML = '<span>💸</span><span>مصروف</span>';
+    title.innerHTML = '<i data-lucide="trending-down" style="width:18px;height:18px;vertical-align:middle;stroke:var(--danger);"></i><span>مصروف</span>';
     frag.appendChild(title);
 
     // ✅ تثبيت حساب المصروف (EXP_GENERAL) وإزالة القائمة المنسدلة
@@ -1151,10 +1153,10 @@ const DataEntryComponent = {
 
     const hint = document.createElement('div');
     hint.style.cssText = 'padding:9px 13px;border-radius:9px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.15);font-size:0.78rem;color:var(--danger);margin-bottom:14px;';
-    hint.textContent = 'ℹ️ يتم تسجيل المصروف على حساب EXP_GENERAL، مع تضمين نوع المصروف في وصف القيد.';
+    hint.innerHTML = '<i data-lucide="info" style="width:13px;height:13px;vertical-align:middle;stroke:var(--danger);"></i> يتم تسجيل المصروف على حساب EXP_GENERAL، مع تضمين نوع المصروف في وصف القيد.';
     frag.appendChild(hint);
 
-    frag.appendChild(this._saveBtn('exp-save-btn', '💾 حفظ المصروف', async () => {
+    frag.appendChild(this._saveBtn('exp-save-btn', '<i data-lucide="save" style="width:15px;height:15px;vertical-align:middle;stroke:currentColor;"></i> حفظ المصروف', async () => {
       let expenseType = typeSelect.value;
       if (expenseType === 'OTHER') {
         expenseType = otherInput.value.trim().toUpperCase().replace(/\s/g, '_') || 'MISC';
@@ -1173,7 +1175,7 @@ const DataEntryComponent = {
 
     const title = document.createElement('h3');
     title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--info);display:flex;align-items:center;gap:8px;';
-    title.innerHTML = '<span>🔄</span><span>تحويل / طلب أموال (بين المستخدمين)</span>';
+    title.innerHTML = '<i data-lucide="send" style="width:18px;height:18px;vertical-align:middle;stroke:var(--info);"></i><span>تحويل / طلب أموال (بين المستخدمين)</span>';
     frag.appendChild(title);
 
     const modeField = this._field('tr-mode', 'نوع العملية', true);
@@ -1331,7 +1333,7 @@ const DataEntryComponent = {
     amtField.appendChild(this._errMsg('tr-amount-err'));
     frag.appendChild(amtField);
 
-    frag.appendChild(this._saveBtn('tr-save-btn', '💾 تنفيذ', async () => {
+    frag.appendChild(this._saveBtn('tr-save-btn', '<i data-lucide="save" style="width:15px;height:15px;vertical-align:middle;stroke:currentColor;"></i> تنفيذ', async () => {
       const mode = modeSelect.value;
       const recipientId = hiddenRecipientId.value;
       const amount = amtInput.value;
@@ -1371,7 +1373,7 @@ const DataEntryComponent = {
 
     const title = document.createElement('h3');
     title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--warning);display:flex;align-items:center;gap:8px;';
-    title.innerHTML = '<span>📤</span><span>تسليم عهدة لطرف خارجي</span>';
+    title.innerHTML = '<i data-lucide="upload" style="width:18px;height:18px;vertical-align:middle;stroke:var(--warning);"></i><span>تسليم عهدة لطرف خارجي</span>';
     frag.appendChild(title);
 
     // اختيار الوجهة
@@ -1388,8 +1390,8 @@ const DataEntryComponent = {
       return btn;
     };
 
-    const btnSettle = makeDestBtn('debtor_settlement', 'تسوية العملاء', '🤝');
-    const btnFund   = makeDestBtn('general_fund',      'الصندوق الرئيسي', '🏛️');
+    const btnSettle = makeDestBtn('debtor_settlement', 'تسوية العملاء',   '<i data-lucide="users"    style="width:14px;height:14px;vertical-align:middle;stroke:currentColor;"></i>');
+    const btnFund   = makeDestBtn('general_fund',      'الصندوق الرئيسي', '<i data-lucide="landmark" style="width:14px;height:14px;vertical-align:middle;stroke:currentColor;"></i>');
     let ehDestination = 'debtor_settlement';
 
     const refreshDestBtns = () => {
@@ -1412,7 +1414,7 @@ const DataEntryComponent = {
     const hint = document.createElement('div');
     hint.id = 'eh-hint';
     hint.style.cssText = 'padding:9px 13px;border-radius:9px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.15);font-size:0.78rem;color:var(--warning);margin-bottom:16px;line-height:1.7;';
-    hint.textContent = 'ℹ️ تسليم عهدة: يُخلي رصيد المندوب ويُقيَّد في حساب التسوية أو الصندوق الرئيسي.';
+    hint.innerHTML = '<i data-lucide="info" style="width:13px;height:13px;vertical-align:middle;stroke:var(--warning);"></i> تسليم عهدة: يُخلي رصيد المندوب ويُقيَّد في حساب التسوية أو الصندوق الرئيسي.';
     frag.appendChild(hint);
 
     // المبلغ
@@ -1432,7 +1434,7 @@ const DataEntryComponent = {
     partyField.appendChild(this._errMsg('eh-party-err'));
     frag.appendChild(partyField);
 
-    frag.appendChild(this._saveBtn('eh-save-btn', '📤 تسليم العهدة', async () => {
+    frag.appendChild(this._saveBtn('eh-save-btn', '<i data-lucide="upload" style="width:15px;height:15px;vertical-align:middle;stroke:currentColor;"></i> تسليم العهدة', async () => {
       await this._saveExternalHandover({
         destination : ehDestination,
         amount      : amtInput.value,
@@ -1497,7 +1499,7 @@ const DataEntryComponent = {
     btn.id = id;
     btn.className = 'btn btn-primary btn-full btn-lg';
     btn.style.cssText = 'margin-top:8px;font-size:1rem;letter-spacing:0.02em;';
-    btn.textContent = label;
+    btn.innerHTML = label;
     btn.addEventListener('click', handler);
     return btn;
   },
@@ -1911,13 +1913,14 @@ const DataEntryComponent = {
       </div>
       <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.88rem;line-height:1.8;padding:12px;background:var(--bg-input);border-radius:10px;margin-bottom:16px;direction:rtl;text-align:right;">${escapeHtml(lines.slice(1).join('\n'))}</pre>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" style="flex:1;" id="result-copy-btn">📋 نسخ</button>
-        <button class="btn btn-secondary" style="flex:1;" id="result-share-btn">📤 مشاركة</button>
-        <button class="btn btn-secondary" style="flex:1;" id="result-close-btn">✖️ إغلاق</button>
+        <button class="btn btn-primary" style="flex:1;" id="result-copy-btn"><i data-lucide="copy" style="width:14px;height:14px;vertical-align:middle;stroke:currentColor;"></i> نسخ</button>
+        <button class="btn btn-secondary" style="flex:1;" id="result-share-btn"><i data-lucide="share-2" style="width:14px;height:14px;vertical-align:middle;stroke:currentColor;"></i> مشاركة</button>
+        <button class="btn btn-secondary" style="flex:1;" id="result-close-btn"><i data-lucide="x" style="width:14px;height:14px;vertical-align:middle;stroke:currentColor;"></i> إغلاق</button>
       </div>`;
 
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+    if (window.lucide) lucide.createIcons();
 
     box.querySelector('#result-close-x').addEventListener('click', () => overlay.remove());
     box.querySelector('#result-close-btn').addEventListener('click', () => overlay.remove());

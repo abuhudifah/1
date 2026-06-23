@@ -92,9 +92,10 @@ const FailedDepositsComponent = {
 
       if (!items.length) {
         listEl.innerHTML = `<div class="empty-state">
-          <div class="empty-state-icon">💸</div>
+          <div class="empty-state-icon"><i data-lucide="banknote" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
           <div class="empty-state-text">${isAgent ? 'لا توجد إيداعات فاشلة لك' : 'لا توجد إيداعات فاشلة'}</div>
         </div>`;
+        if (window.lucide) lucide.createIcons();
         return;
       }
 
@@ -103,7 +104,7 @@ const FailedDepositsComponent = {
 
     } catch (e) {
       listEl.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">⚠️</div>
+        <div class="empty-state-icon"><i data-lucide="alert-triangle" style="width:3rem;height:3rem;opacity:0.45;stroke:var(--warning,#f59e0b);"></i></div>
         <div class="empty-state-text">خطأ: ${escapeHtml(e.message)}</div>
       </div>`;
     }
@@ -389,7 +390,7 @@ const FailedDepositsComponent = {
 
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.74rem;color:var(--text-muted);">
           <span>${escapeHtml(formatDateArabic(fd.date))}${timeStr ? ' — ' + escapeHtml(timeStr) : ''}</span>
-          ${fd.branch_name ? `<span>📍 ${escapeHtml(fd.branch_name)}</span>` : ''}
+          ${fd.branch_name ? `<span style="display:inline-flex;align-items:center;gap:3px;"><i data-lucide="map-pin" style="width:12px;height:12px;vertical-align:middle;"></i>${escapeHtml(fd.branch_name)}</span>` : ''}
         </div>
 
         <div style="margin-top:12px;display:flex;gap:6px;">

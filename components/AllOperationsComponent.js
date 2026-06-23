@@ -294,7 +294,7 @@ const AllOperationsComponent = {
 
     if (!data.length) {
       listEl.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-icon"><i data-lucide="search-x" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">لا توجد عمليات مطابقة</div></div>`;
       if (pagerEl) pagerEl.innerHTML='';
       return;
@@ -402,9 +402,9 @@ const AllOperationsComponent = {
               </td>
               <td style="white-space:nowrap;">
                 ${showActions ? `
-                  <button class="ao-action-btn ao-action-btn--view" data-tx-id="${tx.id}" data-action="view" title="عرض التفاصيل">👁️</button>
-                  ${canEdit && !tx.is_reversed ? `<button class="ao-action-btn ao-action-btn--edit" data-tx-id="${tx.id}" data-action="edit" title="تعديل">✏️</button>` : ''}
-                  ${canDelete && !tx.is_reversed ? `<button class="ao-action-btn ao-action-btn--delete" data-tx-id="${tx.id}" data-action="delete" title="حذف">🗑️</button>` : ''}
+                  <button class="ao-action-btn ao-action-btn--view" data-tx-id="${tx.id}" data-action="view" title="عرض التفاصيل"><i data-lucide="eye" style="width:14px;height:14px;pointer-events:none;"></i></button>
+                  ${canEdit && !tx.is_reversed ? `<button class="ao-action-btn ao-action-btn--edit" data-tx-id="${tx.id}" data-action="edit" title="تعديل"><i data-lucide="pencil" style="width:14px;height:14px;pointer-events:none;"></i></button>` : ''}
+                  ${canDelete && !tx.is_reversed ? `<button class="ao-action-btn ao-action-btn--delete" data-tx-id="${tx.id}" data-action="delete" title="حذف"><i data-lucide="trash-2" style="width:14px;height:14px;pointer-events:none;"></i></button>` : ''}
                 ` : '—'}
               </td>
             </tr>`;

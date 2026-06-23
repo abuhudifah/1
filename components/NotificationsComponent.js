@@ -16,7 +16,7 @@ const NotificationsComponent = {
       container.innerHTML = `
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
                     padding:60px 20px;text-align:center;gap:16px;">
-          <div style="font-size:2.5rem;">🔕</div>
+          <div style="font-size:2.5rem;"><i data-lucide="bell-off" style="width:2.5rem;height:2.5rem;opacity:0.55;"></i></div>
           <h3 style="font-size:1.1rem;font-weight:700;color:var(--text-primary);margin:0;">
             الإشعارات موقوفة مؤقتاً
           </h3>
@@ -73,13 +73,21 @@ const NotificationsComponent = {
 
     if (!notifs.length) {
       listEl.innerHTML = `<div class="empty-state">
-        <div class="empty-state-icon">🔔</div>
+        <div class="empty-state-icon"><i data-lucide="bell-off" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
         <div class="empty-state-text">لا توجد إشعارات</div></div>`;
+      if (window.lucide) lucide.createIcons();
       return;
     }
 
     const typeColors = { info:'info', warning:'warning', success:'success', error:'danger', account_share:'success' };
-    const typeIcons  = { info:'ℹ️', warning:'⚠️', success:'✅', error:'❌', account_share:'🏦' };
+    const _niSize = 'width:20px;height:20px;vertical-align:middle;';
+    const typeIcons = {
+      info         : `<i data-lucide="info" style="${_niSize}stroke:var(--info);"></i>`,
+      warning      : `<i data-lucide="alert-triangle" style="${_niSize}stroke:var(--warning);"></i>`,
+      success      : `<i data-lucide="check-circle" style="${_niSize}stroke:var(--success);"></i>`,
+      error        : `<i data-lucide="x-circle" style="${_niSize}stroke:var(--danger);"></i>`,
+      account_share: `<i data-lucide="landmark" style="${_niSize}stroke:var(--success);"></i>`,
+    };
 
     const wrap = document.createElement('div');
     wrap.style.display = 'flex';
@@ -107,24 +115,24 @@ const NotificationsComponent = {
 
       card.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:10px;">
-          <span style="font-size:1.2rem;flex-shrink:0;">${isTransferApproval ? '💸' : isTransferRequest ? '📨' : (typeIcons[n.type] || 'ℹ️')}</span>
+          <span style="flex-shrink:0;display:inline-flex;align-items:center;">${isTransferApproval ? `<i data-lucide="banknote" style="width:20px;height:20px;stroke:var(--warning);"></i>` : isTransferRequest ? `<i data-lucide="mail" style="width:20px;height:20px;stroke:var(--accent);"></i>` : (typeIcons[n.type] || typeIcons.info)}</span>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:${isRead ? '500' : '700'};margin-bottom:4px;">${escapeHtml(n.title)}</div>
             <div style="font-size:0.88rem;color:var(--text-secondary);white-space:pre-line;">${escapeHtml(text)}</div>
-            ${isShare ? `<button class="notif-open-deposit-btn btn btn-primary btn-sm" data-notif-id="${escapeHtml(n.id)}" style="margin-top:8px;">📋 فتح نموذج الإيداع</button>` : ''}
+            ${isShare ? `<button class="notif-open-deposit-btn btn btn-primary btn-sm" data-notif-id="${escapeHtml(n.id)}" style="margin-top:8px;"><i data-lucide="file-text" style="width:13px;height:13px;vertical-align:middle;pointer-events:none;"></i> فتح نموذج الإيداع</button>` : ''}
             ${isActionPending ? `
               <div class="notif-action-row" style="display:flex;gap:8px;margin-top:10px;" data-notif-id="${escapeHtml(n.id)}">
                 <button class="btn btn-primary btn-sm notif-accept-btn" style="flex:1;"
                   data-meta-type="${escapeHtml(meta.type || '')}"
                   data-transaction-id="${escapeHtml(meta.transaction_id || '')}"
                   data-request-id="${escapeHtml(meta.request_id || '')}">
-                  ✅ قبول
+                  <i data-lucide="check" style="width:13px;height:13px;vertical-align:middle;pointer-events:none;"></i> قبول
                 </button>
                 <button class="btn btn-secondary btn-sm notif-reject-btn" style="flex:1;color:var(--danger);"
                   data-meta-type="${escapeHtml(meta.type || '')}"
                   data-transaction-id="${escapeHtml(meta.transaction_id || '')}"
                   data-request-id="${escapeHtml(meta.request_id || '')}">
-                  ❌ رفض
+                  <i data-lucide="x" style="width:13px;height:13px;vertical-align:middle;pointer-events:none;"></i> رفض
                 </button>
               </div>` : ''}
             <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;">${timeAgo(n.created_at)}</div>

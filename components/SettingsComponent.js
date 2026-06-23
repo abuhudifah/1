@@ -33,8 +33,9 @@ const SettingsComponent = {
         await ProfileSettingsComponent.render(container);
       } else {
         container.innerHTML = `<div class="empty-state">
-          <div class="empty-state-icon">⚙️</div>
+          <div class="empty-state-icon"><i data-lucide="settings" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
           <div class="empty-state-text">لم يُحمَّل مكوّن الإعدادات</div></div>`;
+      if (window.lucide) lucide.createIcons();
       }
       return;
     }
@@ -61,8 +62,9 @@ const SettingsComponent = {
     divider.innerHTML = `
       <div style="flex:1;height:1px;background:var(--border-color);"></div>
       <span style="font-size:.78rem;color:var(--text-muted);white-space:nowrap;font-weight:600;
-        padding:4px 10px;background:var(--bg-hover);border-radius:20px;border:1px solid var(--border-color);">
-        ⚙️ إعدادات النظام
+        padding:4px 10px;background:var(--bg-hover);border-radius:20px;border:1px solid var(--border-color);
+        display:inline-flex;align-items:center;gap:5px;">
+        <i data-lucide="settings" style="width:13px;height:13px;"></i> إعدادات النظام
       </span>
       <div style="flex:1;height:1px;background:var(--border-color);"></div>`;
     wrap.appendChild(divider);
@@ -80,7 +82,7 @@ const SettingsComponent = {
     usageCard.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
         <h3 style="font-size:0.95rem;font-weight:700;margin:0;display:flex;align-items:center;gap:8px;">
-          <span style="font-size:1.05rem;">☁️</span> استخدام خطة Supabase المجانية
+          <i data-lucide="cloud" style="width:17px;height:17px;"></i> استخدام خطة Supabase المجانية
         </h3>
         <button id="set-usage-refresh" class="btn btn-secondary btn-sm" style="gap:6px;">
           <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> تحديث
@@ -96,7 +98,7 @@ const SettingsComponent = {
     adminWrap.appendChild(usageCard);
 
     /* ═══ 1. شعار النظام ═══ */
-    const logoCard = this._buildCard('🖼️ شعار النظام');
+    const logoCard = this._buildCard('<i data-lucide="image" style="width:15px;height:15px;"></i> شعار النظام');
     logoCard.innerHTML += `
       <div class="form-group">
         <label class="form-label">رابط الشعار (URL)</label>
@@ -115,7 +117,7 @@ const SettingsComponent = {
     adminWrap.appendChild(logoCard);
 
     /* ═══ 2. النسخ الاحتياطي ═══ */
-    const backupCard = this._buildCard('💾 النسخ الاحتياطي والاستعادة');
+    const backupCard = this._buildCard('<i data-lucide="hard-drive" style="width:15px;height:15px;"></i> النسخ الاحتياطي والاستعادة');
     backupCard.innerHTML += `
       <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">
         تصدير جميع بيانات النظام إلى ملف JSON، أو استعادتها من نسخة سابقة.
@@ -133,7 +135,7 @@ const SettingsComponent = {
     adminWrap.appendChild(backupCard);
 
     /* ═══ 4. إعادة ضبط البيانات التشغيلية ═══ */
-    const resetCard = this._buildCard('⚠️ إعادة ضبط البيانات التشغيلية');
+    const resetCard = this._buildCard('<i data-lucide="alert-triangle" style="width:15px;height:15px;stroke:var(--warning);"></i> إعادة ضبط البيانات التشغيلية');
     resetCard.innerHTML += `
       <div style="background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.20);
         border-radius:10px;padding:12px 14px;margin-bottom:14px;">
@@ -154,14 +156,14 @@ const SettingsComponent = {
     adminWrap.appendChild(resetCard);
 
     /* ═══ 5. مصدر البيانات (Data Source Foundation) ═══ */
-    const dsCard = this._buildCard('🔌 مصدر البيانات');
+    const dsCard = this._buildCard('<i data-lucide="plug" style="width:15px;height:15px;"></i> مصدر البيانات');
     const dsInfo = DataSourceConfig.getInfo();
     dsCard.innerHTML += `
       <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;
         background:var(--bg-hover);border-radius:10px;border:1px solid var(--border-color);margin-bottom:12px;">
         <div style="width:36px;height:36px;border-radius:8px;background:var(--primary);
           display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;">
-          ☁️
+          <i data-lucide="cloud" style="width:18px;height:18px;stroke:#fff;"></i>
         </div>
         <div style="flex:1;">
           <div style="font-weight:700;font-size:0.9rem;">${escapeHtml(dsInfo.label)}</div>
@@ -183,7 +185,7 @@ const SettingsComponent = {
     conflictsCard.innerHTML = `
       <h3 style="font-size:.95rem;font-weight:700;margin-bottom:14px;
         display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <span>⚠️ تعارضات المزامنة</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><i data-lucide="alert-triangle" style="width:15px;height:15px;stroke:var(--warning);"></i> تعارضات المزامنة</span>
         <span id="sc-conflicts-badge" style="display:none;
           padding:2px 10px;border-radius:20px;font-size:.73rem;font-weight:700;
           background:rgba(220,38,38,.15);color:#dc2626;border:1px solid rgba(220,38,38,.3);">
@@ -200,11 +202,11 @@ const SettingsComponent = {
       <div id="sc-conflicts-actions" style="display:none;margin-top:12px;gap:10px;flex-wrap:wrap;">
         <button id="sc-conflicts-resolve-all-server" class="btn btn-sm"
           style="background:rgba(34,197,94,.1);color:#16a34a;border:1px solid rgba(34,197,94,.3);font-size:.78rem;">
-          ✅ قبول الخادم للكل
+          <i data-lucide="check" style="width:12px;height:12px;pointer-events:none;"></i> قبول الخادم للكل
         </button>
         <button id="sc-conflicts-clear-all" class="btn btn-sm"
           style="background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.25);font-size:.78rem;">
-          🗑️ حذف جميع التعارضات
+          <i data-lucide="trash-2" style="width:12px;height:12px;pointer-events:none;"></i> حذف جميع التعارضات
         </button>
       </div>`;
     adminWrap.appendChild(conflictsCard);
@@ -222,11 +224,11 @@ const SettingsComponent = {
   /* ══════════════════════════════════════════
      بناء بطاقة قسم
   ══════════════════════════════════════════ */
-  _buildCard(headerText) {
+  _buildCard(headerHTML) {
     const card = document.createElement('div');
     card.className = 'glass-card';
     card.style.marginBottom = '0';
-    card.innerHTML = `<h3 style="font-size:0.95rem;font-weight:700;margin-bottom:14px;">${escapeHtml(headerText)}</h3>`;
+    card.innerHTML = `<h3 style="font-size:0.95rem;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:6px;">${headerHTML}</h3>`;
     return card;
   },
 
@@ -389,8 +391,8 @@ const SettingsComponent = {
 
     body.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:12px;">
-        ${bar('قاعدة البيانات', '🗄️', dbPct, dbColor, db.used_bytes || 0, db.limit_bytes || 0, `${totalRows} صف`)}
-        ${bar('التخزين (الملفات)', '📦', storagePct, storageColor, storage.used_bytes || 0, storage.limit_bytes || 0, `${storage.object_count || 0} ملف`)}
+        ${bar('قاعدة البيانات', '<i data-lucide="database" style="width:14px;height:14px;vertical-align:middle;"></i>', dbPct, dbColor, db.used_bytes || 0, db.limit_bytes || 0, `${totalRows} صف`)}
+        ${bar('التخزين (الملفات)', '<i data-lucide="archive" style="width:14px;height:14px;vertical-align:middle;"></i>', storagePct, storageColor, storage.used_bytes || 0, storage.limit_bytes || 0, `${storage.object_count || 0} ملف`)}
 
         ${dbWarning ? `
           <div style="background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.28);
@@ -401,8 +403,8 @@ const SettingsComponent = {
 
         <details style="border:1px solid var(--border-color);border-radius:10px;padding:0;overflow:hidden;">
           <summary style="cursor:pointer;padding:10px 14px;font-size:0.82rem;font-weight:600;
-            background:var(--bg-hover);user-select:none;">
-            📊 تفصيل أكبر الجداول
+            background:var(--bg-hover);user-select:none;display:flex;align-items:center;gap:6px;">
+            <i data-lucide="bar-chart-2" style="width:14px;height:14px;"></i> تفصيل أكبر الجداول
           </summary>
           <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;">
             <div style="display:flex;align-items:center;gap:8px;font-size:0.72rem;color:var(--text-muted);font-weight:600;">
