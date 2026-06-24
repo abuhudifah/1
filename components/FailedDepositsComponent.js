@@ -835,6 +835,36 @@ const FailedDepositsComponent = {
     }
 
     showToast('تم تحديث الحالة بنجاح', 'success');
+
+    // إشعار المندوب بالتحديث الجديد
+    if (fd.agent_id) {
+      const stLabel  = FAILED_DEPOSIT_STATUS_LABELS[newStatus] || newStatus;
+      const bankAcct = (bankAccounts || []).find(b => b.id === fd.bank_account_id);
+      const lines    = [
+        `تم تحديث حالة إيداعك الفاشل إلى: ${stLabel}`,
+        `المبلغ الكلي: ${formatCurrency(fd.amount)}`,
+        bankAcct     ? `البنك: ${bankAcct.name}`                   : null,
+        refundAmt    ? `المبلغ المسترد: ${formatCurrency(refundAmt)}` : null,
+        bankResp     ? `رد البنك: ${bankResp}`                      : null,
+        rejectReason ? `سبب الرفض: ${rejectReason}`                 : null,
+      ].filter(Boolean).join('\n');
+
+      const notifType = newStatus === S.REFUNDED      ? 'success'
+                      : newStatus === S.REJECTED       ? 'error'
+                      : newStatus === S.PARTIAL_REFUND ? 'warning'
+                      : 'info';
+
+      await repo.create(TABLES.NOTIFICATIONS, {
+        title    : `تحديث إيداع فاشل — ${stLabel}`,
+        body     : lines,
+        type     : notifType,
+        target   : [fd.agent_id],
+        sender_id: AuthService.getCurrentUserId(),
+        read_by  : [],
+        hidden_by: [],
+      });
+    }
+
     await this._load();
   },
 
