@@ -56,8 +56,12 @@ const NotificationsComponent = {
     listEl.innerHTML = `<div class="skeleton" style="height:70px;border-radius:10px;margin-bottom:8px;"></div>`.repeat(3);
     wrap.appendChild(listEl);
 
+    // أزل أي مودال قديم من body قبل إنشاء جديد (حالة إعادة الرسم)
+    const _staleModal = document.getElementById('notif-send-box');
+    if (_staleModal) _staleModal.parentElement?.remove();
+
     this._sendModal = this._buildSendModal();
-    wrap.appendChild(this._sendModal);
+    document.body.appendChild(this._sendModal);
 
     container.appendChild(wrap);
     await this._load();
@@ -359,10 +363,10 @@ const NotificationsComponent = {
       title,
       body,
       type,
-      target     : JSON.stringify(target),
+      target,
       sender_id  : AuthService.getCurrentUserId(),
-      read_by    : '[]',
-      hidden_by  : '[]',
+      read_by    : [],
+      hidden_by  : [],
     };
 
     const result = await repo.create(TABLES.NOTIFICATIONS, data);

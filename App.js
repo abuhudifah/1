@@ -827,6 +827,13 @@ function _bindStoreEvents() {
   AppStore.addEventListener('store:notifCountChanged',   _updateNotifBadge);
   AppStore.addEventListener('store:notificationsLoaded', _updateNotifBadge);
 
+  // تحديث قائمة الإشعارات فورياً عند وصول حدث Realtime بينما المستخدم في التبويب
+  AppStore.addEventListener('store:notificationsLoaded', () => {
+    if (AppStore.getState('currentTab') === TABS.NOTIFICATIONS && window.NotificationsComponent) {
+      NotificationsComponent._load();
+    }
+  });
+
   AppStore.addEventListener('store:userCleared', () => {
     _showLoginScreen();
   });
