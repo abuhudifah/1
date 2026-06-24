@@ -25,7 +25,6 @@ const AccountManagementComponent = {
   _selectedAccountName: null,
   _addModal           : null,
   _journalModal       : null,
-  _shareModal         : null,
   _allAccounts        : [], // قائمة كل الحسابات لاستخدامها في القيود
   _currentAddType     : null,
   _currentJournalType : 'simple',
@@ -201,11 +200,6 @@ const AccountManagementComponent = {
 
     this._journalModal = this._buildJournalModal();
     document.body.appendChild(this._journalModal);
-
-    /* ── مودال مشاركة رقم الحساب ── */
-    if (this._shareModal) this._shareModal.remove();
-    this._shareModal = this._buildShareModal();
-    document.body.appendChild(this._shareModal);
 
     container.appendChild(wrap);
 
@@ -1639,88 +1633,6 @@ const AccountManagementComponent = {
 
   },
 
-  _openShareBankModal(bankId, bankName, accountNumber, companyName) {
-    const existing = document.getElementById('share-bank-modal');
-    if (existing) existing.remove();
-
-    const users       = (typeof AppStore !== 'undefined' ? (AppStore.getState('users') || []) : []);
-    const currentUser = (typeof AuthState !== 'undefined' ? AuthState.currentUser : null);
-    const targetUsers = users.filter(u => u.id !== currentUser?.id && u.is_active !== false);
-
-    const modal = document.createElement('div');
-    modal.id        = 'share-bank-modal';
-    modal.className = 'share-bank-modal';
-    modal.innerHTML = `
-      <div class="modal-overlay"></div>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>📤 مشاركة رقم الحساب</h3>
-          <button class="modal-close-btn" aria-label="إغلاق">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="account-info-box">
-            <div class="info-row"><span class="label">البنك:</span><span class="value">${escapeHtml(bankName)}</span></div>
-            <div class="info-row"><span class="label">الشركة:</span><span class="value">${escapeHtml(companyName || '—')}</span></div>
-            <div class="info-row"><span class="label">رقم الحساب (IBAN):</span><span class="value iban" dir="ltr">${escapeHtml(accountNumber)}</span></div>
-          </div>
-          <div class="share-section">
-            <label class="share-label" for="share-user-select">اختر المستخدم للمشاركة:</label>
-            <select id="share-user-select" class="share-user-select">
-              <option value="">-- اختر مستخدم --</option>
-              ${targetUsers.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name || u.username || u.id)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="notification-preview">
-            <div class="preview-label">📝 نص الإشعار الذي سيُرسَل:</div>
-            <div class="preview-text">يمكنك الإيداع إلى حساب (${escapeHtml(companyName || bankName)}) عبر هذا الرقم (${escapeHtml(accountNumber)}) وإضافته كمستفيد مستقبلي</div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary btn-cancel-share">إلغاء</button>
-          <button class="btn btn-primary btn-send-share">📤 إرسال الإشعار</button>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-
-    const closeModal = () => modal.remove();
-    modal.querySelector('.modal-close-btn').addEventListener('click', closeModal);
-    modal.querySelector('.btn-cancel-share').addEventListener('click', closeModal);
-    modal.querySelector('.modal-overlay').addEventListener('click', closeModal);
-    modal.querySelector('.btn-send-share').addEventListener('click', () => {
-      const select       = modal.querySelector('#share-user-select');
-      const targetUserId = select.value;
-      if (!targetUserId) { showToast('الرجاء اختيار مستخدم', 'warning'); return; }
-      this._sendBankShareNotification(targetUserId, bankName, companyName, accountNumber, modal);
-    });
-  },
-
-  async _sendBankShareNotification(targetUserId, bankName, companyName, accountNumber, modalEl) {
-    const sendBtn = modalEl?.querySelector('.btn-send-share');
-    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '⏳ جاري الإرسال...'; }
-    try {
-      const currentUser = (typeof AuthState !== 'undefined' ? AuthState.currentUser : null);
-      if (!currentUser?.id) throw new Error('لم يتم تحديد المستخدم الحالي');
-      const { error } = await supabaseClient.from('notifications').insert({
-        from_user_id: currentUser.id,
-        to_user_id:   targetUserId,
-        type:         'account_share',
-        title:        '🏦 مشاركة حساب بنكي',
-        message:      `يمكنك الإيداع إلى حساب (${companyName || bankName}) عبر هذا الرقم (${accountNumber}) وإضافته كمستفيد مستقبلي`,
-        data:         JSON.stringify({ action: 'deposit', account_number: accountNumber, bank_name: bankName, company_name: companyName }),
-        target:       JSON.stringify([targetUserId]),
-        is_read:      false,
-        created_at:   new Date().toISOString(),
-      });
-      if (error) throw new Error(error.message);
-      showToast('✅ تم إرسال الإشعار بنجاح', 'success');
-      if (modalEl) modalEl.remove();
-    } catch (e) {
-      console.error('❌ فشل إرسال إشعار المشاركة:', e.message);
-      showToast('فشل إرسال الإشعار: ' + e.message, 'error');
-      if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '📤 إرسال الإشعار'; }
-    }
-  },
-
   _stmtCard(label, value, color) {
     return `
       <div style="text-align:center;padding:12px;background:${color}12;border-radius:12px;border:1px solid ${color}22;">
@@ -2450,148 +2362,6 @@ const AccountManagementComponent = {
     } catch (e) {
       restore();
       errEl.textContent = `خطأ: ${e.message}`;
-    }
-  },
-
-  // ─────────────────────────────────────────────────────────
-  // مشاركة رقم الحساب مع مستخدم آخر
-  // ─────────────────────────────────────────────────────────
-
-  _buildShareModal() {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.id = 'acct-share-modal';
-    overlay.style.display = 'none';
-    overlay.addEventListener('click', e => { if (e.target === overlay) this._closeShareModal(); });
-
-    overlay.innerHTML = `
-      <div class="modal-box" style="max-width:420px;">
-        <div class="modal-header">
-          <h3 class="modal-title">📤 مشاركة رقم الحساب</h3>
-          <button class="modal-close" id="acct-share-close">✕</button>
-        </div>
-        <div style="margin-bottom:16px;">
-          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:4px;">الحساب</p>
-          <p id="acct-share-info" style="font-weight:700;color:var(--text-primary);font-family:monospace;font-size:0.95rem;"></p>
-        </div>
-        <div class="form-group">
-          <label class="form-label">اختر المستخدم المستلم</label>
-          <select id="acct-share-user-select" class="form-control">
-            <option value="">— اختر مستخدماً —</option>
-          </select>
-        </div>
-        <div id="acct-share-error" style="color:var(--danger);font-size:0.82rem;min-height:18px;margin-bottom:8px;"></div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;">
-          <button id="acct-share-cancel" class="btn btn-secondary">إلغاء</button>
-          <button id="acct-share-send" class="btn btn-primary">
-            <i data-lucide="send" style="width:14px;height:14px;"></i> إرسال
-          </button>
-        </div>
-      </div>`;
-
-    overlay.querySelector('#acct-share-close').addEventListener('click', () => this._closeShareModal());
-    overlay.querySelector('#acct-share-cancel').addEventListener('click', () => this._closeShareModal());
-    overlay.querySelector('#acct-share-send').addEventListener('click', () => this._sendAccountShare());
-
-    return overlay;
-  },
-
-  _closeShareModal() {
-    if (this._shareModal) {
-      this._shareModal.classList.add('is-closing');
-      setTimeout(() => {
-        if (this._shareModal) {
-          this._shareModal.style.display = 'none';
-          this._shareModal.classList.remove('is-closing');
-        }
-        document.body.style.overflow = '';
-      }, 220);
-    }
-  },
-
-  _openShareModal(accountId, accountName, accountNumber) {
-    if (!this._shareModal) return;
-    const errEl = this._shareModal.querySelector('#acct-share-error');
-    errEl.textContent = '';
-
-    // تحديد نوع الكيان من معرف الحساب
-    const entityType = accountId?.startsWith('AGT_')  ? 'user'
-                     : accountId?.startsWith('COMP_') ? 'company'
-                     : accountId?.startsWith('BNK_')  ? 'bank'
-                     : 'user';
-
-    // عرض معلومات الحساب
-    this._shareModal.querySelector('#acct-share-info').textContent =
-      `${accountName}  ·  ${accountNumber}`;
-    // تخزين البيانات على الـ modal مؤقتاً
-    this._shareModal.dataset.accountName   = accountName;
-    this._shareModal.dataset.accountNumber = accountNumber;
-    this._shareModal.dataset.entityType    = entityType;
-
-    // ملء قائمة المستخدمين النشطين (باستثناء المستخدم الحالي)
-    const users   = (AppStore.getState('users') || []).filter(u => u.is_active);
-    const myId    = AuthService.getCurrentUserId();
-    const select  = this._shareModal.querySelector('#acct-share-user-select');
-    select.innerHTML = '<option value="">— اختر مستخدماً —</option>';
-    users
-      .filter(u => u.id !== myId)
-      .forEach(u => {
-        const opt = document.createElement('option');
-        opt.value       = u.id;
-        opt.textContent = `${u.display_name || u.username} (${u.role === 'admin' ? 'مدير' : u.role === 'admin_assistant' ? 'مساعد' : 'مندوب'})`;
-        select.appendChild(opt);
-      });
-
-    this._shareModal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-    if (window.lucide) lucide.createIcons();
-    select.focus();
-  },
-
-  async _sendAccountShare() {
-    const errEl      = this._shareModal.querySelector('#acct-share-error');
-    const select     = this._shareModal.querySelector('#acct-share-user-select');
-    const sendBtn    = this._shareModal.querySelector('#acct-share-send');
-    const toUserId   = select.value;
-    const accountName   = this._shareModal.dataset.accountName   || '';
-    const accountNumber = this._shareModal.dataset.accountNumber || '';
-
-    errEl.textContent = '';
-
-    if (!toUserId) { errEl.textContent = 'يُرجى اختيار مستخدم'; return; }
-
-    // التحقق من أن المستخدم المختار نشط
-    const users  = AppStore.getState('users') || [];
-    const target = users.find(u => u.id === toUserId && u.is_active);
-    if (!target) { errEl.textContent = 'المستخدم المختار غير موجود أو غير نشط'; return; }
-
-    const entityType   = this._shareModal.dataset.entityType || 'user';
-    const actionMap    = { user: 'transfer', company: 'collection', bank: 'deposit' };
-    const action       = actionMap[entityType] || 'transfer';
-    const msgText      = `يمكنك التحويل إلى حساب ${accountName} عبر هذا الرقم (${accountNumber}) وإضافته كمستفيد مستقبلي`;
-
-    const restore = setButtonLoading(sendBtn, 'جاري الإرسال...');
-    try {
-      const result = await repo.create(TABLES.NOTIFICATIONS, {
-        title     : '📤 مشاركة رقم حساب',
-        body      : msgText,
-        message   : msgText,
-        type      : 'account_share',
-        data      : JSON.stringify({ action, account_number: accountNumber, entity_name: accountName, entity_type: entityType }),
-        target    : JSON.stringify([toUserId]),
-        sender_id : AuthService.getCurrentUserId(),
-        read_by   : '[]',
-        hidden_by : '[]',
-      });
-      if (!isOk(result)) throw new Error(result.error || 'فشل الإرسال');
-
-      this._closeShareModal();
-      showToast(`✅ تم إرسال رقم الحساب إلى ${escapeHtml(target.display_name || target.username)}`, 'success');
-    } catch (e) {
-      errEl.textContent = formatErrorMessage(e);
-      console.warn('⚠️ _sendAccountShare:', e.message);
-    } finally {
-      restore();
     }
   },
 
