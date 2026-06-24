@@ -105,9 +105,8 @@ const NotificationsComponent = {
       // استخراج metadata للإشعارات التفاعلية
       let meta = {};
       try { meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {}); } catch { meta = {}; }
-      const isTransferApproval = meta.type === 'transfer_approval';
       const isTransferRequest  = meta.type === 'transfer_request';
-      const isActionPending    = (isTransferApproval || isTransferRequest) && !isRead;
+      const isActionPending    = isTransferRequest && !isRead;
 
       const card = document.createElement('div');
       card.className = 'glass-card';
@@ -115,7 +114,7 @@ const NotificationsComponent = {
 
       card.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:10px;">
-          <span style="flex-shrink:0;display:inline-flex;align-items:center;">${isTransferApproval ? `<i data-lucide="banknote" style="width:20px;height:20px;stroke:var(--warning);"></i>` : isTransferRequest ? `<i data-lucide="mail" style="width:20px;height:20px;stroke:var(--accent);"></i>` : (typeIcons[n.type] || typeIcons.info)}</span>
+          <span style="flex-shrink:0;display:inline-flex;align-items:center;">${isTransferRequest ? `<i data-lucide="mail" style="width:20px;height:20px;stroke:var(--accent);"></i>` : (typeIcons[n.type] || typeIcons.info)}</span>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:${isRead ? '500' : '700'};margin-bottom:4px;">${escapeHtml(n.title)}</div>
             <div style="font-size:0.88rem;color:var(--text-secondary);white-space:pre-line;">${escapeHtml(text)}</div>
@@ -472,11 +471,6 @@ const NotificationsComponent = {
           updated_at: new Date().toISOString(),
         });
       }
-    } else if (metaType === 'transfer_approval' && transactionId) {
-      // تحويل قديم بانتظار موافقة (backward compat)
-      result = action === 'accept'
-        ? await AccountingService.approveTransaction(transactionId)
-        : await AccountingService.rejectTransaction(transactionId);
     } else {
       showToast('لا يمكن تحديد نوع الطلب', 'error');
       return;

@@ -413,9 +413,6 @@ async function createTransactionWithEntries(txData) {
       return err('التاريخ غير صالح');
     }
 
-    const isReceiptByAgent = txData.type === TRANSACTION_TYPES.RECEIPT
-      && AuthService.getCurrentUser()?.role === ROLES.AGENT;
-
     const transaction = {
       ...txData,
       // ✅ UUID حقيقي دائماً (حتى أوفلاين). Postgres يقبل المعرّف المُولّد من
@@ -427,8 +424,7 @@ async function createTransactionWithEntries(txData) {
       created_at      : new Date().toISOString(),
       updated_at      : new Date().toISOString(),
       sync_status     : (!isOfflineMode() && isOnline()) ? SYNC_STATUS.SYNCED : SYNC_STATUS.PENDING,
-      approval_status : txData.approval_status
-        || (isReceiptByAgent ? APPROVAL_STATUS.PENDING : APPROVAL_STATUS.APPROVED),
+      approval_status : txData.approval_status || APPROVAL_STATUS.APPROVED,
     };
     // نسخة نظيفة بدون الحقول الوقتية (تُستخدم للحفظ في DB وإرسال للـ RPC)
     const cleanTransaction = _stripEphemeral(transaction);
