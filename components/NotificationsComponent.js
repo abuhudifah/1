@@ -79,14 +79,13 @@ const NotificationsComponent = {
       return;
     }
 
-    const typeColors = { info:'info', warning:'warning', success:'success', error:'danger', account_share:'success' };
+    const typeColors = { info:'info', warning:'warning', success:'success', error:'danger' };
     const _niSize = 'width:20px;height:20px;vertical-align:middle;';
     const typeIcons = {
-      info         : `<i data-lucide="info" style="${_niSize}stroke:var(--info);"></i>`,
-      warning      : `<i data-lucide="alert-triangle" style="${_niSize}stroke:var(--warning);"></i>`,
-      success      : `<i data-lucide="check-circle" style="${_niSize}stroke:var(--success);"></i>`,
-      error        : `<i data-lucide="x-circle" style="${_niSize}stroke:var(--danger);"></i>`,
-      account_share: `<i data-lucide="landmark" style="${_niSize}stroke:var(--success);"></i>`,
+      info   : `<i data-lucide="info" style="${_niSize}stroke:var(--info);"></i>`,
+      warning: `<i data-lucide="alert-triangle" style="${_niSize}stroke:var(--warning);"></i>`,
+      success: `<i data-lucide="check-circle" style="${_niSize}stroke:var(--success);"></i>`,
+      error  : `<i data-lucide="x-circle" style="${_niSize}stroke:var(--danger);"></i>`,
     };
 
     const wrap = document.createElement('div');
@@ -95,12 +94,10 @@ const NotificationsComponent = {
     wrap.style.gap = '10px';
 
     for (const n of notifs) {
-      const readBy   = Array.isArray(n.read_by)   ? n.read_by   : JSON.parse(n.read_by   || '[]');
-      const hiddenBy = Array.isArray(n.hidden_by) ? n.hidden_by : JSON.parse(n.hidden_by || '[]');
-      const isRead   = readBy.includes(uid);
-      const color    = typeColors[n.type] || 'neutral';
-      const text     = n.message || n.body || '';
-      const isShare  = n.type === 'account_share';
+      const readBy = Array.isArray(n.read_by) ? n.read_by : JSON.parse(n.read_by || '[]');
+      const isRead = readBy.includes(uid);
+      const color  = typeColors[n.type] || 'neutral';
+      const text   = n.message || n.body || '';
 
       // استخراج metadata للإشعارات التفاعلية
       let meta = {};
@@ -118,7 +115,6 @@ const NotificationsComponent = {
           <div style="flex:1;min-width:0;">
             <div style="font-weight:${isRead ? '500' : '700'};margin-bottom:4px;">${escapeHtml(n.title)}</div>
             <div style="font-size:0.88rem;color:var(--text-secondary);white-space:pre-line;">${escapeHtml(text)}</div>
-            ${isShare ? `<button class="notif-open-deposit-btn btn btn-primary btn-sm" data-notif-id="${escapeHtml(n.id)}" style="margin-top:8px;"><i data-lucide="file-text" style="width:13px;height:13px;vertical-align:middle;pointer-events:none;"></i> فتح نموذج الإيداع</button>` : ''}
             ${isActionPending ? `
               <div class="notif-action-row" style="display:flex;gap:8px;margin-top:10px;" data-notif-id="${escapeHtml(n.id)}">
                 <button class="btn btn-primary btn-sm notif-accept-btn" style="flex:1;"
@@ -159,12 +155,6 @@ const NotificationsComponent = {
     listEl.querySelectorAll('.hide-notif-btn').forEach(btn => {
       btn.addEventListener('click', () => this._hide(btn.dataset.id));
     });
-    listEl.querySelectorAll('.notif-open-deposit-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const notif = notifs.find(n => n.id === btn.dataset.notifId);
-        if (notif) this._handleNotificationClick(notif);
-      });
-    });
     listEl.querySelectorAll('.notif-accept-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const row    = btn.closest('.notif-action-row');
@@ -192,9 +182,8 @@ const NotificationsComponent = {
     if (readBy.includes(uid)) return;
 
     const newReadBy = [...readBy, uid];
-    const result    = await repo.update(TABLES.NOTIFICATIONS, notifId, { read_by: newReadBy });
+    const result = await repo.update(TABLES.NOTIFICATIONS, notifId, { read_by: newReadBy });
     if (isOk(result)) {
-      AppStore.decrementUnreadCount();
       await AppStore.refreshData();
       await this._load();
     }
@@ -208,12 +197,19 @@ const NotificationsComponent = {
       return !rb.includes(uid);
     });
 
-    for (const n of unread) {
-      const rb  = Array.isArray(n.read_by) ? n.read_by : JSON.parse(n.read_by || '[]');
-      await repo.update(TABLES.NOTIFICATIONS, n.id, { read_by: [...rb, uid] });
-    }
+    if (!unread.length) { showToast('لا يوجد إشعارات غير مقروءة', 'info'); return; }
 
-    showToast('تم تحديد الكل كمقروء', 'success');
+    const results = await Promise.all(
+      unread.map(n => {
+        const rb = Array.isArray(n.read_by) ? n.read_by : JSON.parse(n.read_by || '[]');
+        return repo.update(TABLES.NOTIFICATIONS, n.id, { read_by: [...rb, uid] });
+      })
+    );
+
+    const failed = results.filter(r => !isOk(r)).length;
+    if (failed > 0) showToast(`تم تحديد معظمها — ${failed} فشل`, 'warning');
+    else showToast('تم تحديد الكل كمقروء', 'success');
+
     await AppStore.refreshData();
     await this._load();
   },
@@ -229,72 +225,6 @@ const NotificationsComponent = {
     if (isOk(result)) {
       await AppStore.refreshData();
       await this._load();
-    }
-  },
-
-  /* ── معالجة النقر على إشعار account_share ── */
-  async _handleNotificationClick(notification) {
-    if (notification.type !== 'account_share') return;
-    try {
-      const data = JSON.parse(notification.data || '{}');
-      if (!data.action || !data.entity_name) {
-        console.warn('⚠️ _handleNotificationClick: بيانات الإشعار غير مكتملة', notification.id);
-        return;
-      }
-
-      // خريطة العمليات المدعومة → معرّفات DOM الفعلية في DataEntryComponent
-      const operationMap = {
-        deposit    : { formTabId: 'form-tab-deposit',    searchId: 'dep-bank-search' },
-        collection : { formTabId: 'form-tab-collection', searchId: 'col-company-search' },
-      };
-      const config = operationMap[data.action];
-
-      // 1. الانتقال إلى تبويب إدخال البيانات
-      if (typeof _navigateTo === 'function') {
-        await _navigateTo('data-entry');
-      } else {
-        const tabBtn = document.querySelector('[data-tab="data-entry"]');
-        if (tabBtn) tabBtn.click();
-        await new Promise(r => setTimeout(r, 400));
-      }
-
-      // نوع غير مدعوم حالياً (transfer…): انتقل فقط واعرض الرقم للبحث اليدوي
-      if (!config) {
-        showToast(`📋 انتقل إلى إدخال البيانات وابحث عن: ${data.entity_name || ''}`, 'info');
-        return;
-      }
-
-      // 2. تفعيل نموذج العملية المناسب
-      const formTabBtn = document.getElementById(config.formTabId);
-      if (formTabBtn) {
-        formTabBtn.click();
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      // 3. تعبئة حقل البحث باسم الكيان
-      const input = document.getElementById(config.searchId);
-      if (!input) {
-        showToast('⚠️ افتح النموذج يدوياً', 'warning');
-        return;
-      }
-
-      input.value = data.entity_name || '';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      await new Promise(r => setTimeout(r, 150));
-
-      // 4. اختيار أول نتيجة تلقائياً
-      const dropdown  = input.nextElementSibling;
-      const firstItem = dropdown?.firstElementChild;
-      if (firstItem && dropdown?.style.display !== 'none') {
-        firstItem.click();
-        const typeNames = { deposit: 'الإيداع', collection: 'التحصيل' };
-        showToast(`✅ تم تعبئة نموذج ${typeNames[data.action] || 'العملية'}`, 'success');
-      } else {
-        showToast('⚠️ لم يُعثر على الحساب، ابحث يدوياً', 'warning');
-      }
-    } catch (e) {
-      console.warn('⚠️ _handleNotificationClick:', e.message);
-      showToast('تعذّر فتح النموذج', 'warning');
     }
   },
 
@@ -479,8 +409,6 @@ const NotificationsComponent = {
     if (isOk(result)) {
       showToast(action === 'accept' ? '✅ تم القبول بنجاح' : '✅ تم الرفض', 'success');
       if (notifId) await this._markRead(notifId);
-      await AppStore.refreshData();
-      await this._load();
     } else {
       showToast(`❌ ${result.error}`, 'error');
     }
