@@ -52,6 +52,12 @@ const _VERIFY_TTL_MS = 5 * 60 * 1000;
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('🚀 App.js v4.0: بدء تهيئة النظام...');
 
+  // PWA: تسجيل Service Worker + التقاط حدث التثبيت
+  if (window.PWAManager) {
+    PWAManager.init();
+    PWAManager.setupInstallPrompt();
+  }
+
   try {
     // 1. Dexie
     try {
