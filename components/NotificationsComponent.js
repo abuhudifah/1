@@ -400,10 +400,31 @@ const NotificationsComponent = {
       if (action === 'accept') {
         result = await AccountingService.createTransferFromRequest(requestId);
       } else {
+        // جلب الطلب للحصول على from_user_id قبل التحديث
+        const reqResult = await repo.getById(TABLES.TRANSFER_REQUESTS, requestId);
         result = await repo.update(TABLES.TRANSFER_REQUESTS, requestId, {
           status    : 'rejected',
           updated_at: new Date().toISOString(),
         });
+        // إشعار رفض للطالب
+        if (isOk(result) && isOk(reqResult)) {
+          const req = reqResult.data;
+          const currentUser = AuthService.getCurrentUser();
+          const senderId = req.from_user_id;
+          if (senderId && senderId !== currentUser?.id) {
+            const notifData = {
+              title    : '❌ رُفض طلب التحويل',
+              body     : `${currentUser?.display_name || 'المستخدم'} رفض طلب تحويل مبلغ ${formatCurrency(req.amount)}.`,
+              type     : 'warning',
+              target   : JSON.stringify([senderId]),
+              sender_id: currentUser?.id,
+              read_by  : '[]',
+              hidden_by: '[]',
+            };
+            await repo.create(TABLES.NOTIFICATIONS, notifData)
+              .catch(e => console.warn('فشل إرسال إشعار الرفض:', e));
+          }
+        }
       }
     } else {
       showToast('لا يمكن تحديد نوع الطلب', 'error');
