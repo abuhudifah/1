@@ -4,7 +4,7 @@
  * skipWaiting: التحديثات تُطبَّق فوراً بدون الحاجة لإغلاق التطبيق
  */
 
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const CACHE_NAME    = `calc-${CACHE_VERSION}`;
 
 // الملفات الثابتة التي تُخزَّن عند التثبيت
@@ -139,6 +139,28 @@ self.addEventListener('fetch', event => {
 // ─── رسالة من الصفحة: تحديث فوري ────────────────────────────
 self.addEventListener('message', event => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
+// ─── Web Push: استقبال الإشعار من الخادم (التطبيق مغلق أو في الخلفية) ──
+self.addEventListener('push', event => {
+  if (!event.data) return;
+
+  let data = {};
+  try { data = event.data.json(); } catch { data = { title: 'إشعار جديد', body: event.data.text() }; }
+
+  const { title = 'إشعار جديد', body = '', url = './?tab=notifications' } = data;
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon   : './assets/icons/icon-192.png',
+      badge  : './assets/icons/favicon-32.png',
+      tag    : 'push-' + Date.now(),
+      renotify: true,
+      vibrate: [80, 40, 80],
+      data   : { url },
+    })
+  );
 });
 
 // ─── نقر على إشعار نظام التشغيل → فتح/تركيز التطبيق ─────────

@@ -169,9 +169,12 @@ async function _bootApp(profile) {
   // ── اختصارات لوحة المفاتيح ──
   initKeyboardShortcuts();
 
-  // ── طلب إذن إشعارات نظام التشغيل (مرة واحدة بعد الدخول) ──
+  // ── طلب إذن الإشعارات + تسجيل Web Push (مرة واحدة بعد الدخول) ──
   if (window.NotificationSound) {
-    setTimeout(() => NotificationSound.requestPermission(), 2000);
+    setTimeout(async () => {
+      const perm = await NotificationSound.requestPermission();
+      if (perm === 'granted') NotificationSound.subscribeToPush();
+    }, 2000);
   }
 
   // ── إشعار الدخول السريع (بعد بناء الواجهة) ──

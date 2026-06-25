@@ -118,12 +118,52 @@ const NotificationSound = (() => {
   function setEnabled(val) { _enabled = !!val; }
   function isEnabled()     { return _enabled; }
 
+  // ─── Web Push Subscription ───────────────────────────────────
+  function _urlB64ToUint8(b64) {
+    const pad = '='.repeat((4 - b64.length % 4) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+  }
+
+  async function subscribeToPush() {
+    if (!('PushManager' in window) || !('serviceWorker' in navigator)) return;
+    if (Notification.permission !== 'granted') return;
+    if (!window.VAPID_PUBLIC_KEY || !window.supabaseClient) return;
+
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      let sub   = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly     : true,
+          applicationServerKey: _urlB64ToUint8(window.VAPID_PUBLIC_KEY),
+        });
+      }
+
+      const { data: { user } } = await window.supabaseClient.auth.getUser();
+      if (!user) return;
+
+      const json = sub.toJSON();
+      await window.supabaseClient.from('push_subscriptions').upsert({
+        user_id  : user.id,
+        endpoint : json.endpoint,
+        p256dh   : json.keys.p256dh,
+        auth     : json.keys.auth,
+      }, { onConflict: 'user_id,endpoint', ignoreDuplicates: true });
+
+      console.log('📡 Web Push: اشتراك مُسجَّل');
+    } catch (e) {
+      console.warn('⚠️ Web Push: فشل الاشتراك:', e.message);
+    }
+  }
+
   return {
     play, vibrate,
     setBadge, clearBadge,
     requestPermission, showOSNotification,
     onNewNotification,
     setEnabled, isEnabled,
+    subscribeToPush,
   };
 })();
 
