@@ -323,10 +323,11 @@ const AllOperationsComponent = {
       return;
     }
 
-    // بيانات AppStore للـ fallback (Offline) فقط — في Online تأتي من الـ view
-    const users        = useLocal ? (AppStore.getState('users')        || []) : [];
-    const bankAccounts = useLocal ? (AppStore.getState('bankAccounts') || []) : [];
-    const companies    = useLocal ? (AppStore.getState('companies')    || []) : [];
+    // بيانات المستخدمين والبنوك — دائماً من AppStore لضمان تسمية الأطراف
+    const users        = AppStore.getState('users')        || [];
+    const bankAccounts = AppStore.getState('bankAccounts') || [];
+    const companies    = AppStore.getState('companies')    || [];
+    const usersMap     = new Map(users.map(u => [u.id, u.display_name]));
 
     this._detailedMap = this._detailedMap || {};
     const currentRole = AuthService.getCurrentUser()?.role;
@@ -348,7 +349,6 @@ const AllOperationsComponent = {
           <th>التاريخ والوقت</th>
           <th>النوع</th>
           <th>المبلغ</th>
-          <th>المندوب</th>
           <th>التفاصيل</th>
           <th>الحالة</th>
           <th>الإجراءات</th>
@@ -356,43 +356,57 @@ const AllOperationsComponent = {
         <tbody>
           ${data.map(tx=>{
             const det    = this._detailedMap[tx.id] || {};
-            const agent  = det.agent_name || users.find(u=>u.id===tx.agent_id)?.display_name || '—';
-            const execBy = det.executed_by_name || null;
+            const agentName = det.agent_name || usersMap.get(tx.agent_id) || '—';
+            const execBy    = det.executed_by_name;
             const color  = getTransactionColor(tx.type);
             const icon   = typeIcons[tx.type]||'📋';
             const amt    = Math.round(parseFloat(tx.amount)||0);
             const label  = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
+            const timeStr= tx.time ? tx.time.substring(0,5) : '';
 
-            // BND-3.5: التفاصيل حسب نوع العملية (محسّن)
+            // ── بناء خلية التفاصيل بمنظور محايد (المدير لا طرف دائن/مدين) ──
+            const _line = (html) => `<div style="font-size:0.82rem;line-height:1.55;">${html}</div>`;
+            const _muted = (t) => `<span style="color:var(--text-muted);font-size:0.75rem;">${escapeHtml(t)}</span>`;
+            const _bold  = (t) => `<b>${escapeHtml(t)}</b>`;
+
             let details = '';
-            if (tx.type==='collection' || tx.type==='refund_settlement') {
-              const cust = det.debtor_name||tx.customer_name||'—';
-              const comp = det.company_name||companies.find(c=>c.id===tx.company_id)?.name||'';
-              details = `<div style="font-weight:600;font-size:0.82rem;">${escapeHtml(cust)}</div>
-                ${comp?`<div style="font-size:0.72rem;color:var(--text-muted);">${escapeHtml(comp)}</div>`:''}`;
-            } else if (tx.type==='deposit' || tx.type==='bank_withdrawal') {
-              const bank = det.bank_account_name||bankAccounts.find(b=>b.id===tx.bank_account_id)?.name||'—';
-              const co   = det.bank_company_name||companies.find(c=>c.id===tx.company_id)?.name||'';
-              details = `<div style="font-weight:600;font-size:0.82rem;">${escapeHtml(bank)}</div>
-                ${co?`<div style="font-size:0.72rem;color:var(--text-muted);">${escapeHtml(co)}</div>`:''}`;
-            } else if (tx.type==='expense') {
-              const expName = det.expense_account_name||tx.expense_type||'—';
-              const expDet  = tx.details||'';
-              details = `<div style="font-weight:600;font-size:0.82rem;">${escapeHtml(expName)}</div>
-                ${expDet?`<div style="font-size:0.72rem;color:var(--text-muted);">${escapeHtml(expDet)}</div>`:''}`;
+            if (tx.type==='delivery') {
+              const toName = usersMap.get(tx.to_agent_id) || '—';
+              details = _line(`من حساب: ${_bold(agentName)}`) +
+                        _line(`إلى حساب: ${_bold(toName)}`);
             } else if (tx.type==='receipt') {
-              const fromName = users.find(u=>u.id===tx.from_agent_id)?.display_name
-                            || det.agent_name || tx.customer_name || '—';
-              details = `<div style="font-size:0.82rem;">من: <b>${escapeHtml(fromName)}</b></div>`;
-            } else if (tx.type==='delivery') {
-              const toName = users.find(u=>u.id===tx.to_agent_id)?.display_name
-                          || tx.customer_name || '—';
-              details = `<div style="font-size:0.82rem;">إلى: <b>${escapeHtml(toName)}</b></div>`;
+              const fromName = usersMap.get(tx.from_agent_id) || agentName;
+              details = _line(`من حساب: ${_bold(fromName)}`) +
+                        _line(`إلى حساب: ${_bold(agentName)}`);
+            } else if (tx.type==='deposit') {
+              const bank = det.bank_account_name || bankAccounts.find(b=>b.id===tx.bank_account_id)?.name || '—';
+              const co   = det.bank_company_name || '';
+              details = _line(`من حساب: ${_bold(agentName)}`) +
+                        _line(`إلى بنك: ${_bold(bank)}${co?' '+_muted(`(${co})`):''}`)
+            } else if (tx.type==='bank_withdrawal') {
+              const bank = det.bank_account_name || bankAccounts.find(b=>b.id===tx.bank_account_id)?.name || '—';
+              const co   = det.bank_company_name || '';
+              details = _line(`من بنك: ${_bold(bank)}${co?' '+_muted(`(${co})`):''}`) +
+                        _line(`إلى حساب: ${_bold(agentName)}`);
+            } else if (tx.type==='collection' || tx.type==='refund_settlement') {
+              const cust = det.debtor_name || tx.customer_name || '—';
+              const comp = det.company_name || companies.find(c=>c.id===tx.company_id)?.name || '';
+              details = _line(`المنفذ: ${_bold(agentName)}`) +
+                        _line(`العميل: ${_bold(cust)}${comp?' | الشركة: '+_muted(comp):''}`)
+            } else if (tx.type==='expense') {
+              const expName = det.expense_account_name || tx.expense_type || '—';
+              details = _line(`المنفذ: ${_bold(agentName)}`) +
+                        _line(`المصروف: ${_bold(expName)}`);
             } else {
-              details = `<div style="font-size:0.82rem;color:var(--text-muted);">${escapeHtml(tx.details||'—')}</div>`;
+              details = _line(`المنفذ: ${_bold(agentName)}`);
             }
 
-            const timeStr     = tx.time ? tx.time.substring(0,5) : '';
+            // إضافة سطر المنفذ إن اختلف + ملاحظات
+            if (execBy && execBy !== agentName)
+              details += _line(`نفّذه: ${_muted(execBy)}`);
+            if (tx.details)
+              details += _line(_muted(tx.details));
+
             const showActions = currentRole === 'agent' ? tx.agent_id === currentUid : true;
 
             return `<tr ${tx.is_reversed?'class="tx-reversed"':''}>
@@ -408,10 +422,6 @@ const AllOperationsComponent = {
               <td style="font-weight:800;color:${color};direction:ltr;white-space:nowrap;">
                 ${amt.toLocaleString('en-US')}
                 <span style="font-size:0.65rem;font-weight:500;color:var(--text-muted);">${APP_CONFIG.CURRENCY_SYMBOL}</span>
-              </td>
-              <td>
-                <div style="font-size:0.84rem;font-weight:600;">${escapeHtml(agent)}</div>
-                ${execBy&&execBy!==agent?`<div style="font-size:0.72rem;color:var(--text-muted);">نفّذه: ${escapeHtml(execBy)}</div>`:''}
               </td>
               <td>${details}</td>
               <td>
@@ -522,17 +532,29 @@ const AllOperationsComponent = {
         data = isOk(result) ? (result.data.data || []) : [];
       }
 
-      const users = AppStore.getState('users') || [];
-      const headers = ['التاريخ', 'الوقت', 'النوع', 'المبلغ (ر.س)', 'المندوب', 'التفاصيل', 'الحالة'];
-      const rows = data.map(tx => [
-        tx.date || '—',
-        tx.time ? tx.time.substring(0, 5) : '—',
-        TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
-        Math.round(parseFloat(tx.amount || 0)),
-        tx.agent_name || users.find(u => u.id === tx.agent_id)?.display_name || '—',
-        tx.debtor_name || tx.customer_name || tx.bank_account_name || tx.expense_account_name || tx.details || '—',
-        tx.is_reversed ? 'مُعكوس' : 'نشط',
-      ]);
+      const users    = AppStore.getState('users') || [];
+      const uMap     = new Map(users.map(u => [u.id, u.display_name]));
+      const headers  = ['التاريخ', 'الوقت', 'النوع', 'المبلغ (ر.س)', 'من حساب', 'إلى حساب', 'تفاصيل إضافية', 'الحالة'];
+      const rows = data.map(tx => {
+        const agent = tx.agent_name || uMap.get(tx.agent_id) || '—';
+        let from = agent, to = '—', extra = tx.details || '';
+        if (tx.type === 'delivery')       { from = agent; to = uMap.get(tx.to_agent_id) || '—'; }
+        else if (tx.type === 'receipt')   { from = uMap.get(tx.from_agent_id) || agent; to = agent; }
+        else if (tx.type === 'deposit')   { from = agent; to = tx.bank_account_name || '—'; }
+        else if (tx.type === 'bank_withdrawal') { from = tx.bank_account_name || '—'; to = agent; }
+        else if (tx.type === 'collection' || tx.type === 'refund_settlement') {
+          from = tx.debtor_name || tx.customer_name || '—'; to = agent;
+          extra = tx.company_name || tx.details || '';
+        } else if (tx.type === 'expense') { from = agent; to = tx.expense_account_name || tx.expense_type || '—'; }
+        return [
+          tx.date || '—',
+          tx.time ? tx.time.substring(0, 5) : '—',
+          TRANSACTION_TYPE_LABELS[tx.type] || tx.type,
+          Math.round(parseFloat(tx.amount || 0)),
+          from, to, extra,
+          tx.is_reversed ? 'مُعكوس' : 'نشط',
+        ];
+      });
 
       const dateLabel = (typeof filters.date === 'string' ? filters.date : null) || getCurrentSaudiDate();
       await PrintService.exportToExcel(headers, rows, 'العمليات', `operations_${dateLabel}`);
@@ -682,23 +704,84 @@ const AllOperationsComponent = {
   },
 
   _openOperationDetails(tx) {
-    const det    = this._detailedMap[tx.id] || {};
-    const users  = AppStore.getState('users');
-    const agent  = det.agent_name || users.find(u => u.id === tx.agent_id)?.display_name || '—';
-    const execBy = det.executed_by_name || null;
-    const label  = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
-    const amt    = Math.round(parseFloat(tx.amount) || 0).toLocaleString('en-US');
+    const det       = this._detailedMap[tx.id] || {};
+    const users     = AppStore.getState('users') || [];
+    const usersMap  = new Map(users.map(u => [u.id, u.display_name]));
+    const agentName = det.agent_name || usersMap.get(tx.agent_id) || '—';
+    const execBy    = det.executed_by_name || null;
+    const label     = TRANSACTION_TYPE_LABELS[tx.type] || tx.type;
+    const amtNum    = Math.round(parseFloat(tx.amount) || 0);
+    const amtFmt    = amtNum.toLocaleString('en-US');
+    const cur       = APP_CONFIG.CURRENCY_SYMBOL;
+    const timeStr   = tx.time ? tx.time.substring(0, 5) : '—';
 
-    let counterparty = '—';
-    if (tx.type === 'collection' || tx.type === 'refund_settlement') {
-      counterparty = det.debtor_name || tx.customer_name || '—';
-    } else if (tx.type === 'deposit' || tx.type === 'bank_withdrawal') {
-      counterparty = det.bank_account_name || '—';
+    // ── تحديد الطرفين بحسب نوع العملية (منظور محايد) ──
+    let fromLabel = 'من حساب', fromVal = '—';
+    let toLabel   = 'إلى حساب', toVal = '—';
+    let extraRows = [];
+
+    if (tx.type === 'delivery') {
+      fromVal = agentName;
+      toVal   = usersMap.get(tx.to_agent_id) || '—';
+    } else if (tx.type === 'receipt') {
+      fromVal = usersMap.get(tx.from_agent_id) || agentName;
+      toVal   = agentName;
+    } else if (tx.type === 'deposit') {
+      fromVal   = agentName;
+      toLabel   = 'إلى بنك';
+      toVal     = det.bank_account_name || '—';
+      if (det.bank_company_name) extraRows.push(['الشركة', det.bank_company_name]);
+    } else if (tx.type === 'bank_withdrawal') {
+      fromLabel = 'من بنك';
+      fromVal   = det.bank_account_name || '—';
+      toVal     = agentName;
+      if (det.bank_company_name) extraRows.push(['الشركة', det.bank_company_name]);
+    } else if (tx.type === 'collection' || tx.type === 'refund_settlement') {
+      fromLabel = 'العميل';
+      fromVal   = det.debtor_name || tx.customer_name || '—';
+      toLabel   = 'المنفذ';
+      toVal     = agentName;
+      const comp = det.company_name || '';
+      if (comp) extraRows.push(['الشركة', comp]);
     } else if (tx.type === 'expense') {
-      counterparty = det.expense_account_name || tx.expense_type || '—';
-    } else if (tx.type === 'receipt' || tx.type === 'delivery') {
-      counterparty = det.company_name || '—';
+      fromLabel = 'المنفذ';
+      fromVal   = agentName;
+      toLabel   = 'نوع المصروف';
+      toVal     = det.expense_account_name || tx.expense_type || '—';
+    } else {
+      fromLabel = 'المنفذ';
+      fromVal   = agentName;
+      toLabel   = 'التفاصيل';
+      toVal     = tx.details || '—';
     }
+
+    if (execBy && execBy !== agentName) extraRows.push(['نفّذه', execBy]);
+    if (tx.details && !['collection','refund_settlement','expense'].includes(tx.type) && tx.type !== 'receipt' && tx.type !== 'delivery') {
+      // already shown in toVal for default case — skip
+    } else if (tx.details && (tx.type === 'delivery' || tx.type === 'receipt' || tx.type === 'deposit' || tx.type === 'bank_withdrawal' || tx.type === 'collection' || tx.type === 'refund_settlement')) {
+      extraRows.push(['ملاحظات', tx.details]);
+    }
+
+    const statusText = tx.is_reversed ? 'مُعكوس' : (tx.approval_status || 'نشط');
+
+    // ── نص النسخ ──
+    const copyLines = [
+      `رقم العملية: ${tx.id}`,
+      `النوع: ${label}`,
+      `المبلغ: ${amtFmt} ${cur}`,
+      `التاريخ: ${tx.date || '—'}`,
+      `الوقت: ${timeStr}`,
+      `${fromLabel}: ${fromVal}`,
+      `${toLabel}: ${toVal}`,
+      ...extraRows.map(([k, v]) => `${k}: ${v}`),
+      `الحالة: ${statusText}`,
+    ].join('\n');
+
+    const _row = (label, val, bg) =>
+      `<tr${bg ? ' style="background:var(--bg-input);"' : ''}>
+        <td style="padding:8px 6px;color:var(--text-muted);width:38%;font-size:0.84rem;">${escapeHtml(label)}</td>
+        <td style="padding:8px 6px;font-size:0.87rem;">${val}</td>
+      </tr>`;
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -707,32 +790,47 @@ const AllOperationsComponent = {
 
     const box = document.createElement('div');
     box.className = 'modal-box';
-    box.style.maxWidth = '460px';
+    box.style.maxWidth = '480px';
     box.innerHTML = `
       <div class="modal-header">
         <h3 class="modal-title">🔍 تفاصيل العملية</h3>
         <button class="modal-close" id="ao-detail-close-x">✕</button>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:0.88rem;direction:rtl;">
-        <tr><td style="padding:7px 4px;color:var(--text-muted);width:40%;">رقم العملية</td><td style="padding:7px 4px;font-family:monospace;font-size:0.72rem;word-break:break-all;">${escapeHtml(tx.id)}</td></tr>
-        <tr style="background:var(--bg-input);"><td style="padding:7px 4px;color:var(--text-muted);">النوع</td><td style="padding:7px 4px;">${escapeHtml(label)}</td></tr>
-        <tr><td style="padding:7px 4px;color:var(--text-muted);">المبلغ</td><td style="padding:7px 4px;font-weight:700;">${amt} ${escapeHtml(APP_CONFIG.CURRENCY_SYMBOL)}</td></tr>
-        <tr style="background:var(--bg-input);"><td style="padding:7px 4px;color:var(--text-muted);">التاريخ</td><td style="padding:7px 4px;">${escapeHtml(tx.date || '—')}</td></tr>
-        <tr><td style="padding:7px 4px;color:var(--text-muted);">الوقت</td><td style="padding:7px 4px;">${escapeHtml(tx.time ? tx.time.substring(0,5) : '—')}</td></tr>
-        <tr style="background:var(--bg-input);"><td style="padding:7px 4px;color:var(--text-muted);">المندوب</td><td style="padding:7px 4px;">${escapeHtml(agent)}</td></tr>
-        ${execBy && execBy !== agent ? `<tr><td style="padding:7px 4px;color:var(--text-muted);">المنفذ</td><td style="padding:7px 4px;">${escapeHtml(execBy)}</td></tr>` : ''}
-        <tr><td style="padding:7px 4px;color:var(--text-muted);">الطرف الآخر</td><td style="padding:7px 4px;">${escapeHtml(counterparty)}</td></tr>
-        ${tx.details ? `<tr style="background:var(--bg-input);"><td style="padding:7px 4px;color:var(--text-muted);">ملاحظات</td><td style="padding:7px 4px;">${escapeHtml(tx.details)}</td></tr>` : ''}
-        <tr style="background:var(--bg-input);"><td style="padding:7px 4px;color:var(--text-muted);">الحالة</td><td style="padding:7px 4px;">${tx.is_reversed ? '<span style="color:#d32f2f;">مُعكوس</span>' : escapeHtml(tx.approval_status || '—')}</td></tr>
+      <table style="width:100%;border-collapse:collapse;direction:rtl;">
+        ${_row('رقم العملية', `<span style="font-family:monospace;font-size:0.72rem;word-break:break-all;">${escapeHtml(tx.id)}</span>`, false)}
+        ${_row('النوع',       escapeHtml(label), true)}
+        ${_row('المبلغ',      `<b style="font-size:0.95rem;">${amtFmt} <span style="font-size:0.72rem;font-weight:500;">${escapeHtml(cur)}</span></b>`, false)}
+        ${_row('التاريخ',     escapeHtml(tx.date || '—'), true)}
+        ${_row('الوقت',       escapeHtml(timeStr), false)}
+        ${_row(fromLabel,     `<b>${escapeHtml(fromVal)}</b>`, true)}
+        ${_row(toLabel,       `<b>${escapeHtml(toVal)}</b>`, false)}
+        ${extraRows.map(([k, v], i) => _row(k, escapeHtml(v), (i % 2 === 0))).join('')}
+        ${_row('الحالة', tx.is_reversed
+          ? '<span style="color:#d32f2f;font-weight:600;">مُعكوس</span>'
+          : `<span style="color:var(--success);font-weight:600;">${escapeHtml(statusText)}</span>`,
+          extraRows.length % 2 === 0)}
       </table>
-      <div style="margin-top:16px;text-align:center;">
-        <button class="btn btn-secondary" id="ao-detail-close-btn">إغلاق</button>
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:center;">
+        <button class="btn btn-secondary" id="ao-detail-copy-btn" style="flex:1;">
+          <i data-lucide="copy" style="width:14px;height:14px;vertical-align:middle;pointer-events:none;"></i> نسخ بيانات القيد
+        </button>
+        <button class="btn btn-secondary" id="ao-detail-close-btn" style="flex:1;">إغلاق</button>
       </div>`;
 
     overlay.appendChild(box);
     document.body.appendChild(overlay);
-    box.querySelector('#ao-detail-close-x').addEventListener('click', () => overlay.remove());
+    if (window.lucide) lucide.createIcons();
+
+    box.querySelector('#ao-detail-close-x').addEventListener('click',   () => overlay.remove());
     box.querySelector('#ao-detail-close-btn').addEventListener('click', () => overlay.remove());
+    box.querySelector('#ao-detail-copy-btn').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(copyLines);
+        showToast('✅ تم نسخ بيانات القيد', 'success');
+      } catch {
+        showToast('❌ تعذّر النسخ — الصق يدوياً', 'warning');
+      }
+    });
   },
 
   _openEditModal(tx) {
