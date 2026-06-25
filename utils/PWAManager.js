@@ -20,7 +20,7 @@ const PWAManager = (() => {
       reg.addEventListener('updatefound', () => {
         const newSW = reg.installing;
         newSW?.addEventListener('statechange', () => {
-          if (newSW.statechange === 'installed' && navigator.serviceWorker.controller) {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
             _showUpdateToast();
           }
         });
