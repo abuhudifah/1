@@ -478,7 +478,7 @@ const NotificationsComponent = {
               title    : '❌ رُفض طلب العهدة',
               body     : `${currentUser?.display_name || 'المستخدم'} رفض طلب عهدة بمبلغ ${formatCurrency(req.amount)}.`,
               type     : 'warning',
-              target   : JSON.stringify([senderId]),
+              target   : [senderId],
               sender_id: currentUser?.id,
               read_by  : '[]',
               hidden_by: '[]',

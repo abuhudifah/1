@@ -1183,7 +1183,7 @@ async function createTransferFromRequest(requestId) {
         title: '✅ تم قبول طلب العهدة',
         body: `${AuthService.getCurrentUser()?.display_name || 'المستخدم'} قبل طلب عهدة بمبلغ ${formatCurrency(request.amount)} إليك.`,
         type: 'success',
-        target: JSON.stringify([senderId]),
+        target: [senderId],
         sender_id: currentUserId,
         read_by: '[]',
         hidden_by: '[]',
