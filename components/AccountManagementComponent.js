@@ -1551,12 +1551,9 @@ const AccountManagementComponent = {
         const nameFor = (id) => id === tx.agent_id ? tx.agentName : id === tx.to_agent_id ? tx.toAgentName : id === tx.from_agent_id ? tx.fromAgentName : '';
         const otherId = [tx.agent_id, tx.to_agent_id, tx.from_agent_id].find(id => id && id !== viewedId);
         const otherName = nameFor(otherId) || '—';
-        if (debit > 0) {
-          if (/طلب/.test(tx.details || ''))
-            return { label: 'طلب عهدة مقبول', details: withUser(`عليكم حوالة نقدية تم طلبها عبركم وتمت الموافقة عليها من حساب ${otherName}`) };
-          return { label: `تسليم عهدة من ${otherName}`, details: withUser(`عليكم حوالة نقدية واردة تسليم عهدة من حساب ${otherName}`) };
-        }
-        return { label: `تسليم عهدة إلى ${otherName}`, details: withUser(`لكم حوالة نقدية تسليم عهدة من حسابكم إلى حساب ${otherName}`) };
+        if (debit > 0)
+          return { label: 'تسليم عهدة', details: withUser(`عليكم تسليم عهدة من حساب ${otherName}`) };
+        return { label: 'تسليم عهدة', details: withUser(`لكم تسليم عهدة من حسابكم إلى حساب ${otherName}`) };
       }
       const dir = debit > 0 ? 'عليكم' : 'لكم';
       return { label: 'قيد', details: withUser(`${dir} قيد`) };
