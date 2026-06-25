@@ -1553,10 +1553,10 @@ const AccountManagementComponent = {
         const otherName = nameFor(otherId) || '—';
         if (debit > 0) {
           if (/طلب/.test(tx.details || ''))
-            return { label: 'طلب أموال مقبول', details: withUser(`لكم حوالة نقدية تم طلبها عبركم وتمت الموافقة عليها من حساب ${otherName}`) };
-          return { label: `تحويل وارد من ${otherName}`, details: withUser(`لكم حوالة نقدية واردة من حساب ${otherName}`) };
+            return { label: 'طلب عهدة مقبول', details: withUser(`عليكم حوالة نقدية تم طلبها عبركم وتمت الموافقة عليها من حساب ${otherName}`) };
+          return { label: `تسليم عهدة من ${otherName}`, details: withUser(`عليكم حوالة نقدية واردة تسليم عهدة من حساب ${otherName}`) };
         }
-        return { label: `تحويل إلى ${otherName}`, details: withUser(`عليكم حوالة نقدية من حسابكم إلى حساب ${otherName}`) };
+        return { label: `تسليم عهدة إلى ${otherName}`, details: withUser(`لكم حوالة نقدية تسليم عهدة من حسابكم إلى حساب ${otherName}`) };
       }
       const dir = debit > 0 ? 'عليكم' : 'لكم';
       return { label: 'قيد', details: withUser(`${dir} قيد`) };

@@ -299,7 +299,7 @@ const DataEntryComponent = {
       { id:'deposit',         label:'إيداع بنكي',          icon:`<i data-lucide="landmark"      style="${_tabSz}"></i>` },
       { id:'bank_withdrawal', label:'سحب بنكي',            icon:`<i data-lucide="credit-card"   style="${_tabSz}"></i>` },
       { id:'expense',         label:'مصروف',               icon:`<i data-lucide="trending-down" style="${_tabSz}"></i>` },
-      { id:'transfer',          label:'تحويل / طلب أموال', icon:`<i data-lucide="send"          style="${_tabSz}"></i>` },
+      { id:'transfer',          label:'تسليم / طلب عهدة',  icon:`<i data-lucide="send"          style="${_tabSz}"></i>` },
       { id:'external_handover', label:'تسليم عهدة',        icon:`<i data-lucide="upload"        style="${_tabSz}"></i>` },
     ];
 
@@ -1175,7 +1175,7 @@ const DataEntryComponent = {
 
     const title = document.createElement('h3');
     title.style.cssText = 'font-size:1rem;font-weight:700;margin-bottom:20px;color:var(--info);display:flex;align-items:center;gap:8px;';
-    title.innerHTML = '<i data-lucide="send" style="width:18px;height:18px;vertical-align:middle;stroke:var(--info);"></i><span>تحويل / طلب أموال (بين المستخدمين)</span>';
+    title.innerHTML = '<i data-lucide="send" style="width:18px;height:18px;vertical-align:middle;stroke:var(--info);"></i><span>تسليم عهدة / طلب عهدة (بين المستخدمين)</span>';
     frag.appendChild(title);
 
     const modeField = this._field('tr-mode', 'نوع العملية', true);
@@ -1183,8 +1183,8 @@ const DataEntryComponent = {
     modeSelect.id = 'tr-mode';
     modeSelect.className = 'form-control';
     modeSelect.innerHTML = `
-      <option value="transfer">تحويل مباشر (أرسل أموالاً إلى مستخدم آخر)</option>
-      <option value="request">طلب أموال (اطلب أموالاً من مستخدم آخر)</option>
+      <option value="transfer">تسليم عهدة (سلّم أموالاً لمستخدم آخر)</option>
+      <option value="request">طلب عهدة (اطلب أموالاً من مستخدم آخر)</option>
     `;
     modeField.appendChild(modeSelect);
     frag.appendChild(modeField);
@@ -1742,8 +1742,8 @@ const DataEntryComponent = {
       const txDate = AppStore.getState('selectedDate') || getCurrentSaudiDate();
 
       const confirmMessage = mode === 'transfer'
-        ? `⚠️ هل أنت متأكد من تحويل ${formatCurrency(amount)} إلى المستلم المحدد؟`
-        : `⚠️ هل أنت متأكد من إرسال طلب أموال بمبلغ ${formatCurrency(amount)} إلى المستخدم المحدد؟`;
+        ? `⚠️ هل أنت متأكد من تسليم عهدة بمبلغ ${formatCurrency(amount)} إلى المستلم المحدد؟`
+        : `⚠️ هل أنت متأكد من إرسال طلب عهدة بمبلغ ${formatCurrency(amount)} إلى المستخدم المحدد؟`;
       const confirmed = await confirmDialog(confirmMessage, 'تأكيد', 'إلغاء', 'warning');
       if (!confirmed) return;
 
@@ -1769,8 +1769,8 @@ const DataEntryComponent = {
 
         // إشعار معلوماتي للمستقبل (بلا أزرار موافقة — العملية فورية)
         const notifData = {
-          title    : '💰 تحويل مباشر وارد',
-          body     : `قام ${myName} بتحويل ${formatCurrency(amount)} إلى حسابك مباشرةً. العملية ${txStatus}.`,
+          title    : '💰 تسليم عهدة وارد',
+          body     : `قام ${myName} بتسليم عهدة بمبلغ ${formatCurrency(amount)} إلى حسابك. العملية ${txStatus}.`,
           type     : 'success',
           target   : JSON.stringify([recipientId]),
           metadata : { transaction_id: result.data?.transaction?.id, type: 'direct_transfer', amount },
@@ -1795,8 +1795,8 @@ const DataEntryComponent = {
         if (!isOk(createResult)) throw new Error(createResult.error);
 
         const notifData = {
-          title: '📨 طلب أموال',
-          body: `${myName} يطلب منك مبلغ ${formatCurrency(amount)}. السبب: ${reason || 'غير محدد'}`,
+          title: '📨 طلب عهدة',
+          body: `${myName} يطلب عهدة منك بمبلغ ${formatCurrency(amount)}. السبب: ${reason || 'غير محدد'}`,
           type: 'info',
           target: JSON.stringify([recipientId]),
           metadata: { request_id: createResult.data.id, type: 'transfer_request', amount: amount },
@@ -1806,7 +1806,7 @@ const DataEntryComponent = {
         };
         await repo.create(TABLES.NOTIFICATIONS, notifData);
         console.log(`[Transfer] طلب أموال | الطالب: ${myName} → المطلوب منه: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: بانتظار الموافقة`);
-        showToast(`✅ تم إرسال طلب الأموال إلى ${recipientName}. بانتظار الموافقة.`, 'success');
+        showToast(`✅ تم إرسال طلب العهدة إلى ${recipientName}. بانتظار الموافقة.`, 'success');
       }
 
       this._resetForm('tr');

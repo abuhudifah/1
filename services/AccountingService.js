@@ -177,7 +177,7 @@ function _buildDeliveryEntries(tx, voucher) {
       description: `عليكم حوالة نقدية واردة نقل عهدة من حساب ${senderName} إلى حسابكم${notesStr}` },
     // حساب المرسل: دائن (ينقص رصيده)
     { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id), debit: 0, credit: tx.amount,
-      description: `لكم حوالة نقدية نقل عهدة من حسابكم إلى حساب ${receiverName} تحويل مباشر${notesStr}` },
+      description: `لكم حوالة نقدية نقل عهدة من حسابكم إلى حساب ${receiverName} تسليم عهدة${notesStr}` },
   ];
 }
 
@@ -1158,7 +1158,7 @@ async function createTransferFromRequest(requestId) {
       agent_id       : currentUserId,                // B = الدافع (ينقص رصيده)
       to_agent_id    : request.from_user_id,         // A = المستلم (يزيد رصيده)
       from_agent_id  : currentUserId,
-      details        : request.reason || `قبول طلب أموال`,
+      details        : request.reason || `قبول طلب عهدة`,
       _sender_name   : senderName,
       _receiver_name : receiverName,
       approval_status: APPROVAL_STATUS.APPROVED,
@@ -1180,8 +1180,8 @@ async function createTransferFromRequest(requestId) {
     const senderId = request.from_user_id;
     if (senderId && senderId !== currentUserId) {
       const notifData = {
-        title: 'تم قبول طلب التحويل',
-        body: `${AuthService.getCurrentUser()?.display_name || 'المستخدم'} قبل طلب تحويل مبلغ ${formatCurrency(request.amount)} إليك.`,
+        title: '✅ تم قبول طلب العهدة',
+        body: `${AuthService.getCurrentUser()?.display_name || 'المستخدم'} قبل طلب عهدة بمبلغ ${formatCurrency(request.amount)} إليك.`,
         type: 'success',
         target: JSON.stringify([senderId]),
         sender_id: currentUserId,
