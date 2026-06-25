@@ -633,11 +633,11 @@ const PrintService = (() => {
           return `مصروف ${tx.expense_type || 'عام'}${extra}`;
         case 'delivery': {
           const otherName = usersMap.get(tx.to_agent_id) || usersMap.get(tx.agent_id) || tx.customer_name || '—';
-          return `عليكم حوالة نقدية واردة تسليم عهدة من حساب ${otherName}${extra}`;
+          return `عليكم تسليم عهدة من حساب ${otherName}${extra}`;
         }
         case 'receipt': {
           const otherName = usersMap.get(tx.from_agent_id) || usersMap.get(tx.to_agent_id) || tx.customer_name || '—';
-          return `لكم حوالة نقدية تسليم عهدة من حسابكم إلى حساب ${otherName}${extra}`;
+          return `لكم تسليم عهدة من حسابكم إلى حساب ${otherName}${extra}`;
         }
         default:
           return tx.customer_name || tx.details || 'قيد';

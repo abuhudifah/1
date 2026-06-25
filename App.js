@@ -873,6 +873,11 @@ function _bindStoreEvents() {
       NotificationsComponent._load();
     }
   });
+  AppStore.addEventListener('store:notificationAdded', () => {
+    if (AppStore.getState('currentTab') === TABS.NOTIFICATIONS && window.NotificationsComponent) {
+      NotificationsComponent._load();
+    }
+  });
 
   AppStore.addEventListener('store:userCleared', () => {
     _showLoginScreen();
