@@ -29,5 +29,25 @@
       "sizes": "180x180",
       "type": "image/png"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "إدخال بيانات جديد",
+      "short_name": "إدخال",
+      "url": "./?tab=data-entry",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "الإشعارات",
+      "short_name": "إشعارات",
+      "url": "./?tab=notifications",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "لوحة المعلومات",
+      "short_name": "لوحة",
+      "url": "./?tab=dashboard",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }
