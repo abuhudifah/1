@@ -1,6 +1,6 @@
 /**
  * utils/NotificationSound.js
- * صوت الإشعارات + اهتزاز + App Badge API
+ * صوت الإشعارات + اهتزاز + App Badge + إشعارات نظام التشغيل
  */
 'use strict';
 
@@ -16,7 +16,7 @@ const NotificationSound = (() => {
     return _ctx;
   }
 
-  // نغمتان صاعدتان (E5 → G5) — خفيفتان وقصيرتان
+  // نغمتان صاعدتان (E5 → G5) — تعمل فقط عندما التطبيق في المقدمة
   function play() {
     if (!_enabled) return;
     try {
@@ -30,7 +30,7 @@ const NotificationSound = (() => {
         osc.connect(gain);
         gain.connect(ctx.destination);
 
-        osc.type          = 'sine';
+        osc.type            = 'sine';
         osc.frequency.value = freq;
 
         const start = t0 + i * 0.19;
@@ -48,36 +48,83 @@ const NotificationSound = (() => {
 
   // اهتزاز — نمط إشعار قصير
   function vibrate() {
-    if (navigator.vibrate) {
-      navigator.vibrate([80, 40, 80]);
-    }
+    if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
   }
 
-  // App Badge API — يظهر العدد على أيقونة التطبيق
+  // ─── App Badge API ────────────────────────────────────────────
   function setBadge(count) {
     if (!navigator.setAppBadge) return;
-    if (count > 0) {
-      navigator.setAppBadge(count).catch(() => {});
-    } else {
-      navigator.clearAppBadge?.().catch(() => {});
-    }
+    if (count > 0) navigator.setAppBadge(count).catch(() => {});
+    else           navigator.clearAppBadge?.().catch(() => {});
   }
 
   function clearBadge() {
     navigator.clearAppBadge?.().catch(() => {});
   }
 
-  // تشغيل الكل معاً عند وصول إشعار جديد
-  function onNewNotification(unreadCount) {
-    play();
-    vibrate();
+  // ─── طلب إذن الإشعارات ──────────────────────────────────────
+  async function requestPermission() {
+    if (!('Notification' in window)) return 'unsupported';
+    if (Notification.permission === 'granted') return 'granted';
+    if (Notification.permission === 'denied')  return 'denied';
+    try {
+      return await Notification.requestPermission();
+    } catch {
+      return 'denied';
+    }
+  }
+
+  // ─── إشعار نظام التشغيل ──────────────────────────────────────
+  // يعمل عبر Service Worker → يظهر حتى عندما التطبيق في الخلفية
+  async function showOSNotification(title, body, type = 'info') {
+    if (Notification.permission !== 'granted') return;
+
+    const icon  = './assets/icons/icon-192.png';
+    const badge = './assets/icons/favicon-32.png';
+    const tag   = 'app-notification-' + Date.now();
+
+    const opts = {
+      body,
+      icon,
+      badge,
+      tag,
+      renotify : true,
+      vibrate  : [80, 40, 80],
+      data     : { url: './?tab=notifications' },
+    };
+
+    try {
+      // استخدام SW لعرض الإشعار (يعمل في الخلفية + iOS PWA)
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, opts);
+    } catch {
+      // fallback: Notification API مباشرة (للمتصفحات القديمة)
+      try { new Notification(title, opts); } catch { /* silent */ }
+    }
+  }
+
+  // ─── تشغيل الكل عند وصول إشعار جديد ────────────────────────
+  async function onNewNotification(title, body, type, unreadCount) {
     setBadge(unreadCount);
+    vibrate();
+
+    // الصوت فقط إذا كان التطبيق في المقدمة
+    if (!document.hidden) play();
+
+    // إشعار نظام التشغيل إذا كان التطبيق في الخلفية أو الإذن ممنوح
+    await showOSNotification(title, body, type);
   }
 
   function setEnabled(val) { _enabled = !!val; }
   function isEnabled()     { return _enabled; }
 
-  return { play, vibrate, setBadge, clearBadge, onNewNotification, setEnabled, isEnabled };
+  return {
+    play, vibrate,
+    setBadge, clearBadge,
+    requestPermission, showOSNotification,
+    onNewNotification,
+    setEnabled, isEnabled,
+  };
 })();
 
 window.NotificationSound = NotificationSound;

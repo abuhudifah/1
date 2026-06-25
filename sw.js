@@ -4,7 +4,7 @@
  * skipWaiting: التحديثات تُطبَّق فوراً بدون الحاجة لإغلاق التطبيق
  */
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_NAME    = `calc-${CACHE_VERSION}`;
 
 // الملفات الثابتة التي تُخزَّن عند التثبيت
@@ -139,6 +139,27 @@ self.addEventListener('fetch', event => {
 // ─── رسالة من الصفحة: تحديث فوري ────────────────────────────
 self.addEventListener('message', event => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
+// ─── نقر على إشعار نظام التشغيل → فتح/تركيز التطبيق ─────────
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = event.notification.data?.url || './';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then(clients => {
+        // إذا كان التطبيق مفتوحاً في تبويب → ركّز عليه وانتقل للتبويب
+        for (const client of clients) {
+          if (client.url.includes(self.location.origin)) {
+            client.focus();
+            client.navigate(target);
+            return;
+          }
+        }
+        // وإلا افتح نافذة جديدة
+        return self.clients.openWindow(target);
+      })
+  );
 });
 
 console.log(`[SW] ${CACHE_NAME} — جاهز`);

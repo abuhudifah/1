@@ -169,6 +169,11 @@ async function _bootApp(profile) {
   // ── اختصارات لوحة المفاتيح ──
   initKeyboardShortcuts();
 
+  // ── طلب إذن إشعارات نظام التشغيل (مرة واحدة بعد الدخول) ──
+  if (window.NotificationSound) {
+    setTimeout(() => NotificationSound.requestPermission(), 2000);
+  }
+
   // ── إشعار الدخول السريع (بعد بناء الواجهة) ──
   if (window.QuickLoginBanner) {
     setTimeout(() => QuickLoginBanner.maybeShow(profile), 900);
@@ -837,10 +842,19 @@ function _bindStoreEvents() {
   AppStore.addEventListener('store:notifCountChanged',   _updateNotifBadge);
   AppStore.addEventListener('store:notificationsLoaded', _updateNotifBadge);
 
-  // صوت + اهتزاز + badge عند وصول إشعار جديد
+  // صوت + اهتزاز + badge + إشعار نظام التشغيل عند وصول إشعار جديد
   AppStore.addEventListener('store:notificationAdded', (e) => {
-    const count = e.detail?.state?.unreadNotifCount ?? 0;
-    if (window.NotificationSound) NotificationSound.onNewNotification(count);
+    const state  = e.detail?.state ?? {};
+    const count  = state.unreadNotifCount ?? 0;
+    const newest = state.notifications?.[0];
+    if (window.NotificationSound) {
+      NotificationSound.onNewNotification(
+        newest?.title ?? 'إشعار جديد',
+        newest?.body  ?? '',
+        newest?.type  ?? 'info',
+        count
+      );
+    }
     _updateNotifBadge(e);
   });
 
