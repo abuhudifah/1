@@ -3,12 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="description" content="نظام أبو حذيفة المتكامل للصرافة والتحويلات — نظام مالي احترافي يعمل بدون اتصال" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="آلة حاسبة بسيطة للعمليات الحسابية اليومية" />
+  <meta name="theme-color" content="#1C1C1E" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="أبو حذيفة" />
+  <meta name="apple-mobile-web-app-title" content="حاسبة" />
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- أيقونات -->
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png" />
 
   <!-- Content Security Policy — TASK-5.2 -->
   <meta http-equiv="Content-Security-Policy" content="
@@ -21,7 +29,7 @@
     worker-src  'self' blob:;
   ">
 
-  <title>نظام أبو حذيفة للصرافة والتحويلات</title>
+  <title>حاسبة</title>
 
   <!-- ============================================================
        الخطوط — IBM Plex Sans Arabic (Google Fonts)
@@ -102,10 +110,10 @@
        شاشة التحميل الأولية
        تُخفى بعد اكتمال تهيئة التطبيق من App.js
        ============================================================ -->
-  <div id="app-loading" aria-label="جاري تحميل النظام" role="status">
-    <div class="loading-logo">أبو حذيفة</div>
+  <div id="app-loading" aria-label="جاري التحميل" role="status">
+    <div class="loading-logo">حاسبة</div>
     <div class="spinner" aria-hidden="true"></div>
-    <div class="loading-text">جاري تحميل النظام...</div>
+    <div class="loading-text">جاري التحميل...</div>
   </div>
 
   <!-- ============================================================
@@ -195,6 +203,9 @@
 
   <!-- إشعار الدخول السريع -->
   <script src="utils/QuickLoginBanner.js" defer></script>
+
+  <!-- مدير PWA (التثبيت + التحديثات) -->
+  <script src="utils/PWAManager.js" defer></script>
 
 </body>
 </html>
