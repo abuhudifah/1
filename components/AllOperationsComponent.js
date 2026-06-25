@@ -394,17 +394,18 @@ const AllOperationsComponent = {
               details = _line(`المنفذ: ${_bold(agentName)}`) +
                         _line(`العميل: ${_bold(cust)}${comp?' | الشركة: '+_muted(comp):''}`)
             } else if (tx.type==='expense') {
-              const expName = det.expense_account_name || tx.expense_type || '—';
-              details = _line(`المنفذ: ${_bold(agentName)}`) +
-                        _line(`المصروف: ${_bold(expName)}`);
+              const expName = det.expense_account_name || tx.expense_type || 'عام';
+              details = _line(`من حساب: ${_bold(agentName)}`) +
+                        _line(`نوع المصروف: ${_bold(expName)}`) +
+                        (tx.details ? _line(_muted(`لغرض: ${tx.details}`)) : '');
             } else {
               details = _line(`المنفذ: ${_bold(agentName)}`);
             }
 
-            // إضافة سطر المنفذ إن اختلف + ملاحظات
+            // إضافة سطر المنفذ إن اختلف + ملاحظات (لغير المصروفات)
             if (execBy && execBy !== agentName)
               details += _line(`نفّذه: ${_muted(execBy)}`);
-            if (tx.details)
+            if (tx.details && tx.type !== 'expense')
               details += _line(_muted(tx.details));
 
             const showActions = currentRole === 'agent' ? tx.agent_id === currentUid : true;
@@ -545,7 +546,7 @@ const AllOperationsComponent = {
         else if (tx.type === 'collection' || tx.type === 'refund_settlement') {
           from = tx.debtor_name || tx.customer_name || '—'; to = agent;
           extra = tx.company_name || tx.details || '';
-        } else if (tx.type === 'expense') { from = agent; to = tx.expense_account_name || tx.expense_type || '—'; }
+        } else if (tx.type === 'expense') { from = agent; to = tx.expense_account_name || tx.expense_type || 'عام'; extra = tx.details || ''; }
         return [
           tx.date || '—',
           tx.time ? tx.time.substring(0, 5) : '—',
@@ -744,10 +745,11 @@ const AllOperationsComponent = {
       const comp = det.company_name || '';
       if (comp) extraRows.push(['الشركة', comp]);
     } else if (tx.type === 'expense') {
-      fromLabel = 'المنفذ';
+      fromLabel = 'من حساب';
       fromVal   = agentName;
       toLabel   = 'نوع المصروف';
-      toVal     = det.expense_account_name || tx.expense_type || '—';
+      toVal     = det.expense_account_name || tx.expense_type || 'عام';
+      if (tx.details) extraRows.push(['لغرض', tx.details]);
     } else {
       fromLabel = 'المنفذ';
       fromVal   = agentName;
