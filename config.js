@@ -123,7 +123,7 @@ const TRANSACTION_TYPE_LABELS = Object.freeze({
   collection           : 'تحصيل',
   deposit              : 'إيداع بنكي',
   bank_withdrawal      : 'سحب بنكي',
-  expense              : 'مصروف',
+  expense              : 'مصروفات',
   receipt              : 'تحويل',
   delivery             : 'تسليم عهدة',
   refund_settlement    : 'تسوية استرداد',

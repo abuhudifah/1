@@ -1545,8 +1545,10 @@ const AccountManagementComponent = {
         return { label: 'سحب بنكي', details: withUser(`عليكم سحب نقدي من حساب ${tx.bankName || '—'}`) };
       if (tx.type === 'failed_deposit_refund')
         return { label: 'استرداد إيداع فاشل', details: withUser(`لكم استرداد إيداع فاشل من حساب ${tx.bankName || '—'}`) };
-      if (tx.type === 'expense')
-        return { label: `مصروف ${tx.expense_type || 'عام'}`, details: withUser(`مصروف ${tx.expense_type || 'عام'}`) };
+      if (tx.type === 'expense') {
+        const det = (tx.details || '').trim();
+        return { label: 'مصروفات', details: `عليكم مصروفات نوع ${tx.expense_type || 'عام'} بواسطة ${tx.agentName || '—'}${det ? ` لغرض(${det})` : ''}` };
+      }
       if (tx.type === 'delivery' || tx.type === 'receipt') {
         const nameFor = (id) => id === tx.agent_id ? tx.agentName : id === tx.to_agent_id ? tx.toAgentName : id === tx.from_agent_id ? tx.fromAgentName : '';
         const otherId = [tx.agent_id, tx.to_agent_id, tx.from_agent_id].find(id => id && id !== viewedId);
@@ -1564,8 +1566,10 @@ const AccountManagementComponent = {
       return { label: `تحصيل من ${tx.customer_name || '—'}`, details: withUser(`تحصيل من ${tx.customer_name || '—'} بواسطة المندوب ${tx.agentName || '—'}`) };
 
     // ── المصروفات ──
-    if (accountId.startsWith('EXP_'))
-      return { label: `مصروف ${tx.expense_type || 'عام'}`, details: withUser(`مصروف ${tx.expense_type || 'عام'}`) };
+    if (accountId.startsWith('EXP_')) {
+      const det = (tx.details || '').trim();
+      return { label: 'مصروفات', details: `عليكم مصروفات نوع ${tx.expense_type || 'عام'} بواسطة ${tx.agentName || '—'}${det ? ` لغرض(${det})` : ''}` };
+    }
 
     return { label: tx.type || 'قيد', details: withUser(e.description || '') };
   },

@@ -630,7 +630,7 @@ const PrintService = (() => {
           return `عليكم سحب نقدي من حساب ${bn}${extra}`;
         }
         case 'expense':
-          return `مصروف ${tx.expense_type || 'عام'}${extra}`;
+          return `عليكم مصروفات نوع ${tx.expense_type || 'عام'} بواسطة ${usersMap.get(tx.agent_id) || tx.agent_name || '—'}${tx.details ? ` لغرض(${tx.details})` : ''}`;
         case 'delivery': {
           const otherName = usersMap.get(tx.to_agent_id) || usersMap.get(tx.agent_id) || tx.customer_name || '—';
           return `عليكم تسليم عهدة من حساب ${otherName}${extra}`;
