@@ -4,7 +4,7 @@
  * skipWaiting: التحديثات تُطبَّق فوراً بدون الحاجة لإغلاق التطبيق
  */
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CACHE_NAME    = `calc-${CACHE_VERSION}`;
 
 // الملفات الثابتة التي تُخزَّن عند التثبيت
@@ -17,6 +17,7 @@ const STATIC_ASSETS = [
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/apple-touch-icon.png',
+  './assets/icons/notification-icon.png',
   './manifest.json',
   // المكوّنات
   './components/LoginComponent.js',
@@ -153,12 +154,12 @@ self.addEventListener('push', event => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon   : './assets/icons/icon-192.png',
-      badge  : './assets/icons/favicon-32.png',
-      tag    : 'push-' + Date.now(),
+      icon    : './assets/icons/icon-192.png',
+      badge   : './assets/icons/notification-icon.png',
+      tag     : 'push-' + Date.now(),
       renotify: true,
-      vibrate: [80, 40, 80],
-      data   : { url },
+      vibrate : [80, 40, 80],
+      data    : { url },
     })
   );
 });

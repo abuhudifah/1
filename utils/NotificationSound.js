@@ -80,7 +80,7 @@ const NotificationSound = (() => {
     if (Notification.permission !== 'granted') return;
 
     const icon  = './assets/icons/icon-192.png';
-    const badge = './assets/icons/favicon-32.png';
+    const badge = './assets/icons/notification-icon.png';
     const tag   = 'app-notification-' + Date.now();
 
     const opts = {
