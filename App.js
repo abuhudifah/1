@@ -157,8 +157,12 @@ async function _bootApp(profile) {
   _updateSyncWidget(); // العرض الأولي لـ widget العمليات المعلقة
   _startNotificationsRealtime(profile); // اشتراك Realtime للإشعارات
 
-  const firstTab = AuthService.getAllowedTabs()[0];
+  // فتح التبويب المطلوب من shortcut (?tab=...) أو الافتراضي
+  const urlTab   = new URLSearchParams(location.search).get('tab');
+  const allowed  = AuthService.getAllowedTabs();
+  const firstTab = (urlTab && allowed.includes(urlTab)) ? urlTab : allowed[0];
   if (firstTab) await _navigateTo(firstTab);
+  if (urlTab)   history.replaceState(null, '', location.pathname); // إزالة المعامل من URL
 
   _startDateClock();
 
@@ -832,6 +836,19 @@ function _bindStoreEvents() {
   };
   AppStore.addEventListener('store:notifCountChanged',   _updateNotifBadge);
   AppStore.addEventListener('store:notificationsLoaded', _updateNotifBadge);
+
+  // صوت + اهتزاز + badge عند وصول إشعار جديد
+  AppStore.addEventListener('store:notificationAdded', (e) => {
+    const count = e.detail?.state?.unreadNotifCount ?? 0;
+    if (window.NotificationSound) NotificationSound.onNewNotification(count);
+    _updateNotifBadge(e);
+  });
+
+  // مزامنة App Badge مع عدد الإشعارات غير المقروءة دائماً
+  AppStore.addEventListener('store:notificationsLoaded', (e) => {
+    const count = e.detail?.state?.unreadNotifCount ?? 0;
+    if (window.NotificationSound) NotificationSound.setBadge(count);
+  });
 
   // تحديث قائمة الإشعارات فورياً عند وصول حدث Realtime بينما المستخدم في التبويب
   AppStore.addEventListener('store:notificationsLoaded', () => {

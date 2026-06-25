@@ -4,7 +4,7 @@
  * skipWaiting: التحديثات تُطبَّق فوراً بدون الحاجة لإغلاق التطبيق
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME    = `calc-${CACHE_VERSION}`;
 
 // الملفات الثابتة التي تُخزَّن عند التثبيت
@@ -57,6 +57,7 @@ const STATIC_ASSETS = [
   // المتجر والأدوات
   './store/AppStore.js',
   './utils/helpers.js',
+  './utils/NotificationSound.js',
   './utils/PWAManager.js',
   './utils/QuickLoginBanner.js',
 ];
