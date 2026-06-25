@@ -598,6 +598,10 @@ Object.assign(AppStore, {
   addTransaction, updateTransaction, deleteTransaction, markTransactionReversed,
   refreshTransactions, setSelectedDate, setSelectedAgent,
   refreshData, snapshotReferenceDataToDexie,
+  refreshNotifications: async () => {
+    const user = getState('currentUser');
+    if (user) await _loadNotifications(user);
+  },
   setOnlineStatus, updateSyncQueueLength, setSyncRunning,
   addNotification, decrementUnreadCount,
   setKpiData, setKpiLoading,

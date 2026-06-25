@@ -2,11 +2,13 @@
  * components/NotificationsComponent.js
  * نظام أبو حذيفة — الإشعارات
  * عرض + تحديد كمقروء + إخفاء + إرسال إشعار جديد (للمدير)
+ * تبويبات: الكل | طلبات العهدة | إشعارات عامة
  */
 'use strict';
 
 const NotificationsComponent = {
   _sendModal: null,
+  _activeTab: 'all', // 'all' | 'requests' | 'general'
 
   async render(container) {
     container.innerHTML = '';
@@ -31,8 +33,9 @@ const NotificationsComponent = {
 
     const wrap = document.createElement('div');
 
+    // ── شريط العنوان والأزرار ──
     const bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;';
+    bar.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;';
     bar.innerHTML = `<h2 style="font-size:1.2rem;font-weight:700;color:var(--text-primary);flex:1;">الإشعارات</h2>`;
 
     if (AuthService.isAdmin()) {
@@ -51,6 +54,45 @@ const NotificationsComponent = {
 
     wrap.appendChild(bar);
 
+    // ── تبويبات التصفية ──
+    const tabsBar = document.createElement('div');
+    tabsBar.id = 'notif-tabs';
+    tabsBar.style.cssText = 'display:flex;gap:8px;margin-bottom:16px;border-bottom:2px solid var(--border-color);padding-bottom:0;';
+
+    const tabDefs = [
+      { key: 'all',      label: 'الكل' },
+      { key: 'requests', label: 'طلبات العهدة' },
+      { key: 'general',  label: 'إشعارات' },
+    ];
+
+    tabDefs.forEach(({ key, label }) => {
+      const btn = document.createElement('button');
+      btn.dataset.tabKey = key;
+      btn.textContent = label;
+      btn.style.cssText = `
+        background:none;border:none;cursor:pointer;padding:8px 14px;font-size:0.88rem;
+        font-weight:600;color:var(--text-secondary);border-bottom:2px solid transparent;
+        margin-bottom:-2px;transition:color .15s,border-color .15s;
+      `;
+      if (key === this._activeTab) {
+        btn.style.color = 'var(--accent)';
+        btn.style.borderBottomColor = 'var(--accent)';
+      }
+      btn.addEventListener('click', () => {
+        this._activeTab = key;
+        tabsBar.querySelectorAll('button').forEach(b => {
+          b.style.color = 'var(--text-secondary)';
+          b.style.borderBottomColor = 'transparent';
+        });
+        btn.style.color = 'var(--accent)';
+        btn.style.borderBottomColor = 'var(--accent)';
+        this._load();
+      });
+      tabsBar.appendChild(btn);
+    });
+
+    wrap.appendChild(tabsBar);
+
     const listEl = document.createElement('div');
     listEl.id = 'notif-list';
     listEl.innerHTML = `<div class="skeleton" style="height:70px;border-radius:10px;margin-bottom:8px;"></div>`.repeat(3);
@@ -64,6 +106,10 @@ const NotificationsComponent = {
     document.body.appendChild(this._sendModal);
 
     container.appendChild(wrap);
+
+    // جلب بيانات حديثة من الخادم قبل العرض
+    if (AppStore.refreshNotifications) await AppStore.refreshNotifications();
+
     await this._load();
     if (window.lucide) lucide.createIcons();
   },
@@ -73,12 +119,28 @@ const NotificationsComponent = {
     if (!listEl) return;
 
     const uid    = AuthService.getCurrentUserId();
-    const notifs = AppStore.getState('notifications') || [];
+    const all    = AppStore.getState('notifications') || [];
+
+    // تصفية حسب التبويب النشط
+    const notifs = all.filter(n => {
+      let meta = {};
+      try { meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {}); } catch { meta = {}; }
+      const isRequest = meta.type === 'transfer_request';
+      if (this._activeTab === 'requests') return isRequest;
+      if (this._activeTab === 'general')  return !isRequest;
+      return true; // 'all'
+    });
 
     if (!notifs.length) {
+      const emptyMsg = {
+        all:      'لا توجد إشعارات',
+        requests: 'لا توجد طلبات عهدة',
+        general:  'لا توجد إشعارات عامة',
+      }[this._activeTab] || 'لا توجد إشعارات';
+
       listEl.innerHTML = `<div class="empty-state">
         <div class="empty-state-icon"><i data-lucide="bell-off" style="width:3rem;height:3rem;opacity:0.45;"></i></div>
-        <div class="empty-state-text">لا توجد إشعارات</div></div>`;
+        <div class="empty-state-text">${emptyMsg}</div></div>`;
       if (window.lucide) lucide.createIcons();
       return;
     }
@@ -382,7 +444,7 @@ const NotificationsComponent = {
     }
   },
 
-  /* ── معالجة أزرار قبول/رفض طلبات التحويل ── */
+  /* ── معالجة أزرار قبول/رفض طلبات العهدة ── */
   async _handleTransferAction(action, btnData, notifId) {
     const { metaType, transactionId, requestId } = btnData;
 
@@ -396,7 +458,7 @@ const NotificationsComponent = {
     let result;
 
     if (metaType === 'transfer_request' && requestId) {
-      // طلب أموال: الطرف المطلوب منه يوافق أو يرفض
+      // طلب عهدة: الطرف المطلوب منه يوافق أو يرفض
       if (action === 'accept') {
         result = await AccountingService.createTransferFromRequest(requestId);
       } else {

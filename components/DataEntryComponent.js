@@ -1194,7 +1194,7 @@ const DataEntryComponent = {
     reasonInput.id = 'tr-reason';
     reasonInput.className = 'form-control';
     reasonInput.rows = 2;
-    reasonInput.placeholder = 'اذكر سبب طلب التحويل...';
+    reasonInput.placeholder = 'اذكر سبب طلب العهدة...';
     reasonField.appendChild(reasonInput);
     frag.appendChild(reasonField);
     reasonField.style.display = 'none';
@@ -1765,7 +1765,7 @@ const DataEntryComponent = {
         if (!isOk(result)) throw new Error(result.error);
 
         const txStatus = result.data.pending ? 'بانتظار المزامنة' : 'مكتملة';
-        console.log(`[Transfer] تحويل مباشر | المرسل: ${myName} → المستقبل: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: ${txStatus}`);
+        console.log(`[Transfer] تسليم عهدة | المرسل: ${myName} → المستقبل: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: ${txStatus}`);
 
         // إشعار معلوماتي للمستقبل (بلا أزرار موافقة — العملية فورية)
         const notifData = {
@@ -1779,7 +1779,7 @@ const DataEntryComponent = {
           hidden_by: '[]',
         };
         await repo.create(TABLES.NOTIFICATIONS, notifData);
-        showToast(`✅ تم التحويل المباشر إلى ${recipientName}. العملية ${txStatus}.`, 'success');
+        showToast(`✅ تم تسليم العهدة إلى ${recipientName}. العملية ${txStatus}.`, 'success');
       } 
       else {
         const requestData = {
@@ -1805,7 +1805,7 @@ const DataEntryComponent = {
           hidden_by: '[]',
         };
         await repo.create(TABLES.NOTIFICATIONS, notifData);
-        console.log(`[Transfer] طلب أموال | الطالب: ${myName} → المطلوب منه: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: بانتظار الموافقة`);
+        console.log(`[Transfer] طلب عهدة | الطالب: ${myName} → المطلوب منه: ${recipientName} | المبلغ: ${formatCurrency(amount)} | الحالة: بانتظار الموافقة`);
         showToast(`✅ تم إرسال طلب العهدة إلى ${recipientName}. بانتظار الموافقة.`, 'success');
       }
 

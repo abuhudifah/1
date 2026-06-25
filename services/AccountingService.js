@@ -174,10 +174,10 @@ function _buildDeliveryEntries(tx, voucher) {
   return [
     // حساب المستلم: مدين (يزيد رصيده)
     { voucher_number: voucher, date, account_id: AccountId.agent(tx.to_agent_id), debit: tx.amount, credit: 0,
-      description: `عليكم حوالة نقدية واردة نقل عهدة من حساب ${senderName} إلى حسابكم${notesStr}` },
+      description: `عليكم تسليم عهدة من حساب ${senderName}${notesStr}` },
     // حساب المرسل: دائن (ينقص رصيده)
     { voucher_number: voucher, date, account_id: AccountId.agent(tx.agent_id), debit: 0, credit: tx.amount,
-      description: `لكم حوالة نقدية نقل عهدة من حسابكم إلى حساب ${receiverName} تسليم عهدة${notesStr}` },
+      description: `لكم تسليم عهدة من حسابكم إلى حساب ${receiverName}${notesStr}` },
   ];
 }
 
