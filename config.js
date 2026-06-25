@@ -388,6 +388,9 @@ const APP_CONFIG = Object.freeze({
 // تصدير جميع الثوابت للاستخدام في بقية الملفات
 // ============================================================
 
+// VAPID Public Key — Web Push
+window.VAPID_PUBLIC_KEY = 'BMNhBT-qStBW2_VpqMy6osPYW63coteWyHmkhXIFuJYr3BdIfMX5kWlE5s8h3HnI_EeZWGwieqPfA7Yi9h5elJg';
+
 window.APP_CONFIG            = APP_CONFIG;
 window.SUPABASE_CONFIG       = SUPABASE_CONFIG;
 window.TABLES                = TABLES;
