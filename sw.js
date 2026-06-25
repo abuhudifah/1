@@ -4,7 +4,7 @@
  * skipWaiting: التحديثات تُطبَّق فوراً بدون الحاجة لإغلاق التطبيق
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME    = `calc-${CACHE_VERSION}`;
 
 // الملفات الثابتة التي تُخزَّن عند التثبيت

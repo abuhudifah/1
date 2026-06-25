@@ -110,15 +110,15 @@ function drawCalculator(size) {
 
   const s = size / 512; // scale factor
 
-  // ── خلفية داكنة (iOS Calculator dark)
-  fillRect(0, 0, size, size, 28, 28, 30); // #1C1C1E
+  // ── خلفية كحلية داكنة (نفس لون النظام #0f172a)
+  fillRect(0, 0, size, size, 15, 23, 42); // #0f172a
 
-  // ── شريط الشاشة
+  // ── شريط الشاشة (#1e293b)
   const dispX = Math.round(24 * s), dispY = Math.round(24 * s);
   const dispW = Math.round(464 * s), dispH = Math.round(110 * s);
-  fillRoundRect(dispX, dispY, dispW, dispH, Math.round(14 * s), 44, 44, 46); // #2C2C2E
+  fillRoundRect(dispX, dispY, dispW, dispH, Math.round(14 * s), 30, 41, 59); // #1e293b
 
-  // ── زر رقم على اليمين (محاكاة نص "0")
+  // ── رقم أبيض في شريط الشاشة
   const numW = Math.round(28 * s), numH = Math.round(52 * s);
   fillRoundRect(
     Math.round(420 * s), Math.round(48 * s),
@@ -127,6 +127,7 @@ function drawCalculator(size) {
   );
 
   // ── صفوف الأزرار (4 × 5)
+  // accent #2563eb = (37,99,235) — نفس لون النظام
   const cols = 4, rows = 5;
   const btnSize = Math.round(98 * s);
   const gapX    = Math.round(14 * s);
@@ -137,15 +138,15 @@ function drawCalculator(size) {
 
   const colors = [
     // صف 0: AC +/- % ÷
-    [[99,99,102],[99,99,102],[99,99,102],[255,149,0]],
+    [[51,65,85],[51,65,85],[51,65,85],[37,99,235]],   // #334155 / accent
     // صف 1: 7 8 9 ×
-    [[58,58,60],[58,58,60],[58,58,60],[255,149,0]],
+    [[30,41,59],[30,41,59],[30,41,59],[37,99,235]],   // #1e293b / accent
     // صف 2: 4 5 6 −
-    [[58,58,60],[58,58,60],[58,58,60],[255,149,0]],
+    [[30,41,59],[30,41,59],[30,41,59],[37,99,235]],
     // صف 3: 1 2 3 +
-    [[58,58,60],[58,58,60],[58,58,60],[255,149,0]],
+    [[30,41,59],[30,41,59],[30,41,59],[37,99,235]],
     // صف 4: 0(wide) . =
-    [[58,58,60],[58,58,60],[255,149,0]],
+    [[30,41,59],[30,41,59],[37,99,235]],
   ];
 
   for (let row = 0; row < rows; row++) {
