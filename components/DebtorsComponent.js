@@ -736,20 +736,8 @@ const DebtorsComponent = {
       const updateResult = await repo.update(TABLES.DEBTORS, debtorId, { debt_amount: newVal });
       if (!isOk(updateResult)) throw new Error(updateResult.error);
 
-      /* إشعار للمناديب المُعيَّنين */
-      const debtor = (this._debtorsCache || []).find(d => d.id === debtorId);
-      if (debtor) {
-        const agents = Array.isArray(debtor.assigned_agents)
-          ? debtor.assigned_agents
-          : (typeof debtor.assigned_agents === 'string' ? JSON.parse(debtor.assigned_agents || '[]') : []);
-        if (agents.length) {
-          this._sendNotification(
-            `تحديث رصيد: ${debtorName}`,
-            `تم تحديث رصيد العميل "${debtorName}" من ${formatCurrency(current)} إلى ${formatCurrency(newVal)}${reason ? ' — ' + reason : ''}`,
-            agents
-          );
-        }
-      }
+      /* إشعار يومي واحد فقط لجميع المناديب */
+      await this._sendDailyDebtorsUpdateNotification();
 
       showToast(`✅ تم تحديث رصيد "${debtorName}" إلى ${formatCurrency(newVal)}`, 'success');
       this._closeBalanceModal();
@@ -762,7 +750,42 @@ const DebtorsComponent = {
   },
 
   /* ══════════════════════════════════════════════════════
-     إرسال إشعار داخلي
+     إشعار يومي واحد عند بدء تحديث أرصدة المديونين
+  ══════════════════════════════════════════════════════ */
+  async _sendDailyDebtorsUpdateNotification() {
+    try {
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const storageKey = `debtors_daily_notif_${today}`;
+      if (localStorage.getItem(storageKey)) return; // أُرسل اليوم مسبقاً
+
+      /* جمع جميع المناديب المُعيَّنين من كل المديونين */
+      const allAgentIds = new Set();
+      (this._debtorsCache || []).forEach(d => {
+        const agents = Array.isArray(d.assigned_agents)
+          ? d.assigned_agents
+          : (typeof d.assigned_agents === 'string' ? JSON.parse(d.assigned_agents || '[]') : []);
+        agents.forEach(id => allAgentIds.add(id));
+      });
+
+      if (!allAgentIds.size) return;
+
+      await repo.create(TABLES.NOTIFICATIONS, {
+        title    : '📋 تحديث أرصدة المديونين',
+        body     : 'تم تحديث أرصدة العملاء المديونين يمكنك البدء بعملية التحصيل',
+        type     : 'info',
+        target   : [...allAgentIds],
+        metadata : { type: 'debtors_daily_update' },
+        sender_id: AuthService.getCurrentUserId(),
+        read_by  : '[]',
+        hidden_by: '[]',
+      });
+
+      localStorage.setItem(storageKey, '1');
+    } catch (e) { console.warn('⚠️ DebtorsComponent: فشل إرسال الإشعار اليومي:', e.message); }
+  },
+
+  /* ══════════════════════════════════════════════════════
+     إرسال إشعار داخلي (للتعيينات الجديدة)
   ══════════════════════════════════════════════════════ */
   async _sendNotification(title, body, targetUserIds) {
     try {
@@ -770,7 +793,7 @@ const DebtorsComponent = {
         title,
         body,
         type      : 'info',
-        target    : JSON.stringify(targetUserIds),
+        target    : targetUserIds,
         sender_id : AuthService.getCurrentUserId(),
         read_by   : '[]',
         hidden_by : '[]',

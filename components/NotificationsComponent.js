@@ -44,6 +44,13 @@ const NotificationsComponent = {
       sendBtn.innerHTML = '<i data-lucide="send" style="width:14px;height:14px"></i> إرسال إشعار';
       sendBtn.addEventListener('click', () => this._openSendModal());
       bar.appendChild(sendBtn);
+
+      const purgeBtn = document.createElement('button');
+      purgeBtn.className = 'btn btn-secondary btn-sm';
+      purgeBtn.style.color = 'var(--danger)';
+      purgeBtn.innerHTML = '<i data-lucide="trash-2" style="width:14px;height:14px"></i> حذف القديمة';
+      purgeBtn.addEventListener('click', () => this._purgeOldNotifications());
+      bar.appendChild(purgeBtn);
     }
 
     const markAllBtn = document.createElement('button');
@@ -291,6 +298,31 @@ const NotificationsComponent = {
     if (isOk(result)) {
       await AppStore.refreshData();
       await this._load();
+    }
+  },
+
+  /* ── حذف الإشعارات الأقدم من 3 أيام (للمدير) ── */
+  async _purgeOldNotifications() {
+    const confirmed = await confirmDialog(
+      'سيتم حذف جميع الإشعارات الأقدم من 3 أيام نهائياً من قاعدة البيانات ولا يمكن التراجع عن هذا.',
+      'حذف الإشعارات القديمة', 'إلغاء', 'warning'
+    );
+    if (!confirmed) return;
+
+    const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      const { error, count } = await supabaseClient
+        .from(TABLES.NOTIFICATIONS)
+        .delete({ count: 'exact' })
+        .lt('created_at', cutoff);
+
+      if (error) { showToast(`فشل الحذف: ${error.message}`, 'error'); return; }
+
+      showToast(`✅ تم حذف ${count ?? 'عدد من'} إشعارات قديمة`, 'success');
+      if (AppStore.refreshNotifications) await AppStore.refreshNotifications();
+      await this._load();
+    } catch (e) {
+      showToast(`فشل الحذف: ${e.message}`, 'error');
     }
   },
 

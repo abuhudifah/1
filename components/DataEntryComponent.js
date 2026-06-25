@@ -1694,7 +1694,7 @@ const DataEntryComponent = {
       agent_id    : agentId,
       agent_name  : agentName,
       expense_type: expenseType,
-      details     : details ? `${details} (نوع: ${expenseType})` : `مصروف من نوع ${expenseType}`,
+      details     : details || '',
     });
     restore();
     if (isOk(result)) {

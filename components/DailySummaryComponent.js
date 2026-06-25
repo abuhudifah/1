@@ -348,6 +348,7 @@ const DailySummaryComponent = {
       const toAgent = users.find(u => u.id === tx.to_agent_id);
       if (toAgent) return toAgent.display_name || '';
     }
+    if (tx.type === 'expense' && tx.expense_type) return tx.expense_type;
     return '';
   },
 
@@ -497,9 +498,9 @@ const DailySummaryComponent = {
       tx.customer_name ? `👤 العميل: ${tx.customer_name}` : '',
       bankName ? `🏦 البنك: ${bankName}` : '',
       companyName ? `🏢 الشركة: ${companyName}` : '',
-      agent ? `👤 المندوب: ${agent.display_name}` : '',
-      tx.details ? `📝 ملاحظات: ${tx.details}` : '',
-      tx.expense_type ? `📂 نوع المصروف: ${tx.expense_type}` : '',
+      agent && tx.type !== 'expense' ? `👤 المندوب: ${agent.display_name}` : '',
+      tx.details && tx.type !== 'expense' ? `📝 ملاحظات: ${tx.details}` : '',
+      tx.type === 'expense' ? `📋 التفاصيل: عليكم مصروفات نوع ${tx.expense_type || 'عام'} بواسطة ${agent?.display_name || '—'}${tx.details ? ` لغرض(${tx.details})` : ''}` : '',
       `🔖 رقم العملية: ${tx.id?.substring(0,8) || '—'}`,
       `— نظام أبو حذيفة 🔐`,
     ].filter(Boolean).join('\n');
@@ -656,7 +657,9 @@ const DailySummaryComponent = {
         const icon  = {collection:'💰',deposit:'🏦',expense:'💸',receipt:'📥',delivery:'📤'}[tx.type]||'📋';
         const label = TRANSACTION_TYPE_LABELS[tx.type]||tx.type;
         const amt   = Math.round(parseFloat(tx.amount||0));
-        const who   = tx.customer_name||tx.details||'';
+        const who   = tx.type === 'expense'
+          ? `نوع ${tx.expense_type || 'عام'}${tx.details ? ` لغرض(${tx.details})` : ''}`
+          : (tx.customer_name || tx.details || '');
         return `${i+1}. ${icon} ${label}: *${amt.toLocaleString('en-US')} ر.س*${who?` — ${who}`:''}`;
       }),
       `────────────────`,

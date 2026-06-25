@@ -128,7 +128,7 @@ function _buildExpenseEntries(tx, voucher) {
   const agentAcc  = AccountId.agent(tx.agent_id);
   const agentName = tx.agent_name || 'المندوب';
   const expType   = tx.expense_type || 'عام';
-  const desc      = `مصروف ${expType} من عهدة ${agentName}`;
+  const desc      = `عليكم مصروفات نوع ${expType} بواسطة ${agentName}`;
 
   return [
     { voucher_number: voucher, date, account_id: EXPENSE_ACCOUNT_ID, debit: tx.amount, credit: 0,
