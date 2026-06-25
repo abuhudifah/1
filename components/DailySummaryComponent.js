@@ -500,7 +500,7 @@ const DailySummaryComponent = {
       companyName ? `🏢 الشركة: ${companyName}` : '',
       agent && tx.type !== 'expense' ? `👤 المندوب: ${agent.display_name}` : '',
       tx.details && tx.type !== 'expense' ? `📝 ملاحظات: ${tx.details}` : '',
-      tx.type === 'expense' ? `📋 التفاصيل: عليكم مصروفات نوع ${tx.expense_type || 'عام'} بواسطة ${agent?.display_name || '—'}${tx.details ? ` لغرض(${tx.details})` : ''}` : '',
+      tx.type === 'expense' ? `📋 التفاصيل: لكم مصروفات نوع ${tx.expense_type || 'عام'} بواسطة ${agent?.display_name || '—'}${tx.details ? ` لغرض(${tx.details})` : ''}` : '',
       `🔖 رقم العملية: ${tx.id?.substring(0,8) || '—'}`,
       `— نظام أبو حذيفة 🔐`,
     ].filter(Boolean).join('\n');

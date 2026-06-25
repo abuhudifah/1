@@ -1547,7 +1547,7 @@ const AccountManagementComponent = {
         return { label: 'استرداد إيداع فاشل', details: withUser(`لكم استرداد إيداع فاشل من حساب ${tx.bankName || '—'}`) };
       if (tx.type === 'expense') {
         const det = (tx.details || '').trim();
-        return { label: 'مصروفات', details: `عليكم مصروفات نوع ${tx.expense_type || 'عام'} بواسطة ${tx.agentName || '—'}${det ? ` لغرض(${det})` : ''}` };
+        return { label: 'مصروفات', details: `لكم مصروفات نوع ${tx.expense_type || 'عام'} بواسطة ${tx.agentName || '—'}${det ? ` لغرض(${det})` : ''}` };
       }
       if (tx.type === 'delivery' || tx.type === 'receipt') {
         const nameFor = (id) => id === tx.agent_id ? tx.agentName : id === tx.to_agent_id ? tx.toAgentName : id === tx.from_agent_id ? tx.fromAgentName : '';
