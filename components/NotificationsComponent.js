@@ -413,8 +413,8 @@ const NotificationsComponent = {
           const senderId = req.from_user_id;
           if (senderId && senderId !== currentUser?.id) {
             const notifData = {
-              title    : '❌ رُفض طلب التحويل',
-              body     : `${currentUser?.display_name || 'المستخدم'} رفض طلب تحويل مبلغ ${formatCurrency(req.amount)}.`,
+              title    : '❌ رُفض طلب العهدة',
+              body     : `${currentUser?.display_name || 'المستخدم'} رفض طلب عهدة بمبلغ ${formatCurrency(req.amount)}.`,
               type     : 'warning',
               target   : JSON.stringify([senderId]),
               sender_id: currentUser?.id,

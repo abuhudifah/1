@@ -2,6 +2,63 @@
 
 ---
 
+## جلسة 2026-06-25
+
+### 1. إعادة تسمية "تحويل مباشر" → "تسليم عهدة" و"طلب أموال" → "طلب عهدة"
+
+**الملفات المُعدَّلة:**
+
+| الملف | التغيير |
+|-------|---------|
+| `config.js` | `TRANSACTION_TYPE_LABELS.delivery` → `'تسليم عهدة'` |
+| `services/AccountingService.js` | نص القيد الدفتري + إشعار القبول |
+| `components/DataEntryComponent.js` | خيارات القائمة + عناوين الإشعارات + toast |
+| `components/AccountManagementComponent.js` | تسميات كشف الحساب |
+| `components/DailySummaryComponent.js` | فلتر نوع العملية |
+| `services/PrintService.js` | نصوص الطباعة |
+| `components/NotificationsComponent.js` | إشعار رفض الطلب |
+
+**قواعد التسمية الجديدة:**
+- `TRANSACTION_TYPES.DELIVERY` (القيمة في DB: `'delivery'`) → يُعرض: **تسليم عهدة**
+- طلب تحويل بانتظار موافقة → **طلب عهدة**
+
+### 2. تصحيح عمود التفاصيل في كشف الحساب (لكم / عليكم)
+
+**المشكلة:** `_describeLedgerEntry` في `AccountManagementComponent.js` كانت تعرض النصوص معكوسة في عمود التفاصيل رغم صحة أعمدة لكم/عليكم المحاسبية.
+
+**الحل:**
+
+| الحالة | قبل (خاطئ) | بعد (صحيح) |
+|--------|------------|------------|
+| المستقبل يشاهد حسابه (مدين) | لكم حوالة نقدية واردة... | **عليكم** حوالة نقدية واردة تسليم عهدة... |
+| المرسل يشاهد حسابه (دائن) | عليكم حوالة نقدية... | **لكم** حوالة نقدية تسليم عهدة... |
+
+نفس التصحيح طُبِّق على `PrintService.js`.
+
+> القيود المخزنة في DB بواسطة `_buildDeliveryEntries` كانت **صحيحة أصلاً** — التصحيح فقط على العرض الديناميكي في الواجهة والطباعة.
+
+### 3. Web Push API — إشعارات حقيقية عند إغلاق التطبيق
+
+- جدول `push_subscriptions` + RLS + Trigger على `notifications`
+- Edge Function `send-push` (VAPID keys، webhook secret)
+- `sw.js` v8: push handler + `notification-icon.png`
+- `utils/NotificationSound.js`: `subscribeToPush()`
+- `config.js`: `VAPID_PUBLIC_KEY`
+
+### 4. أيقونة إشعار أحادية اللون (ناقوس أبيض)
+
+- `assets/icons/notification-icon.png`: ناقوس أبيض RGBA — يحل مشكلة المربع الأبيض على Android
+- `assets/icons/icon-*.png`: تصميم احترافي جديد للحاسبة
+- `scripts/generate-icons.js`: دعم RGBA + تصميم محسَّن
+
+### 5. إشعار رفض طلب العهدة
+
+**الملف:** `components/NotificationsComponent.js`
+
+أُضيف إشعار للطالب عند رفض طلبه، يحمل اسم الرافض والمبلغ بصيغة `warning`.
+
+---
+
 ## جلسة 2026-06-22
 **الفرع:** `claude/fervent-wright-cxm031`
 

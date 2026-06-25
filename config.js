@@ -125,7 +125,7 @@ const TRANSACTION_TYPE_LABELS = Object.freeze({
   bank_withdrawal      : 'سحب بنكي',
   expense              : 'مصروف',
   receipt              : 'تحويل',
-  delivery             : 'تسليم مباشر',
+  delivery             : 'تسليم عهدة',
   refund_settlement    : 'تسوية استرداد',
   failed_deposit_refund: 'استرداد إيداع فاشل',
   journal_entry        : 'قيد محاسبي',
